@@ -610,23 +610,23 @@ return () => {
 }, []);
 
 // ✅ Fix — only approved templates
-useEffect(() => {
-  const loadTemplates = async () => {
-    try {
-      const res = await API.get("/templates");
-      const all = Array.isArray(res.data)
-        ? res.data
-        : res.data.templates || res.data.data || [];
+// useEffect(() => {
+//   const loadTemplates = async () => {
+//     try {
+//       const res = await API.get("/templates");
+//       const all = Array.isArray(res.data)
+//         ? res.data
+//         : res.data.templates || res.data.data || [];
 
-      // ✅ Only show approved templates in chat
-      const approved = all.filter(t => t.approvalStatus === "approved");
-      setTemplates(approved);
-    } catch (err) {
-      console.error("Templates error:", err);
-    }
-  };
-  loadTemplates();
-}, []); 
+//       // ✅ Only show approved templates in chat
+//       const approved = all.filter(t => t.approvalStatus === "approved");
+//       setTemplates(approved);
+//     } catch (err) {
+//       console.error("Templates error:", err);
+//     }
+//   };
+//   loadTemplates();
+// }, []); 
 
 useEffect(() => {
   const loadChats = async () => {
@@ -1249,14 +1249,24 @@ const deleteForEveryone = async () => {
 };
 
   const uploadFile = async (file) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await API.post("/upload", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    if (res.status !== 200) throw new Error("Upload failed");
-    return res.data;
-  };
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await API.post("/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  if (res.status !== 200) throw new Error("Upload failed");
+
+  const data = res.data;
+
+  // ✅ Determine messageType from file mime if backend doesn't return it
+  if (!data.messageType) {
+    if (file.type.startsWith("image/")) data.messageType = "image";
+    else if (file.type.startsWith("video/")) data.messageType = "video";
+    else data.messageType = "file";
+  }
+
+  return data;
+};
 
   const handleSend = async () => {
   if (!selectedChat || (!input.trim() && !pendingAttachment)) return;
@@ -1286,28 +1296,20 @@ const deleteForEveryone = async () => {
   if (pendingAttachment) {
     const pa = pendingAttachment;
     setPendingAttachment(null);
-    if (pa.url && pa.url.startsWith("blob:")) {
-      try {
-        const blob = await fetch(pa.url).then(r => r.blob());
-        const file = new File([blob], pa.fileName, { type: blob.type });
-        const uploadData = await uploadFile(file);
-        await sendMessage("", {
-          messageType: uploadData.messageType,
-          fileUrl: uploadData.fileUrl,
-          fileName: uploadData.fileName,
-          fileSize: uploadData.fileSize,
-        });
-      } catch (err) {
-        console.error("Upload failed", err);
-        alert("Failed to upload file");
-      }
-    } else {
+
+    try {
+      // ✅ Use rawFile directly — no need to re-fetch blob
+      const file = pa.rawFile || await fetch(pa.url).then(r => r.blob()).then(b => new File([b], pa.fileName, { type: b.type }));
+      const uploadData = await uploadFile(file);
       await sendMessage("", {
-        messageType: pa.kind,
-        fileUrl: pa.url,
-        fileName: pa.fileName,
-        fileSize: pa.fileSize,
+        messageType: uploadData.messageType,
+        fileUrl: uploadData.fileUrl,
+        fileName: uploadData.fileName || pa.fileName,
+        fileSize: uploadData.fileSize || pa.fileSize,
       });
+    } catch (err) {
+      console.error("Upload failed", err);
+      alert("Failed to upload file");
     }
   }
 
@@ -1336,7 +1338,6 @@ const deleteForEveryone = async () => {
   setShowEmojiPicker(false);
   setAttachmentMenuOpen(false);
 
-  // ✅ ADDED: move this chat to top after sending
   setChatList(prev => {
     const chat = prev.find(c => String(c._id) === String(chatId));
     if (!chat) return prev;
@@ -1440,22 +1441,24 @@ const deleteForEveryone = async () => {
   };
 
   const handleFilePick = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const isImage = file.type.startsWith("image/");
-    const isVideo = file.type.startsWith("video/");
+  const isImage = file.type.startsWith("image/");
+  const isVideo = file.type.startsWith("video/");
+  const kind = isImage ? "image" : isVideo ? "video" : "file";
 
-    setPendingAttachment({
-      kind: isImage ? "image" : isVideo ? "video" : "file",
-      fileName: file.name,
-      fileSize: formatFileSize(file.size),
-      url: URL.createObjectURL(file),
-    });
+  setPendingAttachment({
+    kind,
+    fileName: file.name,
+    fileSize: formatFileSize(file.size),
+    url: URL.createObjectURL(file),
+    rawFile: file, // ✅ keep original file for upload
+  });
 
-    setAttachmentMenuOpen(false);
-    e.target.value = "";
-  };
+  setAttachmentMenuOpen(false);
+  e.target.value = "";
+};
 
   const handleAttachmentAction = (type) => {
   if (type === "photos") {
@@ -1639,7 +1642,7 @@ const lastMessageTime = (chatId) => {
 <input
   ref={documentInputRef}
   type="file"
-  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.ppt,.pptx"
+  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx,.zip,.rar,.json,.xml"
   hidden
   onChange={handleFilePick}
 />
@@ -2007,6 +2010,8 @@ onClick={() => {
                               msg={msg}
                               onDeleteClick={openDeleteModal}
                               onForward={handleForwardMessage}
+                              isGroup={selectedChat?.isGroup}         // ← ADD
+                              contacts={contacts} 
                               onSendMessage={async (newMsg) => {
                                 const user = JSON.parse(localStorage.getItem("user"));
 
@@ -2189,10 +2194,10 @@ onClick={() => {
 )}
 
                         <input type="text" value={input} onChange={handleInputChange} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="Type a message" className="form-control border-0 shadow-none" style={{ height: 42, borderRadius: 24, background: "#ffffff", paddingLeft: 16, paddingRight: 16 }} />
-                        <button
+                        {/* <button
                           type="button"
                           onClick={() => setShowTemplateModal(true)}
-                          className="btn border-0 rounded-circle d-flex align-items-center justify-content-center"
+                          className="btn border-0 rounded-cir cle d-flex align-items-center justify-content-center"
                           style={{
                             width: 42,
                             height: 42,
@@ -2201,8 +2206,10 @@ onClick={() => {
                           }}
                         >
                           📄
-                        </button>
+                        </button> */}
                         <button type="button" onClick={handleSend} className="send-btn btn border-0 rounded-circle d-flex align-items-center justify-content-center" style={{ width: 42, height: 42, background: "#00a884", color: "#ffffff", flexShrink: 0 }}><FiSend size={18} /></button>
+
+
                       </div>
 
                       {/* Mobile Contact Info Bottom Sheet */}
@@ -2732,6 +2739,8 @@ function MessageBubble({
   isSelected,
   multiSelectMode,
   onSendMessage,
+   isGroup,      // ← ADD
+  contacts,
 }) {
   const [showActions, setShowActions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -2779,6 +2788,7 @@ useEffect(() => {
     wordBreak: "break-word",
     position: "relative",
   };
+
 
   if (msg.isDeleted) {
     return (
@@ -3334,19 +3344,90 @@ useEffect(() => {
     }
 
     // ─── FILE MESSAGE ──────────────────────────────────────────
+    // ─── FILE MESSAGE ──────────────────────────────────────────
     if (msg.messageType === "file") {
+      const ext = (msg.fileName || "").split(".").pop().toLowerCase();
+      const extConfig = {
+        pdf:  { color: "#e74c3c", label: "PDF"  },
+        csv:  { color: "#27ae60", label: "CSV"  },
+        xlsx: { color: "#27ae60", label: "XLSX" },
+        xls:  { color: "#27ae60", label: "XLS"  },
+        doc:  { color: "#2980b9", label: "DOC"  },
+        docx: { color: "#2980b9", label: "DOCX" },
+        ppt:  { color: "#e67e22", label: "PPT"  },
+        pptx: { color: "#e67e22", label: "PPTX" },
+        txt:  { color: "#7f8c8d", label: "TXT"  },
+        zip:  { color: "#8e44ad", label: "ZIP"  },
+        rar:  { color: "#8e44ad", label: "RAR"  },
+        json: { color: "#f39c12", label: "JSON" },
+        xml:  { color: "#16a085", label: "XML"  },
+      };
+      const cfg = extConfig[ext] || { color: "#54656f", label: ext.toUpperCase() || "FILE" };
+
       return (
-        <div className="d-flex align-items-center gap-2">
-          <FiFile size={20} style={{ flexShrink: 0, color: "#54656f" }} />
-          <div>
-            <div style={{ fontSize: "0.88rem", fontWeight: 500 }}>{msg.fileName}</div>
-            {msg.fileSize && (
-              <div style={{ fontSize: "0.75rem", color: "#667781" }}>{msg.fileSize}</div>
-            )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 2px", minWidth: 220, maxWidth: 280 }}>
+          <div style={{ width: 46, height: 52, borderRadius: 8, background: cfg.color, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0, gap: 3, boxShadow: "0 2px 6px rgba(0,0,0,0.12)" }}>
+            <FiFile size={20} color="#fff" />
+            <span style={{ fontSize: "0.52rem", color: "#fff", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              {cfg.label}
+            </span>
           </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "0.87rem", fontWeight: 600, color: "#111b21", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={msg.fileName}>
+              {msg.fileName}
+            </div>
+            <div style={{ fontSize: "0.73rem", color: "#667781", marginTop: 2 }}>
+              {msg.fileSize || ext.toUpperCase()}
+            </div>
+          </div>
+          {msg.url && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+              <a href={msg.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Open" style={{ width: 30, height: 30, borderRadius: "50%", background: "#e7fef5", border: "1px solid #b2f0d8", display: "flex", alignItems: "center", justifyContent: "center", color: "#00a884", textDecoration: "none" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+              </a>
+              <button
+  onClick={async (e) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch(msg.url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = msg.fileName || `file.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (err) {
+      window.open(msg.url, "_blank");
+    }
+  }}
+  title="Download"
+  style={{
+    width: 30, height: 30, borderRadius: "50%",
+    background: "#f0f2f5", border: "1px solid #e9edef",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: "#54656f", cursor: "pointer",
+  }}
+>
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+</button> 
+            </div>
+          )}
         </div>
       );
     }
+
+    // ─── TEXT MESSAGE ──────────────────────────────────────────
 
     // ─── TEXT MESSAGE ──────────────────────────────────────────
     return (
@@ -3356,21 +3437,38 @@ useEffect(() => {
 );
   };
 
+  // Resolve sender display name for group messages
+const getSenderName = () => {
+  if (!isGroup || msg.type === "sent") return null;
+  const contact = contacts?.find(c => c.mobile === msg.sender);
+  return contact?.name || msg.sender || "Unknown";
+};
+const senderName = getSenderName();
+
   return (
-    <div
-      ref={bubbleRef}
-      style={{
-        ...bubbleBase,
-        ...(isSelected
-          ? { outline: "2px solid #00a884", outlineOffset: 1 }
-          : {}),
-      }}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => {
-        setShowActions(false);
-        setShowMenu(false);
-      }}
-    >
+  <div
+    ref={bubbleRef}
+    style={{
+      ...bubbleBase,
+      ...(isSelected ? { outline: "2px solid #00a884", outlineOffset: 1 } : {}),
+    }}
+    onMouseEnter={() => setShowActions(true)}
+    onMouseLeave={() => { setShowActions(false); setShowMenu(false); }}
+  >
+    {/* ── SENDER NAME (group received messages only) ── */}
+    {senderName && (
+      <div
+        style={{
+          fontSize: "0.72rem",
+          fontWeight: 600,
+          color: stringToColor(msg.sender), // consistent color per sender
+          marginBottom: 2,
+          paddingBottom: 1,
+        }}
+      >
+        {senderName}
+      </div>
+    )}
       {/* Multi-select checkbox */}
       {multiSelectMode && (
         <div
@@ -3955,6 +4053,17 @@ console.log("tag sample:", JSON.stringify(tags[0], null, 2));
       </div>
     </div>
   );
+}
+
+// Generates a consistent color per phone number — like WhatsApp group sender colors
+function stringToColor(str = "") {
+  const palette = [
+    "#e17055", "#6c5ce7", "#00b894", "#0984e3",
+    "#fd79a8", "#00cec9", "#fdcb6e", "#a29bfe",
+  ];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return palette[Math.abs(hash) % palette.length];
 }
 
 function formatFileSize(bytes) {
