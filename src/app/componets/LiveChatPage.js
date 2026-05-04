@@ -3121,32 +3121,8 @@ useEffect(() => {
           )}
 
           {/* ── TIMESTAMP ── */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 4,
-              padding: "2px 8px 6px",
-              fontSize: 11,
-              color: "#667781",
-            }}
-          >
-            {getFormattedTime()}
-            {/* Read receipt ticks for sent messages */}
-            {isMine && (
-              <svg width="16" height="11" viewBox="0 0 16 11">
-                <path
-                  d="M11.071.653a.75.75 0 0 1 .001 1.06l-6.01 6.009a.75.75 0 0 1-1.06 0L1.47 5.19a.75.75 0 1 1 1.06-1.06l2.003 2.002 5.479-5.48a.75.75 0 0 1 1.059.001z"
-                  fill={msg.status === "read" ? "#53bdeb" : "#8696a0"}
-                />
-                <path
-                  d="M14.571.653a.75.75 0 0 1 .001 1.06l-6.01 6.009a.75.75 0 0 1-.53.22.75.75 0 0 1-.53-.22l-.53-.53a.75.75 0 1 1 1.06-1.06l5.479-5.48a.75.75 0 0 1 1.06.001z"
-                  fill={msg.status === "read" ? "#53bdeb" : "#8696a0"}
-                />
-              </svg>
-            )}
-          </div>
+       
+<MessageMeta msg={msg} inline={false} />
 
           {/* ── BUTTONS ── */}
           {hasButtons && (
@@ -3663,34 +3639,51 @@ function MenuItem({ icon, label, onClick, danger = false }) {
 }
 
 function MessageMeta({ msg, inline = false }) {
+  const tickColor = msg.seen ? "#53bdeb" : "#8696a0";
+
+  const SingleTick = () => (
+    <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
+      <path
+        d="M1.5 5.5L5 9L12.5 1.5"
+        stroke={tickColor}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+
+  const DoubleTick = () => (
+    <svg width="14" height="11" viewBox="0 0 18 11" fill="none">
+      {/* back tick */}
+      <path
+        d="M1.5 5.5L5 9L12.5 1.5"
+        stroke={tickColor}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* front tick — shifted right */}
+      <path
+        d="M5.5 5.5L9 9L16.5 1.5"
+        stroke={tickColor}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+
   return (
     <div
-      className="d-flex justify-content-end align-items-center gap-1"
+      className="d-flex justify-content-end align-items-center gap-1 px-1.5"
       style={{ marginTop: inline ? "-2px" : "5px", fontSize: "0.68rem", color: "#667781" }}
     >
       <span>{msg.time}</span>
       {msg.type === "sent" && (
-        <>
-          {msg.seen ? (
-            // Blue double tick (seen)
-            <span style={{ color: "#53bdeb", display: "flex", alignItems: "center" }}>
-              <FiCheckCircle size={12} />
-            </span>
-          ) : msg.delivered ? (
-            // Grey double tick (delivered but not seen)
-            <span style={{ display: "flex", alignItems: "center", gap: "-4px" }}>
-              <FiCheck size={12} />
-              <FiCheck size={12} style={{ marginLeft: "-5px" }} />
-            </span>
-          ) : (
-            // Single grey tick (sent but not delivered)
-            <span style={{ display: "flex", alignItems: "center" }}>
-              <FiCheck size={12} />
-            </span>
-          )}
-
-          
-        </>
+        <span style={{ display: "flex" , alignItems: "center", lineHeight: 1 }}>
+          {msg.delivered || msg.seen ? <DoubleTick /> : <SingleTick />}
+        </span>
       )}
     </div>
   );
