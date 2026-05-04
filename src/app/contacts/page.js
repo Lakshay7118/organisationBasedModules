@@ -31,8 +31,9 @@ function TagBadge({ label }) {
 
 // ── AddContactModal ───────────────────────────────────────────────────────
 function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
-  const [form, setForm] = useState({ name: "", mobile: "", email: "", tagId: "", source: "MANUAL", role: "user" });
+  const [form, setForm] = useState({ name: "", mobile: "", email: "", password: "", tagId: "", source: "MANUAL", role: "user" });
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handle = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -41,11 +42,14 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
     if (!cleanMobile) return setError("Mobile number is required.");
     if (!/^\d{10,15}$/.test(cleanMobile)) return setError("Enter a valid mobile number (10–15 digits).");
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setError("Enter a valid email address.");
+    if (isSuperAdmin && form.email && !form.password) return setError("Password is required when email is provided.");
+    if (form.password && form.password.length < 6) return setError("Password must be at least 6 characters.");
     setError("");
     onAdd({
       name: form.name.trim() || "UNKNOWN",
       mobile: cleanMobile,
-      email: form.email.trim() || null,  // ✅
+      email: form.email.trim() || null,
+      password: form.password || undefined,
       tags: form.tagId ? [form.tagId] : [],
       source: form.source,
       role: form.role,
@@ -55,7 +59,7 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
 
   return (
     <div style={overlay}>
-      <div style={modalBox}>
+      <div style={{ ...modalBox, maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>Add Contact</h2>
           <button onClick={onClose} style={closeBtn}>✕</button>
@@ -73,29 +77,45 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
           <label style={labelStyle}>Name</label>
           <input value={form.name} onChange={handle("name")} placeholder="Full name (optional)" style={inputStyle} />
         </div>
+
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Mobile Number *</label>
           <input value={form.mobile} onChange={handle("mobile")} placeholder="e.g. 919876543210" style={inputStyle} />
         </div>
 
-        {/* ✅ Email field — shown to all but marked optional */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>
             Email Address
-            {isSuperAdmin && (
-              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>
-                (required for OTP login)
-              </span>
-            )}
+            {isSuperAdmin && <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>(used for login)</span>}
           </label>
-          <input
-            value={form.email}
-            onChange={handle("email")}
-            placeholder="e.g. john@example.com"
-            type="email"
-            style={inputStyle}
-          />
+          <input value={form.email} onChange={handle("email")} placeholder="e.g. john@example.com" type="email" style={inputStyle} />
         </div>
+
+        {/* Password — only shown to super_admin */}
+        {isSuperAdmin && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>
+              Password
+              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>(required if email is set)</span>
+            </label>
+            <div style={{ position: "relative" }}>
+              <input
+                value={form.password}
+                onChange={handle("password")}
+                placeholder="Min. 6 characters"
+                type={showPassword ? "text" : "password"}
+                style={{ ...inputStyle, paddingRight: 40 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((p) => !p)}
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 16, padding: 0 }}
+              >
+                {showPassword ? "🙈" : "👁"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Tag</label>
@@ -106,6 +126,7 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
             ))}
           </select>
         </div>
+
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Source</label>
           <select value={form.source} onChange={handle("source")} style={inputStyle}>
@@ -114,6 +135,7 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
             <option value="MANUAL">MANUAL</option>
           </select>
         </div>
+
         {isSuperAdmin && (
           <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>Role</label>
@@ -139,11 +161,13 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
   const [form, setForm] = useState({
     name: contact.name || "",
     mobile: contact.mobile || "",
-    email: contact.email || "",   // ✅
+    email: contact.email || "",
+    password: "",
     tagId: contact.tags && contact.tags.length > 0 ? contact.tags[0]._id : "",
     source: contact.source || "MANUAL",
   });
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const handle = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
   const submit = () => {
@@ -151,11 +175,13 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
     if (!cleanMobile) return setError("Mobile number is required.");
     if (!/^\d{10,15}$/.test(cleanMobile)) return setError("Enter a valid mobile number (10–15 digits).");
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setError("Enter a valid email address.");
+    if (form.password && form.password.length < 6) return setError("Password must be at least 6 characters.");
     setError("");
     onUpdate(contact._id, {
       name: form.name.trim() || "UNKNOWN",
       mobile: cleanMobile,
-      email: form.email.trim() || null,  // ✅
+      email: form.email.trim() || null,
+      password: form.password || undefined, // only send if changed
       tags: form.tagId ? [form.tagId] : [],
       source: form.source,
     });
@@ -164,7 +190,7 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
 
   return (
     <div style={overlay}>
-      <div style={modalBox}>
+      <div style={{ ...modalBox, maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>Edit Contact</h2>
           <button onClick={onClose} style={closeBtn}>✕</button>
@@ -182,29 +208,45 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
           <label style={labelStyle}>Name</label>
           <input value={form.name} onChange={handle("name")} placeholder="Full name (optional)" style={inputStyle} />
         </div>
+
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Mobile Number *</label>
           <input value={form.mobile} onChange={handle("mobile")} placeholder="e.g. 919876543210" style={inputStyle} />
         </div>
 
-        {/* ✅ Email field */}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>
             Email Address
-            {isSuperAdmin && (
-              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>
-                (required for OTP login)
-              </span>
-            )}
+            {isSuperAdmin && <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>(used for login)</span>}
           </label>
-          <input
-            value={form.email}
-            onChange={handle("email")}
-            placeholder="e.g. john@example.com"
-            type="email"
-            style={inputStyle}
-          />
+          <input value={form.email} onChange={handle("email")} placeholder="e.g. john@example.com" type="email" style={inputStyle} />
         </div>
+
+        {/* Password — only shown to super_admin, leave blank to keep existing */}
+        {isSuperAdmin && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>
+              New Password
+              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>(leave blank to keep existing)</span>
+            </label>
+            <div style={{ position: "relative" }}>
+              <input
+                value={form.password}
+                onChange={handle("password")}
+                placeholder="Min. 6 characters"
+                type={showPassword ? "text" : "password"}
+                style={{ ...inputStyle, paddingRight: 40 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((p) => !p)}
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 16, padding: 0 }}
+              >
+                {showPassword ? "🙈" : "👁"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Tag</label>
@@ -215,6 +257,7 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
             ))}
           </select>
         </div>
+
         <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>Source</label>
           <select value={form.source} onChange={handle("source")} style={inputStyle}>
@@ -403,7 +446,7 @@ export default function ContactsPage() {
     return (
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
       c.mobile?.includes(search) ||
-      c.email?.toLowerCase().includes(search.toLowerCase()) ||   // ✅ search by email too
+      c.email?.toLowerCase().includes(search.toLowerCase()) ||
       tagNames.toLowerCase().includes(search.toLowerCase())
     );
   });
@@ -609,7 +652,6 @@ export default function ContactsPage() {
                   )}
                   <th style={{ ...stickyTh, textAlign: "left" }}>Name</th>
                   <th style={{ ...stickyTh, textAlign: "left" }}>Mobile</th>
-                  {/* ✅ Email column — super_admin only */}
                   {isSuperAdmin && <th style={{ ...stickyTh, textAlign: "left" }}>Email</th>}
                   <th style={{ ...stickyTh, textAlign: "left" }}>Tags</th>
                   <th style={{ ...stickyTh, textAlign: "left", whiteSpace: "nowrap" }}>Source</th>
@@ -633,7 +675,6 @@ export default function ContactsPage() {
                     )}
                     <td style={td}>{c.name}</td>
                     <td style={td}>{c.mobile}</td>
-                    {/* ✅ Email cell — clickable mailto, red warning if missing */}
                     {isSuperAdmin && (
                       <td style={td}>
                         {c.email
