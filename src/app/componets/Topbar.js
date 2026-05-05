@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { motion, AnimatePresence } from "framer-motion"; // Added AnimatePresence
 import { Menu, Search, LogOut, Bell } from "lucide-react";
-
+import { getSocket, disconnectSocket } from "../lib/socket";
 export default function Topbar({
   onMenuClick,
   onLogout,
@@ -62,10 +62,11 @@ export default function Topbar({
     setShowLogoutPopup(true);
   };
 
-  const confirmLogout = () => {
-    setShowLogoutPopup(false);
-    if (onLogout) onLogout();
-  };
+const confirmLogout = () => {
+  setShowLogoutPopup(false);
+  disconnectSocket(); // ✅ marks offline instantly
+  if (onLogout) onLogout();
+};
 
   const cancelLogout = () => {
     setShowLogoutPopup(false);

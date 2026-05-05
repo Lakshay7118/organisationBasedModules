@@ -3,6 +3,7 @@ import { getSocket } from "../lib/socket";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { gsap } from "gsap";
+
 import { AnimatePresence, motion } from "framer-motion";
 import {
   FiPhone,
@@ -307,6 +308,8 @@ const [deleteTarget, setDeleteTarget] = useState(null); // { chatId, isGroup, mo
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
 const [clearTargetId, setClearTargetId] = useState(null);
 
+const [userPresence, setUserPresence] = useState({});
+
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
     setCurrentUser(user);
@@ -376,237 +379,154 @@ useEffect(() => {
 }, []);
 
 
- useEffect(() => {
+useEffect(() => {
   const s = getSocket();
   s.connect();
-  const user = JSON.parse(localStorage.getItem("user"));
+
+  // ================== ONLINE / OFFLINE FIX ==================
+
+const handleOnlineUsers = ({ users, lastSeen }) => {
+  setUserPresence(() => {
+    const next = {};
+    users.forEach(phone => {
+      next[phone] = { online: true, lastSeen: null };
+    });
+    Object.entries(lastSeen || {}).forEach(([phone, ts]) => {
+      // ✅ don't overwrite users who are currently online
+      if (!next[phone]?.online) {
+        next[phone] = { online: false, lastSeen: ts };
+      }
+    });
+    return next;
+  });
+};
+  s.on("onlineUsers", handleOnlineUsers);
+
+  // ================== JOIN USER ==================
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
   if (user?.phone) {
     s.emit("joinUserRoom", user.phone);
   }
 
-  // 🔥 Global handler — updates left panel preview for ALL chats
-const handleGlobalNewMessage = (msg) => {
+  // ================== 🔥 CRITICAL FIX ==================
 
-  // ✅ REMOVED early return — both handlers run, dedup prevents duplicates
-
-  // ✅ Add message to state for non-selected chats
-  // For selected chat, the per-chat handleNewMessage handles it
-  if (String(msg.chatId) !== String(selectedChatRef.current?._id)) {
-    setMessages(prev => {
-      const chatId = msg.chatId;
-      const currentMsgs = prev[chatId] || [];
-      if (currentMsgs.some(m =>
-        m.id === msg._id ||
-        (m.text === msg.text && Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 3000)
-      )) return prev;
-
-      const isSentByMe = String(msg.sender) === String(currentUserRef.current?.phone);
-      return {
-        ...prev,
-        [chatId]: [...currentMsgs, {
-          id: msg._id,
-          sender: msg.sender,
-          type: isSentByMe ? "sent" : "received",
-          messageType: msg.messageType || "text",
-          text: msg.text || "",
-          templateMeta: msg.templateMeta || null,
-          createdAt: msg.createdAt,
-          time: new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          delivered: !isSentByMe,
-          seen: false,
-          fileName: msg.fileName,
-          url: msg.fileUrl,
-          isDeleted: false,
-        }],
-      };
-    });
+  // ✅ when tab hidden / minimized / closed
+ const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible") {
+    if (user?.phone) {
+      s.emit("joinUserRoom", user.phone);
+    }
   }
-
-  // ✅ Always update chat list (move to top + unread) for ALL messages
- // Replace this entire setChatList block inside handleGlobalNewMessage:
-setChatList(prev => {
-  const chat = prev.find(c => String(c._id) === String(msg.chatId));
-  const isByMe = String(msg.sender) === String(currentUserRef.current?.phone);
-  const isCurrentlyOpen = String(msg.chatId) === String(selectedChatRef.current?._id);
-
-  if (!chat) {
-    API.get("/chats").then(res => {
-      if (Array.isArray(res.data)) {
-        const restored = res.data.find(c => String(c._id) === String(msg.chatId));
-        if (restored) {
-          setChatList(prev2 => {
-            const exists = prev2.find(c => String(c._id) === String(msg.chatId));
-            if (exists) return prev2;
-            return [{ ...restored, unread: isByMe || isCurrentlyOpen ? 0 : 1 }, ...prev2];
-          });
-          getSocket().emit("joinChat", msg.chatId);
-        }
-      }
-    }).catch(console.error);
-    return prev;
-  }
-
-  const updated = {
-    ...chat,
-    // ✅ FIX: don't increment unread if message is by me OR chat is currently open
-    unread: (isByMe || isCurrentlyOpen) ? chat.unread : (chat.unread || 0) + 1,
-    updatedAt: new Date().toISOString(),
-  };
-  return [updated, ...prev.filter(c => String(c._id) !== String(msg.chatId))];
-});
 };
 
-  s.on("newMessage", handleGlobalNewMessage);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 
-  // ✅ Single tick → Double tick (delivered)
-  const handleMessageDelivered = ({ messageId, chatId }) => {
-    setMessages(prev => {
-      if (!prev[chatId]) return prev;
-      return {
-        ...prev,
-        [chatId]: prev[chatId].map(m =>
-          // match by real id OR mark last temp message as delivered
-          (m.id === messageId || (String(m.id).startsWith("tmp-") && m.type === "sent"))
-            ? { ...m, delivered: true, id: m.id.startsWith("tmp-") ? messageId : m.id }
-            : m
-        ),
-      };
-    });
-  };
-  s.on("messageDelivered", handleMessageDelivered);
-
-  // ✅ Global seen handler — works even when chat is not selected
-  const handleGlobalMessagesSeen = ({ chatId }) => {
-    setMessages(prev => {
-      if (!prev[chatId]) return prev;
-      return {
-        ...prev,
-        [chatId]: prev[chatId].map(m =>
-          m.type === "sent" ? { ...m, seen: true, delivered: true } : m
-        ),
-      };
-    });
+  // ✅ fallback (page close)
+  const handleBeforeUnload = () => {
+    if (user?.phone) {
+      s.emit("leaveUserRoom", user.phone);
+    }
   };
 
-  s.on("messagesSeen", handleGlobalMessagesSeen);
+  window.addEventListener("beforeunload", handleBeforeUnload);
 
-// ✅ ADD THIS — listens for campaign-created chats
-const handleChatUpdated = ({ chatId, isNewChat, lastMessage, participants }) => {
+  // ================== CLEANUP ==================
+  return () => {
+    s.off("onlineUsers", handleOnlineUsers);
+
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("beforeunload", handleBeforeUnload);
+     s.disconnect();
+  };
+}, []);
+
+useEffect(() => {
   const s = getSocket();
 
-  // ✅ Step 1: Join the room immediately
-  s.emit("joinChat", chatId);
+  const handleGlobalNewMessage = (msg) => {
+    // Update chat list for all chats (unread badge + move to top)
+    setChatList(prev => {
+      const exists = prev.find(c => String(c._id) === String(msg.chatId));
+      if (!exists) return prev;
+      return [
+        {
+          ...exists,
+          updatedAt: new Date().toISOString(),
+          unread:
+            String(msg.chatId) !== String(selectedChatRef.current?._id)
+              ? (exists.unread || 0) + 1
+              : 0,
+          // ✅ ADD THIS — keep lastMessage in sync
+          lastMessage: {
+            text: msg.text || "",
+            messageType: msg.messageType || "text",
+            fileName: msg.fileName || null,
+            createdAt: msg.createdAt,
+          },
+        },
+        ...prev.filter(c => String(c._id) !== String(msg.chatId)),
+      ];
+    });
 
-  // ✅ Step 2: Update chat list
-  setChatList(prev => {
-    const exists = prev.find(c => String(c._id) === String(chatId));
-     console.log("📋 Chat exists in list?", !!exists, "| chatId:", chatId);
-    if (exists) {
-      // Chat already in list — just update lastMessage + unread + move to top
-      const updated = {
-        ...exists,
-        lastMessage,
-        unread: (exists.unread || 0) + 1,
-        updatedAt: new Date().toISOString(),
-      };
-      return [updated, ...prev.filter(c => String(c._id) !== String(chatId))];
+    // Only add message to state if this chat is currently open
+    const currentChatId = selectedChatRef.current?._id;
+    if (String(msg.chatId) !== String(currentChatId)) return;
+
+    const isSentByMe =
+      String(msg.sender) === String(currentUserRef.current?.phone);
+
+    // Mark read instantly when message arrives in open chat
+    if (!isSentByMe) {
+      API.post("/messages/mark-read", { chatId: currentChatId }).catch(console.error);
+      getSocket().emit("markRead", { chatId: currentChatId });
     }
 
-    // ✅ New chat — add it to the top of the list
-    const otherPhone = participants?.find(
-      p => p !== currentUserRef.current?.phone
-    ) || "Unknown";
+    setMessages(prev => {
+      const currentMsgs = prev[currentChatId] || [];
 
-    // Try to resolve contact name
-    const matchedContact = contacts.find(c => c.mobile === otherPhone);
+      // Avoid duplicates
+      if (currentMsgs.some(m => m.id === msg._id)) return prev;
 
-    return [
-      {
-        _id: chatId,
-        participants,
-        lastMessage,
-        status: "active",
-        unread: 1,
-        name: matchedContact?.name || otherPhone,
-        phone: otherPhone,
-      },
-      ...prev,
-    ];
-  });
+      // Replace optimistic temp message if exists
+      const tempIndex = currentMsgs.findIndex(
+        m =>
+          m.id?.startsWith("tmp-") &&
+          m.text === msg.text &&
+          Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 5000
+      );
 
-  // ✅ Step 3: KEY FIX — Always re-fetch messages from DB for this chat
-  // This bypasses the race condition where emit fires before socket joins room
-  // DB always has the message regardless of socket timing
-  API.get(`/messages?chatId=${chatId}`)
-    .then(res => {
-      setMessages(prev => ({
-        ...prev,
-        [chatId]: res.data.map(m => {
-          const isSentByMe =
-            String(m.sender) === String(currentUserRef.current?.phone);
-          return {
-            id: m._id,
-            sender: m.sender,
-            type: isSentByMe ? "sent" : "received",
-            messageType: m.messageType || "text",
-            text: m.text || "",
-            templateMeta: m.templateMeta || null,
-            createdAt: m.createdAt,
-            time: new Date(m.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            delivered: m.status === "delivered" || m.status === "seen",
-            seen: m.status === "seen",
-            fileName: m.fileName,
-            url: m.fileUrl,
-            isDeleted: m.isDeleted || false,
-          };
+      const newMsg = {
+        id: msg._id,
+        sender: msg.sender,
+        type: isSentByMe ? "sent" : "received",
+        messageType: msg.messageType || "text",
+        text: msg.text || "",
+        templateMeta: msg.templateMeta || null,
+        createdAt: msg.createdAt,
+        time: new Date(msg.createdAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
         }),
-      }));
-    })
-    .catch(err => console.error("❌ Message fetch failed:", err));
-};
-s.on("chatUpdated", handleChatUpdated);
+        delivered: true,
+        seen: false,
+        fileName: msg.fileName,
+        url: msg.fileUrl,
+        isDeleted: false,
+      };
 
-// ── NEW LISTENERS ──
-const handleChatCleared = ({ chatId }) => {
-  setMessages(prev => ({ ...prev, [chatId]: [] }));
-};
+      if (tempIndex !== -1) {
+        const updated = [...currentMsgs];
+        updated[tempIndex] = newMsg;
+        return { ...prev, [currentChatId]: updated };
+      }
 
-const handleChatPinned = ({ chatId, pinned }) => {
-  setChatList(prev => {
-    const updated = prev.map(c => c._id === chatId ? { ...c, pinned } : c);
-    return [...updated.filter(c => c.pinned), ...updated.filter(c => !c.pinned)];
-  });
-};
+      return { ...prev, [currentChatId]: [...currentMsgs, newMsg] };
+    });
+  };
 
-const handleChatDeletedPermanently = ({ chatId }) => {
-  setChatList(prev => prev.filter(c => String(c._id) !== String(chatId)));
-  if (String(selectedChatRef.current?._id) === String(chatId)) {
-    setSelectedChat(null);
-    setMobileChatOpen(false);
-  }
-  setMessages(prev => {
-    const updated = { ...prev };
-    delete updated[chatId];
-    return updated;
-  });
-};
-
-s.on("chatCleared", handleChatCleared);
-s.on("chatPinned", handleChatPinned);
-s.on("chatDeletedPermanently", handleChatDeletedPermanently);
-
-return () => {
-  s.off("newMessage", handleGlobalNewMessage);
-  s.off("messageDelivered", handleMessageDelivered);
-  s.off("messagesSeen", handleGlobalMessagesSeen);
-  s.off("chatUpdated", handleChatUpdated);
-  s.off("chatCleared", handleChatCleared);
-  s.off("chatPinned", handleChatPinned);
-  s.off("chatDeletedPermanently", handleChatDeletedPermanently);
-};
+  s.on("newMessage", handleGlobalNewMessage);
+  return () => s.off("newMessage", handleGlobalNewMessage);
 }, []);
 
 // ✅ Fix — only approved templates
@@ -722,84 +642,6 @@ useEffect(() => {
 
   // 🔥 rest of your socket code stays SAME...
 
- const handleNewMessage = (msg) => {
-  if (String(msg.chatId) !== String(chatId)) return;
-
-  const isSentByMe =
-    String(msg.sender) === String(currentUserRef.current?.phone);
-
-  // ✅ FIX: mark read instantly when message arrives in open chat
-  if (!isSentByMe) {
-    API.post("/messages/mark-read", { chatId }).catch(console.error);
-    getSocket().emit("markRead", { chatId });
-  }
-
-  setMessages(prev => {
-    const currentMsgs = prev[chatId] || [];
-
-    const tempIndex = currentMsgs.findIndex(m =>
-      m.id && String(m.id).startsWith("tmp-") &&
-      m.text === msg.text &&
-      Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 5000
-    );
-
-    if (tempIndex !== -1) {
-      const updatedMsgs = [...currentMsgs];
-      updatedMsgs[tempIndex] = {
-        id: msg._id,
-        sender: msg.sender,
-        type: isSentByMe ? "sent" : "received",
-        messageType: msg.messageType || "text",
-        text: msg.text || "",
-        templateMeta: msg.templateMeta || null,
-        createdAt: msg.createdAt,
-        time: new Date(msg.createdAt).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        delivered: true,
-        seen: false,
-        fileName: msg.fileName,
-        url: msg.fileUrl,
-        isDeleted: false,
-      };
-      return { ...prev, [chatId]: updatedMsgs };
-    }
-
-    if (currentMsgs.some(m => m.id === msg._id)) return prev;
-
-    const newMsg = {
-      id: msg._id,
-      sender: msg.sender,
-      type: isSentByMe ? "sent" : "received",
-      messageType: msg.messageType || "text",
-      text: msg.text || "",
-      templateMeta: msg.templateMeta || null,
-      createdAt: msg.createdAt,
-      time: new Date(msg.createdAt).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      delivered: !isSentByMe,
-      seen: false,
-      fileName: msg.fileName,
-      url: msg.fileUrl,
-      isDeleted: false,
-    };
-
-    return { ...prev, [chatId]: [...currentMsgs, newMsg] };
-  });
-
-  // ✅ move this chat to top
-  setChatList(prev => {
-    const chat = prev.find(c => String(c._id) === String(msg.chatId));
-    if (!chat) return prev;
-    return [
-      { ...chat, updatedAt: new Date().toISOString() },
-      ...prev.filter(c => String(c._id) !== String(msg.chatId)),
-    ];
-  });
-};
 
   // ✅ TYPING INDICATOR
   const handleUserTyping = ({ chatId: tChatId }) => {
@@ -810,16 +652,26 @@ useEffect(() => {
   };
 
   // ✅ BLUE DOUBLE TICK — handled by global listener
-  const handleMessagesSeen = () => {};
+const handleMessagesSeen = ({ chatId: seenChatId }) => {
+  if (String(seenChatId) !== String(chatId)) return;
+  setMessages(prev => {
+    const msgs = prev[chatId];
+    if (!msgs) return prev;
+    return {
+      ...prev,
+      [chatId]: msgs.map(m =>
+        m.type === "sent" ? { ...m, seen: true, delivered: true } : m
+      ),
+    };
+  });
+};
 
   // ✅ Register all listeners
-  s.on("newMessage", handleNewMessage);
   s.on("userTyping", handleUserTyping);
   s.on("messagesSeen", handleMessagesSeen);
 
   // ✅ Cleanup on unmount / chat change
   return () => {
-    s.off("newMessage", handleNewMessage);
     s.off("userTyping", handleUserTyping);
     s.off("messagesSeen", handleMessagesSeen);
     clearTimeout(window._typingTimer);
@@ -1268,11 +1120,33 @@ const deleteForEveryone = async () => {
   return data;
 };
 
-  const handleSend = async () => {
+const handleSend = async () => {
   if (!selectedChat || (!input.trim() && !pendingAttachment)) return;
   const chatId = selectedChat._id;
   const user = JSON.parse(localStorage.getItem("user"));
+  const textToSend = input.trim(); // ✅ always defined here first
 
+   setChatList(prev => {
+    const chat = prev.find(c => String(c._id) === String(chatId));
+    if (!chat) return prev;
+    return [
+      {
+        ...chat,
+        updatedAt: new Date().toISOString(),
+        lastMessage: {
+          text: textToSend || "",
+          messageType: pendingAttachment
+            ? pendingAttachment.kind === "image" ? "image"
+              : pendingAttachment.kind === "video" ? "video"
+              : "file"
+            : "text",
+          fileName: pendingAttachment?.fileName || null,
+          createdAt: new Date().toISOString(),
+        },
+      },
+      ...prev.filter(c => String(c._id) !== String(chatId)),
+    ];
+  });
   const sendMessage = async (textToSend, attachmentData = null) => {
     let messageData = {
       chatId,
@@ -1313,8 +1187,9 @@ const deleteForEveryone = async () => {
     }
   }
 
-  if (input.trim()) {
-    const text = input.trim();
+
+  if (textToSend) {
+    const text = textToSend;
     setInput("");
     setMessages(prev => ({
       ...prev,
@@ -1337,15 +1212,6 @@ const deleteForEveryone = async () => {
 
   setShowEmojiPicker(false);
   setAttachmentMenuOpen(false);
-
-  setChatList(prev => {
-    const chat = prev.find(c => String(c._id) === String(chatId));
-    if (!chat) return prev;
-    return [
-      { ...chat, updatedAt: new Date().toISOString() },
-      ...prev.filter(c => String(c._id) !== String(chatId)),
-    ];
-  });
 };
 
   const sendTemplate = async (template) => {
@@ -1486,40 +1352,93 @@ const deleteForEveryone = async () => {
 
   // Replace your existing lastMessageText function
 const lastMessageText = (chatId) => {
+  // ✅ Always prefer chatList.lastMessage first (kept in sync)
+  const chat = chatList.find(c => c._id === chatId);
+  const lm = chat?.lastMessage;
+
+  // ✅ Then check messages array as secondary source
   const msgs = messages[chatId];
   const last = msgs?.[msgs.length - 1];
 
-  if (last) {
-    if (last.isDeleted) return "🚫 This message was deleted";
-    if (last.messageType === "image") return "📷 Photo";
-    if (last.messageType === "video") return "🎥 Video";
-    if (last.messageType === "file") return `📎 ${last.fileName}`;
-    if (last.messageType === "template") return "📋 Template";
-    return last.text || "Start conversation";
-  }
+  // ✅ Pick whichever is newer
+  const useMsg =
+    last &&
+    lm &&
+    new Date(last.createdAt) > new Date(lm.createdAt)
+      ? "msgs"
+      : last && !lm
+      ? "msgs"
+      : "chatList";
 
-  // ✅ Fallback to backend lastMessage on refresh
-  const chat = chatList.find(c => c._id === chatId);
-  const lm = chat?.lastMessage;
-  if (!lm) return "Start conversation";
-  if (lm.messageType === "image") return "📷 Photo";
-  if (lm.messageType === "video") return "🎥 Video";
-  if (lm.messageType === "file") return `📎 ${lm.fileName || "File"}`;
-  if (lm.messageType === "template") return "📋 Template";
-  return lm.text || "Start conversation";
+  const source = useMsg === "msgs" ? last : lm;
+
+  if (!source) return "Start conversation";
+  if (source.isDeleted) return "🚫 This message was deleted";
+  if (source.messageType === "image") return "📷 Photo";
+  if (source.messageType === "video") return "🎥 Video";
+  if (source.messageType === "file") return `📎 ${source.fileName || "File"}`;
+  if (source.messageType === "template") return "📋 Template";
+  return source.text || "Start conversation";
 };
 
 // Replace your existing lastMessageTime function
 const lastMessageTime = (chatId) => {
-  const msgs = messages[chatId];
-  const last = msgs?.[msgs.length - 1];
-  if (last?.time) return last.time;
-
-  // ✅ Fallback to backend
   const chat = chatList.find(c => c._id === chatId);
   const lm = chat?.lastMessage;
+
+  const msgs = messages[chatId];
+  const last = msgs?.[msgs.length - 1];
+
+  // ✅ Pick whichever is newer
+  const useMsg =
+    last &&
+    lm &&
+    new Date(last.createdAt) > new Date(lm.createdAt)
+      ? "msgs"
+      : last && !lm
+      ? "msgs"
+      : "chatList";
+
+  if (useMsg === "msgs" && last?.createdAt) {
+    return new Date(last.createdAt).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   if (!lm?.createdAt) return "";
-  return new Date(lm.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(lm.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getChatStatus = (chat) => {
+  if (chat?.isGroup) return "";        // ← add this
+  if (!chat?.phone) return "";
+  const presence = userPresence[chat.phone];
+  if (!presence) return "Offline";
+  if (presence.online) return "Online";
+
+  const ls = presence.lastSeen;
+  if (!ls) return "";
+
+  const date = new Date(ls);
+  const now = new Date();
+  const diffMins = Math.floor((now - date) / 60000);
+  const diffHours = Math.floor((now - date) / 3600000);
+
+  if (diffMins < 1) return "Last seen just now";
+  if (diffMins < 60) return `Last seen ${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
+  if (diffHours < 24)
+    return `Last seen today at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString())
+    return `Last seen yesterday at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+
+  return `Last seen ${date.toLocaleDateString([], { day: "numeric", month: "short" })} at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
   // ── 7. JSX ────────────────────────────────────
@@ -1970,7 +1889,15 @@ onClick={() => {
                             </div>
                             <div className="overflow-hidden">
                               <div className="text-truncate" style={{ fontSize: "0.96rem", fontWeight: 500, color: "#111b21" }}>{selectedChat?.name}</div>
-                              <div style={{ fontSize: "0.78rem", color: "#667781" }}>{selectedChat.lastSeen}</div>
+<div style={{
+  fontSize: "0.78rem",
+  color: (!selectedChat?.isGroup && userPresence[selectedChat?.phone]?.online)
+    ? "#00a884" : "#667781",
+  fontWeight: (!selectedChat?.isGroup && userPresence[selectedChat?.phone]?.online)
+    ? 500 : 400,
+}}>
+  {isUserTyping ? "typing..." : getChatStatus(selectedChat)}
+</div>
                             </div>
                           </div>
                         </div>
@@ -2725,9 +2652,6 @@ onClick={() => {
     </>
   );
 }
-
-
-
 /* ─────────────────────────────────────────────
   Sub-components
 ───────────────────────────────────────────── */
@@ -4064,3 +3988,4 @@ function formatFileSize(bytes) {
   const kb = bytes / 1024;
   return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
+

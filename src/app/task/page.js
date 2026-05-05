@@ -125,7 +125,7 @@ function ApprovalBadge({ compact = false }) {
   );
 }
 
-/* ---------- UserDetailModal (unchanged logic, theme adapted) ---------- */
+/* ---------- UserDetailModal (unchanged) ---------- */
 function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClose }) {
   const u = enrichUser(user);
   if (!u) return null;
@@ -899,107 +899,118 @@ export default function TaskPage() {
         @keyframes slideInRight { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
         @keyframes slideUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
 
-        .task-shell2 {
+        .task-shell-new {
+          background: radial-gradient(circle at top left, rgba(15, 95, 100, 0.06), transparent 22%),
+                      radial-gradient(circle at top right, rgba(34, 197, 94, 0.05), transparent 20%),
+                      linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+          min-height: calc(100vh - 70px);
+          font-family: 'DM Sans', 'Segoe UI', sans-serif;
           position: fixed;
           top: 70px; left: 88px; right: 0; bottom: 0;
-          overflow: hidden;
-          background: #f3f4f6;
-          font-family: 'DM Sans', 'Segoe UI', sans-serif;
+          overflow-y: auto;
         }
-
-        /* ── Header — single compact row ── */
-        .task-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 0 16px;
-          height: 52px;
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          flex-shrink: 0;
-          margin-bottom: 12px;
+        .premium-card {
+          background: rgba(255,255,255,0.96);
+          border: 1px solid rgba(15,23,42,0.05);
+          box-shadow: 0 16px 40px rgba(15,23,42,0.08);
+          border-radius: 24px;
         }
-
-        /* left: icon + title + task count + filter pills */
-        .task-header-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex: 1;
-          min-width: 0;
-          overflow: hidden;
-        }
-
-        .task-title-block {
-          display: flex;
-          flex-direction: column;
-          flex-shrink: 0;
-        }
-
-        .task-filter-pills {
-          display: flex;
-          gap: 4px;
-          overflow-x: auto;
-          scrollbar-width: none;
-          flex-shrink: 1;
-          min-width: 0;
-        }
-        .task-filter-pills::-webkit-scrollbar { display: none; }
-
-        /* right: search + icons + button */
-        .task-header-right {
-          display: flex;
+        .hero-chip {
+          display: inline-flex;
           align-items: center;
           gap: 8px;
-          flex-shrink: 0;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(15,95,100,0.08);
+          color: #0f5f64;
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 10px;
         }
-
-        .task-search-box {
+        .hero-title {
+          font-size: 28px;
+          font-weight: 800;
+          line-height: 1.2;
+          color: #0f172a;
+          margin-bottom: 6px;
+        }
+        .hero-subtitle {
+          font-size: 13px;
+          color: #64748b;
+          line-height: 1.7;
+          margin: 0;
+        }
+        .cta-btn {
+          min-width: 160px;
+          height: 42px;
+          border: none;
+          border-radius: 999px;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 700;
+          background: linear-gradient(135deg, #0f5f64 0%, #14808a 60%, #22c55e 100%);
+          
+          cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 6px;
-          padding: 0 10px;
-          height: 32px;
-          border-radius: 16px;
-          border: 1.5px solid #e5e7eb;
-          background: #f9fafb;
-          width: 190px;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s;
+          white-space: nowrap;
         }
-        .task-search-box input {
-          flex: 1;
-          background: transparent;
+        .toolbar-card {
+          background: rgba(255,255,255,0.96);
+          border: 1px solid rgba(15,23,42,0.05);
+          box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+          border-radius: 22px;
+          padding: 16px;
+        }
+        .search-wrap {
+          position: relative;
+          width: 100%;
+        }
+        .search-input {
+          height: 46px;
+          border-radius: 14px;
+          border: 1px solid #dbe3eb;
+          background: #ffffff;
+          padding-left: 42px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #0f172a;
+          box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+          width: 100%;
+        }
+        .filter-pill {
+          height: 36px;
+          padding: 0 14px;
+          border-radius: 999px;
+          border: 1px solid #dbe3eb;
+          background: #fff;
+          color: #334155;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.2s;
+        }
+        .filter-pill-active {
+          color: #fff;
           border: none;
-          outline: none;
-          font-size: 0.8rem;
-          color: #1a2233;
-          min-width: 0;
+          background: linear-gradient(135deg, #0f5f64 0%, #14808a 60%, #22c55e 100%);
+          box-shadow: 0 10px 20px rgba(15,95,100,0.16);
         }
 
-        /* mobile */
-        @media (max-width: 820px) {
-          .task-shell2 { top: 60px; left: 0; padding-bottom: 45px; }
-          .task-header { height: auto; min-height: 48px; flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
-          .task-header-left { flex-wrap: wrap; }
-          .task-header-right { width: 100%; justify-content: start; }
-          .task-search-box { width: 160px; }
-        }
-        @media (max-width: 480px) {
-          .task-search-box { width: 130px; }
-        }
-
-        /* table */
         .desktop-table-view { display: block; }
         .mobile-card-view   { display: none; flex-direction: column; gap: 10px; }
         @media (max-width: 767px) {
           .desktop-table-view { display: none; }
           .mobile-card-view   { display: flex; }
         }
-
+        @media (max-width: 820px) {
+          .task-shell-new { top: 60px; left: 0; }
+        }
         .tr-hover:hover td { background: #f0fdf4 !important; }
-
-        .user-stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
-        @media (max-width: 480px) { .user-stats-grid { grid-template-columns: repeat(2,1fr); } }
       `}</style>
 
       {error && (
@@ -1009,84 +1020,191 @@ export default function TaskPage() {
         </div>
       )}
 
-      <div className="task-shell2">
-        <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "16px 20px" }}>
-          {/* ── Compact single-row header ── */}
-          <div className="task-header">
-            <div className="task-header-left">
-              {/* Icon + title */}
-              <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: "#ccfbf1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.9rem" }}>✅</div>
-                <div className="task-title-block">
-                  <span style={{ fontWeight: 800, fontSize: "0.9rem", color: "#1a2233", lineHeight: 1.2 }}>Task Manager</span>
-                  <span style={{ fontSize: "0.63rem", color: "#9ca3af" }}>{visibleTasks.length} task{visibleTasks.length !== 1 ? "s" : ""}</span>
-                </div>
+      <div className="task-shell-new">
+        <div className="d-flex flex-column gap-2 gap-md-3 h-100 p-3 p-md-4">
+          
+          {/* ── Hero Header (like campaign page) ── */}
+         
+
+          {/* ── Toolbar (search + filter pills + extras) ── */}
+          <div className="toolbar-card">
+            <div className="d-flex flex-column flex-xl-row gap-2 justify-content-between align-items-stretch align-items-xl-center">
+              <div className="search-wrap">
+                <FiSearch
+                  size={18}
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: 14,
+                    transform: "translateY(-50%)",
+                    color: "#64748b",
+                    zIndex: 2,
+                  }}
+                />
+                <input
+                  className="search-input"
+                  placeholder="Search tasks by title or description…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
 
-              {/* Filter pills */}
-              <div className="task-filter-pills">
-                {[["all", "All"], ["pending", "⏳ Pending"], ["in_progress", "🔄 In Progress"], ["completed", "✅ Done"]].map(([id, label]) => (
-                  <button key={id} onClick={() => setFilter(id)} style={{ padding: "3px 11px", borderRadius: 20, border: "1.5px solid", fontSize: "0.71rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, borderColor: filter === id ? "#0d9488" : "#e5e7eb", background: filter === id ? "#0d9488" : "#f9fafb", color: filter === id ? "#fff" : "#6b7280" }}>{label}</button>
-                ))}
+              <div className="d-flex gap-2 align-items-center">
+                {/* Approvals button */}
+                {_isAdmin && pendingApprovals.length > 0 && (
+                  <button
+                    onClick={() => setShowApprovals(true)}
+                    className="d-flex align-items-center gap-1"
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 16,
+                      border: "1.5px solid #fcd34d44",
+                      background: "#fef3c7",
+                      color: "#92400e",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <FiShield size={12} /> Approvals
+                    <span
+                      style={{
+                        background: "#ef4444",
+                        color: "#fff",
+                        borderRadius: "50%",
+                        width: 16,
+                        height: 16,
+                        fontSize: "0.58rem",
+                        fontWeight: 800,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {pendingApprovals.length}
+                    </span>
+                  </button>
+                )}
+
+                {/* Notifications bell */}
+                <div ref={notifRef} style={{ position: "relative" }}>
+                  <button
+                    onClick={() => setShowNotifPanel((p) => !p)}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      border: "none",
+                      background: showNotifPanel ? "#ccfbf1" : "#f3f4f6",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#6b7280",
+                      position: "relative",
+                    }}
+                  >
+                    <FiBell size={15} />
+                    {unreadCount > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 2,
+                          right: 2,
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: "#ef4444",
+                          color: "#fff",
+                          fontSize: "0.52rem",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {unreadCount}
+                      </div>
+                    )}
+                  </button>
+                  {showNotifPanel && (
+                    <div style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      background: "#fff",
+                      borderRadius: 12,
+                      boxShadow: "0 8px 32px rgba(0,0,0,.14)",
+                      border: "1px solid #e5e7eb",
+                      width: 300,
+                      maxWidth: "90vw",
+                      maxHeight: 360,
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      zIndex: 999,
+                    }}>
+                      <div style={{ padding: "10px 13px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.88rem", color: "#1a2233" }}>Notifications</span>
+                        <div style={{ display: "flex", gap: 7 }}>
+                          {notifications.some(n => !n.read) && <button onClick={() => handleReadNotif("all")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.71rem", color: "#0d9488", fontWeight: 600 }}>Mark all read</button>}
+                          <button onClick={() => setShowNotifPanel(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}><FiX size={13} /></button>
+                        </div>
+                      </div>
+                      <div style={{ overflowY: "auto" }}>
+                        {notifications.filter(n => (n.userId?._id || n.userId)?.toString() === currentUser?.id).length === 0 ? (
+                          <div style={{ padding: 22, textAlign: "center", color: "#9ca3af", fontSize: "0.83rem" }}>No notifications</div>
+                        ) : notifications.filter(n => (n.userId?._id || n.userId)?.toString() === currentUser?.id).map(n => (
+                          <div key={n._id || n.id} onClick={() => handleReadNotif(n._id || n.id)} style={{ padding: "9px 13px", borderBottom: "1px solid #f3f4f6", cursor: "pointer", background: n.read ? "#fff" : "#f0f9ff" }}>
+                            <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                              <span style={{ fontSize: "1rem" }}>{n.type === "task_assigned" ? "📋" : n.type === "response_received" ? "💬" : "⏰"}</span>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: "0.81rem", color: "#1a2233", fontWeight: n.read ? 400 : 600 }}>{n.message}</div>
+                                <div style={{ fontSize: "0.67rem", color: "#9ca3af", marginTop: 2 }}>{fmt(n.createdAt || n.timestamp)}</div>
+                              </div>
+                              {!n.read && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0d9488", marginTop: 4, flexShrink: 0 }} />}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="task-header-right">
-              {/* Search */}
-              <div className="task-search-box">
-                <FiSearch size={12} color="#9ca3af" />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks…" />
-                {search && <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", padding: 0, flexShrink: 0 }}><FiX size={11} /></button>}
-              </div>
-
-              {/* Approvals button */}
-              {_isAdmin && pendingApprovals.length > 0 && (
-                <button onClick={() => setShowApprovals(true)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 16, border: "1.5px solid #fcd34d44", background: "#fef3c7", color: "#92400e", fontSize: "0.76rem", fontWeight: 700, cursor: "pointer" }}>
-                  <FiShield size={12} /> Approvals
-                  <span style={{ background: "#ef4444", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: "0.58rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{pendingApprovals.length}</span>
+            {/* Filter pills */}
+            <div
+              className="d-flex justify-between mt-3"
+              style={{ overflowX: "auto", scrollbarWidth: "none" }}
+            >
+              <div className="d-flex flex-wrap gap-2 mt-3">
+              {[
+                ["all", "All"],
+                ["pending", "⏳ Pending"],
+                ["in_progress", "🔄 In Progress"],
+                ["completed", "✅ Done"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  className={`filter-pill ${filter === id ? "filter-pill-active" : ""}`}
+                  onClick={() => setFilter(id)}
+                >
+                  {label}
                 </button>
-              )}
+              ))}
 
-              {/* New Task button */}
-              <button onClick={() => setShowCreate(true)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 16, border: "none", background: "#0d9488", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                <FiPlus size={13} /> New Task
+              </div>              <div>
+ <button
+                className="cta-btn"
+                onClick={() => setShowCreate(true)}
+                type="button"
+              >
+                <FiPlus size={18} /> New Task
               </button>
-
-              {/* Notifications */}
-              <div ref={notifRef} style={{ position: "relative" }}>
-                <button onClick={() => setShowNotifPanel(p => !p)} style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: showNotifPanel ? "#ccfbf1" : "#f3f4f6", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", position: "relative" }}>
-                  <FiBell size={15} />
-                  {unreadCount > 0 && <div style={{ position: "absolute", top: 2, right: 2, width: 14, height: 14, borderRadius: "50%", background: "#ef4444", color: "#fff", fontSize: "0.52rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadCount}</div>}
-                </button>
-                {showNotifPanel && (
-                  <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,.14)", border: "1px solid #e5e7eb", width: 300, maxWidth: "90vw", maxHeight: 360, overflow: "hidden", display: "flex", flexDirection: "column", zIndex: 999 }}>
-                    <div style={{ padding: "10px 13px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontWeight: 700, fontSize: "0.88rem", color: "#1a2233" }}>Notifications</span>
-                      <div style={{ display: "flex", gap: 7 }}>
-                        {notifications.some(n => !n.read) && <button onClick={() => handleReadNotif("all")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.71rem", color: "#0d9488", fontWeight: 600 }}>Mark all read</button>}
-                        <button onClick={() => setShowNotifPanel(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}><FiX size={13} /></button>
-                      </div>
-                    </div>
-                    <div style={{ overflowY: "auto" }}>
-                      {notifications.filter(n => (n.userId?._id || n.userId)?.toString() === currentUser?.id).length === 0 ? (
-                        <div style={{ padding: 22, textAlign: "center", color: "#9ca3af", fontSize: "0.83rem" }}>No notifications</div>
-                      ) : notifications.filter(n => (n.userId?._id || n.userId)?.toString() === currentUser?.id).map(n => (
-                        <div key={n._id || n.id} onClick={() => handleReadNotif(n._id || n.id)} style={{ padding: "9px 13px", borderBottom: "1px solid #f3f4f6", cursor: "pointer", background: n.read ? "#fff" : "#f0f9ff" }}>
-                          <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-                            <span style={{ fontSize: "1rem" }}>{n.type === "task_assigned" ? "📋" : n.type === "response_received" ? "💬" : "⏰"}</span>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: "0.81rem", color: "#1a2233", fontWeight: n.read ? 400 : 600 }}>{n.message}</div>
-                              <div style={{ fontSize: "0.67rem", color: "#9ca3af", marginTop: 2 }}>{fmt(n.createdAt || n.timestamp)}</div>
-                            </div>
-                            {!n.read && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0d9488", marginTop: 4, flexShrink: 0 }} />}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                
               </div>
-
             </div>
           </div>
 

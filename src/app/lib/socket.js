@@ -26,3 +26,16 @@ export function getSocket() {
   }
   return socket;
 }
+export function disconnectSocket() {
+  if (socket) {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    if (user?.phone) {
+      socket.emit("leaveUserRoom", user.phone);
+    }
+    // ✅ wait 400ms so emit reaches server before disconnect
+    setTimeout(() => {
+      socket?.disconnect();
+      socket = null;
+    }, 400);
+  }
+}
