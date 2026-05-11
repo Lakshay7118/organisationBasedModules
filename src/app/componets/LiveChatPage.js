@@ -510,27 +510,27 @@ useEffect(() => {
           Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 5000
       );
 
-      const newMsg = {
-        id: msg._id,
-        sender: msg.sender,
-        type: isSentByMe ? "sent" : "received",
-        messageType: msg.messageType || "text",
-        text: msg.text || "",
-        templateMeta: msg.templateMeta || null,
-        createdAt: msg.createdAt,
-        time: new Date(msg.createdAt).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        delivered: true,
-        seen: false,
-        fileName: msg.fileName,
-        url: msg.fileUrl,
-        isDeleted: false,
-        contactName: msg.contactName || null,
-contactPhone: msg.contactPhone || null,
-contactEmail: msg.contactEmail || null,
-      };
+     const newMsg = {
+  id: msg._id,
+  sender: msg.sender,
+  type: isSentByMe ? "sent" : "received",
+  messageType: msg.messageType || "text",
+  text: msg.text || "",
+  templateMeta: msg.templateMeta || null,
+  createdAt: msg.createdAt,
+  time: new Date(msg.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  }),
+  delivered: true,
+  seen: msg.status === "seen",
+  fileName: msg.fileName,
+  url: msg.fileUrl,
+  isDeleted: false,
+  contactName: msg.contactName || null,
+  contactPhone: msg.contactPhone || null,
+  contactEmail: msg.contactEmail || null,
+};
 
       if (tempIndex !== -1) {
         const updated = [...currentMsgs];
@@ -1235,15 +1235,15 @@ const handleSend = async () => {
       [chatId]: [
         ...(prev[chatId] || []),
         {
-          id: `tmp-${Date.now()}`,
-          type: "sent",
-          messageType: "text",
-          text,
-          time: getTimeNow(),
-          createdAt: new Date().toISOString(),
-          delivered: false,
-          seen: false,
-        },
+  id: `tmp-${Date.now()}`,
+  type: "sent",
+  messageType: "text",
+  text,
+  time: getTimeNow(),
+  createdAt: new Date().toISOString(),
+  delivered: true,    // ✅ double tick immediately on send
+  seen: false,
+},
       ],
     }));
     await sendMessage(text);
@@ -4384,13 +4384,17 @@ export function ContactPickerModal({ contacts, isMobile, onSelect, onClose }) {
     acc[letter].push(c);
     return acc;
   }, {});
+
   const sortedLetters = Object.keys(grouped).sort();
 
   const avatarColor = (name = "") => {
     const colors = [
-      ["#E1F5EE","#0F6E56"], ["#E6F1FB","#185FA5"],
-      ["#FAEEDA","#854F0B"], ["#EEEDFE","#534AB7"],
-      ["#FAECE7","#993C1D"], ["#EAF3DE","#3B6D11"],
+      ["#E1F5EE", "#0F6E56"],
+      ["#E6F1FB", "#185FA5"],
+      ["#FAEEDA", "#854F0B"],
+      ["#EEEDFE", "#534AB7"],
+      ["#FAECE7", "#993C1D"],
+      ["#EAF3DE", "#3B6D11"],
     ];
     return colors[name.charCodeAt(0) % colors.length];
   };
@@ -4399,65 +4403,138 @@ export function ContactPickerModal({ contacts, isMobile, onSelect, onClose }) {
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0,
+        position: "fixed",
+        inset: 0,
         background: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
-        zIndex: 10001, backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: isMobile ? "flex-end" : "center",
+        justifyContent: "center",
+        zIndex: 10001,
+        backdropFilter: "blur(4px)",
       }}
     >
       <div
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%", maxWidth: isMobile ? "100%" : 420,
+          width: "100%",
+          maxWidth: isMobile ? "100%" : 420,
           height: isMobile ? "90dvh" : 640,
           background: "#fff",
           borderRadius: isMobile ? "24px 24px 0 0" : "24px",
-          display: "flex", flexDirection: "column",
+          display: "flex",
+          flexDirection: "column",
           overflow: "hidden",
-          boxShadow: isMobile ? "0 -8px 40px rgba(0,0,0,0.18)" : "0 20px 48px rgba(0,0,0,0.15)",
+          boxShadow: isMobile
+            ? "0 -8px 40px rgba(0,0,0,0.18)"
+            : "0 20px 48px rgba(0,0,0,0.15)",
         }}
       >
-        {/* Handle for mobile only */}
+        {/* Handle */}
         {isMobile && (
-          <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 0" }}>
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: "#dfe5e7" }} />
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              padding: "10px 0 0",
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 4,
+                borderRadius: 2,
+                background: "#dfe5e7",
+              }}
+            />
           </div>
         )}
 
         {/* Header */}
-        <div style={{ padding: isMobile ? "12px 16px 8px" : "24px 24px 12px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <span style={{ fontWeight: 700, fontSize: "1.1rem", color: "#111b21" }}>Share Contact</span>
-            <button onClick={onClose} style={{
-              width: 32, height: 32, borderRadius: "50%",
-              background: "#f0f2f5", border: "none",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", color: "#54656f", transition: "background 0.2s"
-            }} onMouseEnter={e => e.currentTarget.style.background = "#e9edef"}
-               onMouseLeave={e => e.currentTarget.style.background = "#f0f2f5"}>
-              <FiX size={16} />
+        <div style={{ padding: isMobile ? "12px 16px 8px" : "20px 20px 10px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 14,
+            }}
+          >
+            <span
+              style={{
+                fontWeight: 700,
+                fontSize: "0.95rem",
+                color: "#111b21",
+              }}
+            >
+              Share Contact
+            </span>
+
+            <button
+              onClick={onClose}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                background: "#f0f2f5",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "#54656f",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#e9edef")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "#f0f2f5")
+              }
+            >
+              <FiX size={14} />
             </button>
           </div>
 
           {/* Search */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            background: "#f0f2f5", borderRadius: 12, padding: "10px 14px",
-          }}>
-            <FiSearch size={16} color="#54656f" />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#f0f2f5",
+              borderRadius: 10,
+              padding: "8px 12px",
+            }}
+          >
+            <FiSearch size={14} color="#54656f" />
+
             <input
               type="text"
               placeholder="Search contacts"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               style={{
-                flex: 1, background: "transparent", border: "none",
-                outline: "none", fontSize: "0.95rem", color: "#111b21",
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                fontSize: "0.85rem",
+                color: "#111b21",
               }}
             />
+
             {search && (
-              <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#54656f", padding: 0 }}>
-                <FiX size={16} />
+              <button
+                onClick={() => setSearch("")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#54656f",
+                  padding: 0,
+                }}
+              >
+                <FiX size={14} />
               </button>
             )}
           </div>
@@ -4466,67 +4543,139 @@ export function ContactPickerModal({ contacts, isMobile, onSelect, onClose }) {
         {/* Contact list */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px 0", color: "#667781" }}>
-              <FiUser size={40} style={{ marginBottom: 12, opacity: 0.3 }} />
-              <div style={{ fontSize: "0.95rem", fontWeight: 500 }}>No contacts found</div>
+            <div
+              style={{
+                textAlign: "center",
+                padding: "60px 0",
+                color: "#667781",
+              }}
+            >
+              <FiUser
+                size={34}
+                style={{ marginBottom: 10, opacity: 0.3 }}
+              />
+
+              <div
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                }}
+              >
+                No contacts found
+              </div>
             </div>
           ) : (
-            sortedLetters.map(letter => (
+            sortedLetters.map((letter) => (
               <div key={letter}>
-                {/* Letter header */}
-                <div style={{
-                  padding: isMobile ? "8px 16px 4px" : "8px 24px 4px",
-                  fontSize: "0.8rem", fontWeight: 700,
-                  color: "#00a884", letterSpacing: "0.04em",
-                }}>
+                {/* Letter */}
+                <div
+                  style={{
+                    padding: isMobile ? "8px 16px 4px" : "8px 20px 4px",
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    color: "#00a884",
+                    letterSpacing: "0.04em",
+                  }}
+                >
                   {letter}
                 </div>
 
-                {grouped[letter].map(contact => {
+                {grouped[letter].map((contact) => {
                   const [bg, fg] = avatarColor(contact.name);
                   const isChosen = selected?._id === contact._id;
+
                   return (
                     <div
                       key={contact._id || contact.mobile}
-                      onClick={() => setSelected(isChosen ? null : contact)}
+                      onClick={() =>
+                        setSelected(isChosen ? null : contact)
+                      }
                       style={{
-                        display: "flex", alignItems: "center", gap: 14,
-                        padding: isMobile ? "10px 16px" : "10px 24px", cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: isMobile ? "8px 16px" : "8px 20px",
+                        cursor: "pointer",
                         background: isChosen ? "#f0faf8" : "transparent",
                         transition: "background 0.15s",
                       }}
-                      onMouseEnter={e => { if (!isChosen) e.currentTarget.style.background = "#f7f8fa"; }}
-                      onMouseLeave={e => { if (!isChosen) e.currentTarget.style.background = "transparent"; }}
+                      onMouseEnter={(e) => {
+                        if (!isChosen)
+                          e.currentTarget.style.background = "#f7f8fa";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isChosen)
+                          e.currentTarget.style.background = "transparent";
+                      }}
                     >
                       {/* Avatar */}
-                      <div style={{
-                        width: 48, height: 48, borderRadius: "50%",
-                        background: bg, color: fg,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontWeight: 700, fontSize: "1.1rem", flexShrink: 0,
-                      }}>
+                      <div
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: "50%",
+                          background: bg,
+                          color: fg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 700,
+                          fontSize: "0.9rem",
+                          flexShrink: 0,
+                        }}
+                      >
                         {contact.name?.charAt(0) || "?"}
                       </div>
 
                       {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: "0.98rem", color: "#111b21", marginBottom: 2 }}>
+                        <div
+                          style={{
+                            fontWeight: 500,
+                            fontSize: "0.85rem",
+                            color: "#111b21",
+                            marginBottom: 1,
+                          }}
+                        >
                           {contact.name}
                         </div>
-                        <div style={{ fontSize: "0.85rem", color: "#667781" }}>
+
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#667781",
+                          }}
+                        >
                           {contact.mobile}
                         </div>
                       </div>
 
-                      {/* Checkmark */}
-                      <div style={{
-                        width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                        border: isChosen ? "none" : "1.5px solid #d1d7db",
-                        background: isChosen ? "#00a884" : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "all 0.15s",
-                      }}>
-                        {isChosen && <FiCheck size={14} color="#fff" strokeWidth={3} />}
+                      {/* Check */}
+                      <div
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: "50%",
+                          flexShrink: 0,
+                          border: isChosen
+                            ? "none"
+                            : "1.5px solid #d1d7db",
+                          background: isChosen
+                            ? "#00a884"
+                            : "transparent",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {isChosen && (
+                          <FiCheck
+                            size={12}
+                            color="#fff"
+                            strokeWidth={3}
+                          />
+                        )}
                       </div>
                     </div>
                   );
@@ -4536,56 +4685,127 @@ export function ContactPickerModal({ contacts, isMobile, onSelect, onClose }) {
           )}
         </div>
 
-        {/* Send button — appears when contact selected */}
+        {/* Bottom send section */}
         {selected && (
-          <div style={{
-            padding: isMobile ? "12px 16px 28px" : "16px 24px 24px",
-            borderTop: "1px solid #f0f2f5",
-            background: "#fff",
-            animation: "slideUp 0.2s ease forwards",
-          }}>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: "#f7f8fa", borderRadius: 12, padding: "10px 14px",
-              marginBottom: 16,
-            }}>
-              {/* Mini preview */}
+          <div
+            style={{
+              padding: isMobile ? "10px 16px 24px" : "14px 20px 20px",
+              borderTop: "1px solid #f0f2f5",
+              background: "#fff",
+              animation: "slideUp 0.2s ease forwards",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                background: "#f7f8fa",
+                borderRadius: 10,
+                padding: "8px 12px",
+                marginBottom: 14,
+              }}
+            >
               {(() => {
                 const [bg, fg] = avatarColor(selected.name);
+
                 return (
-                  <div style={{ width: 38, height: 38, borderRadius: "50%", background: bg, color: fg, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.95rem", flexShrink: 0 }}>
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: "50%",
+                      background: bg,
+                      color: fg,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: "0.85rem",
+                      flexShrink: 0,
+                    }}
+                  >
                     {selected.name?.charAt(0)}
                   </div>
                 );
               })()}
+
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#111b21" }}>{selected.name}</div>
-                <div style={{ fontSize: "0.8rem", color: "#667781" }}>{selected.mobile}</div>
+                <div
+                  style={{
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    color: "#111b21",
+                  }}
+                >
+                  {selected.name}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: "0.72rem",
+                    color: "#667781",
+                  }}
+                >
+                  {selected.mobile}
+                </div>
               </div>
-              <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#aab8c2", padding: 4 }}>
-                <FiX size={18} />
+
+              <button
+                onClick={() => setSelected(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#aab8c2",
+                  padding: 4,
+                }}
+              >
+                <FiX size={16} />
               </button>
             </div>
 
             <button
               onClick={() => onSelect(selected)}
               style={{
-                width: "100%", padding: "14px 0", borderRadius: 12,
-                border: "none", background: "#00a884",
-                color: "#fff", fontSize: "1rem", fontWeight: 600,
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                width: "100%",
+                padding: "12px 0",
+                borderRadius: 10,
+                border: "none",
+                background: "#00a884",
+                color: "#fff",
+                fontSize: "0.88rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
                 transition: "background 0.2s",
               }}
-              onMouseEnter={e => e.currentTarget.style.background = "#009c7a"}
-              onMouseLeave={e => e.currentTarget.style.background = "#00a884"}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#009c7a")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "#00a884")
+              }
             >
-              <FiSend size={18} /> Send Contact
+              <FiSend size={16} /> Send Contact
             </button>
           </div>
         )}
 
         <style>{`
-          @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          @keyframes slideUp {
+            from {
+              transform: translateY(10px);
+              opacity: 0;
+            }
+            to {
+              transform: translateY(0);
+              opacity: 1;
+            }
+          }
         `}</style>
       </div>
     </div>
@@ -4796,38 +5016,38 @@ function ContactBubble({ msg, isMine, onStartChat }) {
 function MessageMeta({ msg, inline = false }) {
   const tickColor = msg.seen ? "#53bdeb" : "#8696a0";
 
-  const SingleTick = () => (
-    <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
-      <path
-        d="M1.5 5.5L5 9L12.5 1.5"
-        stroke={tickColor}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+const SingleTick = () => (
+  <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
+    <path
+      d="M1.5 5.5L5 9L12.5 1.5"
+      stroke="#8696a0"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
   const DoubleTick = () => (
-    <svg width="14" height="11" viewBox="0 0 18 11" fill="none">
-      {/* back tick */}
-      <path
-        d="M1.5 5.5L5 9L12.5 1.5"
-        stroke={tickColor}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* front tick — shifted right */}
-      <path
-        d="M5.5 5.5L9 9L16.5 1.5"
-        stroke={tickColor}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  <svg width="18" height="11" viewBox="0 0 18 11" fill="none">
+    {/* First tick (back) */}
+    <path
+      d="M1 5.5L4.5 9L10 2"
+      stroke={tickColor}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* Second tick (front, offset right) */}
+    <path
+      d="M5 5.5L8.5 9L16 1.5"
+      stroke={tickColor}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
   return (
     <div

@@ -135,10 +135,11 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
     return rec ? rec.status : task.status;
   };
   const byStatus = {
-    pending:     userTasks.filter(t => effectiveStatus(t) === "pending").length,
-    in_progress: userTasks.filter(t => effectiveStatus(t) === "in_progress").length,
-    completed:   userTasks.filter(t => effectiveStatus(t) === "completed").length,
-  };
+  pending:     userTasks.filter(t => effectiveStatus(t) === "pending").length,
+  in_progress: userTasks.filter(t => effectiveStatus(t) === "in_progress").length,
+  completed:   userTasks.filter(t => effectiveStatus(t) === "completed").length,
+  cancelled:   userTasks.filter(t => effectiveStatus(t) === "cancelled").length, // ← ADD
+};
   const overdueTasks = userTasks.filter(t => isOverdue(t.dueDate, effectiveStatus(t)));
   const completionRate = userTasks.length ? Math.round((byStatus.completed / userTasks.length) * 100) : 0;
 
@@ -157,12 +158,13 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
             <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}><FiX size={14} /></button>
           </div>
         </div>
-        <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, borderBottom: "1px solid #f0f2f5" }}>
+        <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, borderBottom: "1px solid #f0f2f5" }}>
           {[
-            { label: "Total", value: userTasks.length, color: "#0d9488", bg: "#ccfbf1" },
-            { label: "Done",  value: byStatus.completed, color: "#10b981", bg: "#d1fae5" },
-            { label: "Late",  value: overdueTasks.length, color: "#ef4444", bg: "#fee2e2" },
-          ].map(s => (
+  { label: "Total",     value: userTasks.length,       color: "#0d9488", bg: "#ccfbf1" },
+  { label: "Done",      value: byStatus.completed,     color: "#10b981", bg: "#d1fae5" },
+  { label: "Cancelled", value: byStatus.cancelled,     color: "#6b7280", bg: "#f3f4f6" }, // ← swapped
+  { label: "Late",      value: overdueTasks.length,    color: "#ef4444", bg: "#fee2e2" },
+].map(s => (
             <div key={s.label} style={{ textAlign: "center", padding: "12px 6px", background: s.bg, borderRadius: 10 }}>
               <div style={{ fontSize: "1.6rem", fontWeight: 800, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: "0.66rem", color: "#6b7280", fontWeight: 600, marginTop: 2 }}>{s.label}</div>
@@ -186,35 +188,57 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
 
 function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
   const [activeTab, setActiveTab] = useState("active");
-  const completed = userTasks.filter(t => effectiveStatus(t) === "completed");
-  const active    = userTasks.filter(t => effectiveStatus(t) !== "completed");
+  
+  const completed  = userTasks.filter(t => effectiveStatus(t) === "completed");
+  const cancelled  = userTasks.filter(t => effectiveStatus(t) === "cancelled");  // ← NEW
+  const active     = userTasks.filter(t => !["completed", "cancelled"].includes(effectiveStatus(t))); // ← updated
+
   const tabs = [
     { id: "active",    label: `🔄 Active (${active.length})`,       color: "#3b82f6" },
     { id: "completed", label: `✅ Done (${completed.length})`,      color: "#10b981" },
+    { id: "cancelled", label: `❌ Cancelled (${cancelled.length})`, color: "#6b7280" }, // ← NEW
   ];
+
   const renderTask = (t) => {
     const eff = effectiveStatus(t);
     const over = isOverdue(t.dueDate, eff);
     return (
-      <div key={t._id || t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", borderRadius: 9, marginBottom: 5, background: eff === "completed" ? "#d1fae5" : over ? "#fee2e2" : "#f9fafb", border: `1.5px solid ${eff === "completed" ? "#bbf7d0" : over ? "#fecaca" : "#e5e7eb"}` }}>
+      <div key={t._id || t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", borderRadius: 9, marginBottom: 5, 
+        background: eff === "completed" ? "#d1fae5" : eff === "cancelled" ? "#f3f4f6" : over ? "#fee2e2" : "#f9fafb", 
+        border: `1.5px solid ${eff === "completed" ? "#bbf7d0" : eff === "cancelled" ? "#d1d5db" : over ? "#fecaca" : "#e5e7eb"}` }}>
         <span style={{ fontSize: "0.9rem" }}>{STATUS[eff]?.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: "0.82rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: eff === "completed" ? "line-through" : "none", color: eff === "completed" ? "#6b7280" : "#111827" }}>{t.title}</div>
-          <span style={{ fontSize: "0.67rem", color: over && eff !== "completed" ? "#ef4444" : "#9ca3af" }}>📅 {fmtDate(t.dueDate)}{over && eff !== "completed" ? " · ⚠ Overdue" : ""}</span>
+          <div style={{ fontSize: "0.82rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", 
+            textDecoration: ["completed","cancelled"].includes(eff) ? "line-through" : "none", 
+            color: ["completed","cancelled"].includes(eff) ? "#6b7280" : "#111827" }}>{t.title}</div>
+          <span style={{ fontSize: "0.67rem", color: over && eff !== "completed" ? "#ef4444" : "#9ca3af" }}>
+            📅 {fmtDate(t.dueDate)}{over && eff !== "completed" && eff !== "cancelled" ? " · ⚠ Overdue" : ""}
+          </span>
         </div>
         <span style={{ fontSize: "0.64rem", fontWeight: 700, color: STATUS[eff]?.color, background: STATUS[eff]?.bg, padding: "2px 8px", borderRadius: 20, flexShrink: 0 }}>{STATUS[eff]?.label}</span>
       </div>
     );
   };
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px 16px" }}>
       <div style={{ display: "flex", gap: 5, marginBottom: 12, background: "#f3f4f6", borderRadius: 9, padding: 3 }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.74rem", fontWeight: 700, background: activeTab === t.id ? "#fff" : "transparent", color: activeTab === t.id ? t.color : "#9ca3af", boxShadow: activeTab === t.id ? "0 1px 4px rgba(0,0,0,.08)" : "none" }}>{t.label}</button>
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.74rem", fontWeight: 700, 
+            background: activeTab === t.id ? "#fff" : "transparent", 
+            color: activeTab === t.id ? t.color : "#9ca3af", 
+            boxShadow: activeTab === t.id ? "0 1px 4px rgba(0,0,0,.08)" : "none" }}>{t.label}</button>
         ))}
       </div>
-      {activeTab === "completed" && (completed.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>⏳ No completed tasks</div> : completed.map(renderTask))}
-      {activeTab === "active"    && (active.length === 0   ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>🎉 All tasks completed!</div> : active.map(renderTask))}
+      {activeTab === "completed" && (completed.length === 0 
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>⏳ No completed tasks</div> 
+        : completed.map(renderTask))}
+      {activeTab === "active" && (active.length === 0 
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>🎉 All tasks completed!</div> 
+        : active.map(renderTask))}
+      {activeTab === "cancelled" && (cancelled.length === 0  
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>✅ No cancelled tasks</div> 
+        : cancelled.map(renderTask))}
     </div>
   );
 }
