@@ -885,30 +885,53 @@ export default function TaskPage() {
   const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
   const STATUS_ORDER   = { in_progress: 0, pending: 1, completed: 2 };
 
-  const visibleTasks = useMemo(() => {
-    let list = tasks.filter(task => {
-      if (!isAdmin(currentUser)) {
-        const myId = currentUser?.id;
-        const isAssigned = task.assignedTo?.some(u => (u._id || u.id || u)?.toString() === myId);
-        const isOwner = task.isPersonal && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
-        const isCreator = isManager(currentUser) && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
-        if (!isAssigned && !isOwner && !isCreator) return false;
-      }
-      const effectiveStatus = (() => { if (isAdmin(currentUser)) return task.status; const rec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser?.id && uts.taskId.toString() === (task._id || task.id).toString()); return rec ? rec.status : task.status; })();
-      if (filter !== "all" && effectiveStatus !== filter) return false;
+const visibleTasks = useMemo(() => {
+  let list = tasks.filter(task => {
+    if (!isAdmin(currentUser)) {
+      const myId = currentUser?.id;
+      const isAssigned = task.assignedTo?.some(u => (u._id || u.id || u)?.toString() === myId);
+      const isOwner = task.isPersonal && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
+      const isCreator = isManager(currentUser) && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
+      if (!isAssigned && !isOwner && !isCreator) return false;
+    }
+
+    // ✅ Personal filter — show only tasks marked isPersonal for current user
+    if (filter === "personal") {
+      const myId = currentUser?.id;
+      const isMyPersonal =
+        task.isPersonal &&
+        (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
+      if (!isMyPersonal) return false;
+      // skip status filter when viewing personal tab
       if (search && !task.title?.toLowerCase().includes(search.toLowerCase()) && !task.description?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
-    });
-    list = [...list].sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "title")    cmp = (a.title || "").localeCompare(b.title || "");
-      if (sortKey === "priority") cmp = (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2);
-      if (sortKey === "status")   cmp = (STATUS_ORDER[a.status] ?? 2) - (STATUS_ORDER[b.status] ?? 2);
-      if (sortKey === "dueDate")  cmp = new Date(a.dueDate || "9999") - new Date(b.dueDate || "9999");
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return list;
-  }, [tasks, currentUser, filter, search, sortKey, sortDir, userTaskStatuses]);
+    }
+
+    const effectiveStatus = (() => {
+      if (isAdmin(currentUser)) return task.status;
+      const rec = userTaskStatuses.find(
+        uts => uts.userId.toString() === currentUser?.id &&
+               uts.taskId.toString() === (task._id || task.id).toString()
+      );
+      return rec ? rec.status : task.status;
+    })();
+
+    if (filter !== "all" && effectiveStatus !== filter) return false;
+    if (search && !task.title?.toLowerCase().includes(search.toLowerCase()) && !task.description?.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  list = [...list].sort((a, b) => {
+    let cmp = 0;
+    if (sortKey === "title")    cmp = (a.title || "").localeCompare(b.title || "");
+    if (sortKey === "priority") cmp = (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2);
+    if (sortKey === "status")   cmp = (STATUS_ORDER[a.status] ?? 2) - (STATUS_ORDER[b.status] ?? 2);
+    if (sortKey === "dueDate")  cmp = new Date(a.dueDate || "9999") - new Date(b.dueDate || "9999");
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  return list;
+}, [tasks, currentUser, filter, search, sortKey, sortDir, userTaskStatuses]);
 
   const handleSort = (key) => { if (sortKey === key) setSortDir(p => p === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("asc"); } };
   const SortIcon = ({ col }) => { if (sortKey !== col) return <span style={{ color: "#d1d5db", fontSize: "0.6rem" }}>↕</span>; return <span style={{ color: "#0d9488", fontSize: "0.6rem" }}>{sortDir === "asc" ? "↑" : "↓"}</span>; };
@@ -1112,7 +1135,7 @@ export default function TaskPage() {
                 )}
 
                 {/* Notifications bell */}
-                <div ref={notifRef} style={{ position: "relative" }}>
+                {/* <div ref={notifRef} style={{ position: "relative" }}>
                   <button
                     onClick={() => setShowNotifPanel((p) => !p)}
                     style={{
@@ -1194,7 +1217,9 @@ export default function TaskPage() {
                       </div>
                     </div>
                   )}
-                </div>
+                </div> */}
+
+
               </div>
             </div>
 
@@ -1205,19 +1230,20 @@ export default function TaskPage() {
             >
               <div className="d-flex flex-wrap gap-2 mt-3">
               {[
-                ["all", "All"],
-                ["pending", "⏳ Pending"],
-                ["in_progress", "🔄 In Progress"],
-                ["completed", "✅ Done"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  className={`filter-pill ${filter === id ? "filter-pill-active" : ""}`}
-                  onClick={() => setFilter(id)}
-                >
-                  {label}
-                </button>
-              ))}
+  ["all",         "All"],
+  ["pending",     "⏳ Pending"],
+  ["in_progress", "🔄 In Progress"],
+  ["completed",   "✅ Done"],
+  ["personal",    "🔒 Personal"],   // ✅ add this
+].map(([id, label]) => (
+  <button
+    key={id}
+    className={`filter-pill ${filter === id ? "filter-pill-active" : ""}`}
+    onClick={() => setFilter(id)}
+  >
+    {label}
+  </button>
+))}
 
               </div>              <div>
  <button
