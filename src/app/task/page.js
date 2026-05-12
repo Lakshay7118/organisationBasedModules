@@ -4,15 +4,15 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   FiSearch, FiSend, FiPlus, FiX, FiBell,
   FiTrash2, FiLink, FiPhone, FiChevronRight, FiMinus,
-  FiCalendar, FiShield,
+  FiCalendar, FiShield, FiUsers, FiUser,
 } from "react-icons/fi";
 import API from "../utils/api";
 
 /* ---------- helpers ---------- */
-const PALETTE = ["#6366f1","#f43f5e","#f59e0b","#10b981","#3b82f6","#8b5cf6","#ec4899","#06b6d4"];
-const userColor   = (id = "") => PALETTE[parseInt(("0000" + id).slice(-4), 16) % PALETTE.length];
+const PALETTE = ["#6366f1", "#f43f5e", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4"];
+const userColor = (id = "") => PALETTE[parseInt(("0000" + id).slice(-4), 16) % PALETTE.length];
 const userInitial = (name = "") => (name || "?").trim().charAt(0).toUpperCase();
-const enrichUser  = (u) => {
+const enrichUser = (u) => {
   if (!u) return null;
   const id = u._id?.toString?.() || u.id || "";
   return { ...u, id, initial: userInitial(u.name), color: userColor(id) };
@@ -20,21 +20,21 @@ const enrichUser  = (u) => {
 const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 const PRIORITY = {
-  low:    { label: "Low",    color: "#10b981", bg: "#d1fae5" },
+  low: { label: "Low", color: "#10b981", bg: "#d1fae5" },
   medium: { label: "Medium", color: "#f59e0b", bg: "#fef3c7" },
-  high:   { label: "High",   color: "#ef4444", bg: "#fee2e2" },
+  high: { label: "High", color: "#ef4444", bg: "#fee2e2" },
 };
 
 const STATUS = {
-  pending:     { label: "Pending",     color: "#6b7280", bg: "#f3f4f6", icon: "⏳" },
+  pending: { label: "Pending", color: "#6b7280", bg: "#f3f4f6", icon: "⏳" },
   in_progress: { label: "In Progress", color: "#3b82f6", bg: "#eff6ff", icon: "🔄" },
-  completed:   { label: "Completed",   color: "#065f46", bg: "#d1fae5", icon: "✅" },
-  cancelled:   { label: "Cancelled",   color: "#6b7280", bg: "#f3f4f6", icon: "❌" },
+  completed: { label: "Completed", color: "#065f46", bg: "#d1fae5", icon: "✅" },
+  cancelled: { label: "Cancelled", color: "#6b7280", bg: "#f3f4f6", icon: "❌" },
 };
 
-const isAdmin   = (u) => u?.role === "super_admin";
+const isAdmin = (u) => u?.role === "super_admin";
 const isManager = (u) => u?.role === "manager";
-const isUser    = (u) => u?.role === "user";
+const isUser = (u) => u?.role === "user";
 
 const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 const fmtDate = (iso) => {
@@ -62,7 +62,7 @@ function Avatar({ user, size = 32, onClick }) {
         border: `2px solid ${u.color}44`,
         cursor: onClick ? "pointer" : "default",
       }}
-      onMouseEnter={e => { if (onClick) { e.currentTarget.style.transform = "scale(1.15)"; e.currentTarget.style.boxShadow = `0 0 0 3px ${u.color}44`; }}}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.transform = "scale(1.15)"; e.currentTarget.style.boxShadow = `0 0 0 3px ${u.color}44`; } }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
     >
       {u.initial}
@@ -135,11 +135,11 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
     return rec ? rec.status : task.status;
   };
   const byStatus = {
-  pending:     userTasks.filter(t => effectiveStatus(t) === "pending").length,
-  in_progress: userTasks.filter(t => effectiveStatus(t) === "in_progress").length,
-  completed:   userTasks.filter(t => effectiveStatus(t) === "completed").length,
-  cancelled:   userTasks.filter(t => effectiveStatus(t) === "cancelled").length, // ← ADD
-};
+    pending: userTasks.filter(t => effectiveStatus(t) === "pending").length,
+    in_progress: userTasks.filter(t => effectiveStatus(t) === "in_progress").length,
+    completed: userTasks.filter(t => effectiveStatus(t) === "completed").length,
+    cancelled: userTasks.filter(t => effectiveStatus(t) === "cancelled").length, // ← ADD
+  };
   const overdueTasks = userTasks.filter(t => isOverdue(t.dueDate, effectiveStatus(t)));
   const completionRate = userTasks.length ? Math.round((byStatus.completed / userTasks.length) * 100) : 0;
 
@@ -160,11 +160,11 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
         </div>
         <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, borderBottom: "1px solid #f0f2f5" }}>
           {[
-  { label: "Total",     value: userTasks.length,       color: "#0d9488", bg: "#ccfbf1" },
-  { label: "Done",      value: byStatus.completed,     color: "#10b981", bg: "#d1fae5" },
-  { label: "Cancelled", value: byStatus.cancelled,     color: "#6b7280", bg: "#f3f4f6" }, // ← swapped
-  { label: "Late",      value: overdueTasks.length,    color: "#ef4444", bg: "#fee2e2" },
-].map(s => (
+            { label: "Total", value: userTasks.length, color: "#0d9488", bg: "#ccfbf1" },
+            { label: "Done", value: byStatus.completed, color: "#10b981", bg: "#d1fae5" },
+            { label: "Cancelled", value: byStatus.cancelled, color: "#6b7280", bg: "#f3f4f6" }, // ← swapped
+            { label: "Late", value: overdueTasks.length, color: "#ef4444", bg: "#fee2e2" },
+          ].map(s => (
             <div key={s.label} style={{ textAlign: "center", padding: "12px 6px", background: s.bg, borderRadius: 10 }}>
               <div style={{ fontSize: "1.6rem", fontWeight: 800, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: "0.66rem", color: "#6b7280", fontWeight: 600, marginTop: 2 }}>{s.label}</div>
@@ -188,14 +188,14 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
 
 function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
   const [activeTab, setActiveTab] = useState("active");
-  
-  const completed  = userTasks.filter(t => effectiveStatus(t) === "completed");
-  const cancelled  = userTasks.filter(t => effectiveStatus(t) === "cancelled");  // ← NEW
-  const active     = userTasks.filter(t => !["completed", "cancelled"].includes(effectiveStatus(t))); // ← updated
+
+  const completed = userTasks.filter(t => effectiveStatus(t) === "completed");
+  const cancelled = userTasks.filter(t => effectiveStatus(t) === "cancelled");  // ← NEW
+  const active = userTasks.filter(t => !["completed", "cancelled"].includes(effectiveStatus(t))); // ← updated
 
   const tabs = [
-    { id: "active",    label: `🔄 Active (${active.length})`,       color: "#3b82f6" },
-    { id: "completed", label: `✅ Done (${completed.length})`,      color: "#10b981" },
+    { id: "active", label: `🔄 Active (${active.length})`, color: "#3b82f6" },
+    { id: "completed", label: `✅ Done (${completed.length})`, color: "#10b981" },
     { id: "cancelled", label: `❌ Cancelled (${cancelled.length})`, color: "#6b7280" }, // ← NEW
   ];
 
@@ -203,14 +203,18 @@ function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
     const eff = effectiveStatus(t);
     const over = isOverdue(t.dueDate, eff);
     return (
-      <div key={t._id || t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", borderRadius: 9, marginBottom: 5, 
-        background: eff === "completed" ? "#d1fae5" : eff === "cancelled" ? "#f3f4f6" : over ? "#fee2e2" : "#f9fafb", 
-        border: `1.5px solid ${eff === "completed" ? "#bbf7d0" : eff === "cancelled" ? "#d1d5db" : over ? "#fecaca" : "#e5e7eb"}` }}>
+      <div key={t._id || t.id} style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", borderRadius: 9, marginBottom: 5,
+        background: eff === "completed" ? "#d1fae5" : eff === "cancelled" ? "#f3f4f6" : over ? "#fee2e2" : "#f9fafb",
+        border: `1.5px solid ${eff === "completed" ? "#bbf7d0" : eff === "cancelled" ? "#d1d5db" : over ? "#fecaca" : "#e5e7eb"}`
+      }}>
         <span style={{ fontSize: "0.9rem" }}>{STATUS[eff]?.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: "0.82rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", 
-            textDecoration: ["completed","cancelled"].includes(eff) ? "line-through" : "none", 
-            color: ["completed","cancelled"].includes(eff) ? "#6b7280" : "#111827" }}>{t.title}</div>
+          <div style={{
+            fontSize: "0.82rem", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            textDecoration: ["completed", "cancelled"].includes(eff) ? "line-through" : "none",
+            color: ["completed", "cancelled"].includes(eff) ? "#6b7280" : "#111827"
+          }}>{t.title}</div>
           <span style={{ fontSize: "0.67rem", color: over && eff !== "completed" ? "#ef4444" : "#9ca3af" }}>
             📅 {fmtDate(t.dueDate)}{over && eff !== "completed" && eff !== "cancelled" ? " · ⚠ Overdue" : ""}
           </span>
@@ -224,20 +228,22 @@ function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
     <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px 16px" }}>
       <div style={{ display: "flex", gap: 5, marginBottom: 12, background: "#f3f4f6", borderRadius: 9, padding: 3 }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, padding: "6px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.74rem", fontWeight: 700, 
-            background: activeTab === t.id ? "#fff" : "transparent", 
-            color: activeTab === t.id ? t.color : "#9ca3af", 
-            boxShadow: activeTab === t.id ? "0 1px 4px rgba(0,0,0,.08)" : "none" }}>{t.label}</button>
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+            flex: 1, padding: "6px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.74rem", fontWeight: 700,
+            background: activeTab === t.id ? "#fff" : "transparent",
+            color: activeTab === t.id ? t.color : "#9ca3af",
+            boxShadow: activeTab === t.id ? "0 1px 4px rgba(0,0,0,.08)" : "none"
+          }}>{t.label}</button>
         ))}
       </div>
-      {activeTab === "completed" && (completed.length === 0 
-        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>⏳ No completed tasks</div> 
+      {activeTab === "completed" && (completed.length === 0
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>⏳ No completed tasks</div>
         : completed.map(renderTask))}
-      {activeTab === "active" && (active.length === 0 
-        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>🎉 All tasks completed!</div> 
+      {activeTab === "active" && (active.length === 0
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>🎉 All tasks completed!</div>
         : active.map(renderTask))}
-      {activeTab === "cancelled" && (cancelled.length === 0  
-        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>✅ No cancelled tasks</div> 
+      {activeTab === "cancelled" && (cancelled.length === 0
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>✅ No cancelled tasks</div>
         : cancelled.map(renderTask))}
     </div>
   );
@@ -375,35 +381,35 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
   const [tab, setTab] = useState("basic");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleAssign = (id) => set("assignedTo", form.assignedTo.includes(id) ? form.assignedTo.filter(x => x !== id) : [...form.assignedTo, id]);
-  const addInputField    = () => set("inputFields",     [...form.inputFields,     { id: genId(), label: "", placeholder: "", required: false }]);
-  const addDropdown      = () => set("dropdownButtons", [...form.dropdownButtons, { id: genId(), title: "", placeholder: "", options: "" }]);
-  const addQuickReply    = () => set("quickReplies",    [...form.quickReplies,    { id: genId(), title: "" }]);
-  const addCtaButton     = () => set("ctaButtons",      [...form.ctaButtons,      { id: genId(), btnType: "URL", title: "", value: "" }]);
-  const addCheckboxGroup = () => set("checkboxes",      [...form.checkboxes,      { id: genId(), label: "", options: "" }]);
-  const patchArr  = (key, id, field, val) => set(key, form[key].map(x => x.id === id ? { ...x, [field]: val } : x));
+  const addInputField = () => set("inputFields", [...form.inputFields, { id: genId(), label: "", placeholder: "", required: false }]);
+  const addDropdown = () => set("dropdownButtons", [...form.dropdownButtons, { id: genId(), title: "", placeholder: "", options: "" }]);
+  const addQuickReply = () => set("quickReplies", [...form.quickReplies, { id: genId(), title: "" }]);
+  const addCtaButton = () => set("ctaButtons", [...form.ctaButtons, { id: genId(), btnType: "URL", title: "", value: "" }]);
+  const addCheckboxGroup = () => set("checkboxes", [...form.checkboxes, { id: genId(), label: "", options: "" }]);
+  const patchArr = (key, id, field, val) => set(key, form[key].map(x => x.id === id ? { ...x, [field]: val } : x));
   const removeArr = (key, id) => set(key, form[key].filter(x => x.id !== id));
   const parseOptions = (raw) => { if (Array.isArray(raw)) return raw.map(s => String(s).trim()).filter(Boolean); if (typeof raw === "string") return raw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean); return []; };
   const needsApproval = _isManager && !form.isPersonal && form.assignedTo.length > 0;
 
   useEffect(() => {
-    API.get("/contacts/managers").then(res => setAllManagers(Array.isArray(res.data) ? res.data : [])).catch(() => {});
+    API.get("/contacts/managers").then(res => setAllManagers(Array.isArray(res.data) ? res.data : [])).catch(() => { });
     API.get("/contacts").then(res => {
       const tagMap = new Map();
       (Array.isArray(res.data) ? res.data : []).forEach(c => (c.tags || []).forEach(t => { if (t?._id) tagMap.set(t._id.toString(), t); }));
       setAllTags([...tagMap.values()]);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   useEffect(() => {
     if (assignFilter !== "tag" || !selectedTag) { setTagContacts([]); return; }
     setLoadingContacts(true);
-    API.get(`/contacts?tag=${selectedTag}`).then(res => setTagContacts(Array.isArray(res.data) ? res.data : [])).catch(() => {}).finally(() => setLoadingContacts(false));
+    API.get(`/contacts?tag=${selectedTag}`).then(res => setTagContacts(Array.isArray(res.data) ? res.data : [])).catch(() => { }).finally(() => setLoadingContacts(false));
   }, [assignFilter, selectedTag]);
 
   useEffect(() => {
     if (assignFilter !== "manager_contacts" || !selectedMgr) { setMgrContacts([]); return; }
     setLoadingContacts(true);
-    API.get(`/contacts?managerId=${selectedMgr}`).then(res => setMgrContacts(Array.isArray(res.data) ? res.data : [])).catch(() => {}).finally(() => setLoadingContacts(false));
+    API.get(`/contacts?managerId=${selectedMgr}`).then(res => setMgrContacts(Array.isArray(res.data) ? res.data : [])).catch(() => { }).finally(() => setLoadingContacts(false));
   }, [assignFilter, selectedMgr]);
 
   const contactsWithUsers = useCallback((contactList) => contactList.map(c => ({ contact: c, user: users.find(u => u.phone && c.mobile && (u.phone === c.mobile || u.phone.replace(/\D/g, "") === c.mobile.replace(/\D/g, ""))) })), [users]);
@@ -416,7 +422,7 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
 
   const handleSubmit = () => {
     if (!form.title.trim()) { alert("Task Title is required"); return; }
-    if (!form.dueDate)      { alert("Due Date is required"); return; }
+    if (!form.dueDate) { alert("Due Date is required"); return; }
     const assignedTo = form.isPersonal ? [currentUser.id] : form.assignedTo;
     const dropdownButtons = form.dropdownButtons.map(dd => ({ ...dd, options: parseOptions(dd.options) }));
     const checkboxes = form.checkboxes.map(cb => ({ ...cb, options: parseOptions(cb.options) }));
@@ -760,31 +766,32 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
 
 /* ── MAIN PAGE ── */
 export default function TaskPage() {
-  const [isLoading, setIsLoading]           = useState(true);
-  const [saving, setSaving]                 = useState(false);
-  const [error, setError]                   = useState("");
-  const [currentUser, setCurrentUser]       = useState(null);
-  const [users, setUsers]                   = useState([]);
-  const [tasks, setTasks]                   = useState([]);
-  const [notifications, setNotifications]   = useState([]);
-  const [selectedTask, setSelectedTask]     = useState(null);
-  const [showCreate, setShowCreate]         = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const [showApprovals, setShowApprovals]   = useState(false);
-  const [responseInput, setResponseInput]   = useState("");
-  const [filter, setFilter]                 = useState("all");
-  const [search, setSearch]                 = useState("");
-  const [formValues, setFormValues]         = useState({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} });
-  const [sortKey, setSortKey]               = useState("dueDate");
-  const [sortDir, setSortDir]               = useState("asc");
+  const [showApprovals, setShowApprovals] = useState(false);
+  const [responseInput, setResponseInput] = useState("");
+ const [tab, setTab] = useState("team");
+const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [formValues, setFormValues] = useState({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} });
+  const [sortKey, setSortKey] = useState("dueDate");
+  const [sortDir, setSortDir] = useState("asc");
   const [userTaskStatuses, setUserTaskStatuses] = useState([]);
   const notifRef = useRef(null);
 
   // -- auth --
   useEffect(() => {
     const userStr = localStorage.getItem("user");
-    if (userStr) { try { setCurrentUser(enrichUser(JSON.parse(userStr))); } catch {} }
-    else { API.get("/users/me").then(res => { if (res.data.success) setCurrentUser(enrichUser(res.data.data)); }).catch(() => {}); }
+    if (userStr) { try { setCurrentUser(enrichUser(JSON.parse(userStr))); } catch { } }
+    else { API.get("/users/me").then(res => { if (res.data.success) setCurrentUser(enrichUser(res.data.data)); }).catch(() => { }); }
   }, []);
 
   // -- fetch tasks, notifications, user statuses --
@@ -801,7 +808,7 @@ export default function TaskPage() {
     })();
   }, [currentUser]);
 
-  useEffect(() => { API.get("/users").then(res => { if (res.data.success) setUsers(res.data.data.map(enrichUser)); }).catch(() => {}); }, []);
+  useEffect(() => { API.get("/users").then(res => { if (res.data.success) setUsers(res.data.data.map(enrichUser)); }).catch(() => { }); }, []);
 
   // -- dispatch events for layout --
   useEffect(() => { if (selectedTask) window.dispatchEvent(new CustomEvent("detailViewOpen")); else window.dispatchEvent(new CustomEvent("detailViewClose")); }, [selectedTask]);
@@ -817,10 +824,10 @@ export default function TaskPage() {
   useEffect(() => { setFormValues({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} }); }, [selectedTask?._id || selectedTask?.id]);
 
   const handleFormChange = useCallback((type, id, value, checked) => {
-    if      (type === "quickReply") setFormValues(p => ({ ...p, quickReplySelected: p.quickReplySelected === id ? "" : id }));
+    if (type === "quickReply") setFormValues(p => ({ ...p, quickReplySelected: p.quickReplySelected === id ? "" : id }));
     else if (type === "inputField") setFormValues(p => ({ ...p, inputFields: { ...p.inputFields, [id]: value } }));
-    else if (type === "dropdown")   setFormValues(p => ({ ...p, dropdownSelections: { ...p.dropdownSelections, [id]: value } }));
-    else if (type === "checkbox")   setFormValues(p => { const cur = p.checkboxSelections[id] || []; return { ...p, checkboxSelections: { ...p.checkboxSelections, [id]: checked ? [...cur, value] : cur.filter(v => v !== value) } }; });
+    else if (type === "dropdown") setFormValues(p => ({ ...p, dropdownSelections: { ...p.dropdownSelections, [id]: value } }));
+    else if (type === "checkbox") setFormValues(p => { const cur = p.checkboxSelections[id] || []; return { ...p, checkboxSelections: { ...p.checkboxSelections, [id]: checked ? [...cur, value] : cur.filter(v => v !== value) } }; });
   }, []);
 
   const handleCreate = useCallback(async (form) => {
@@ -849,7 +856,7 @@ export default function TaskPage() {
 
   const handleReject = useCallback(async (taskId) => {
     if (!window.confirm("Reject and delete this task request?")) return;
-    try { await API.delete(`/tasks/${taskId}`); } catch {}
+    try { await API.delete(`/tasks/${taskId}`); } catch { }
     setTasks(p => p.filter(t => (t._id || t.id) !== taskId));
   }, []);
 
@@ -883,55 +890,48 @@ export default function TaskPage() {
   const unreadCount = notifications.filter(n => !n.read && (n.userId?._id || n.userId)?.toString() === currentUser?.id).length;
   const pendingApprovals = tasks.filter(t => t.approvalStatus === "pending");
   const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
-  const STATUS_ORDER   = { in_progress: 0, pending: 1, completed: 2 };
+  const STATUS_ORDER = { in_progress: 0, pending: 1, completed: 2 };
 
 const visibleTasks = useMemo(() => {
   let list = tasks.filter(task => {
-    if (!isAdmin(currentUser)) {
-      const myId = currentUser?.id;
-      const isAssigned = task.assignedTo?.some(u => (u._id || u.id || u)?.toString() === myId);
-      const isOwner = task.isPersonal && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
-      const isCreator = isManager(currentUser) && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
-      if (!isAssigned && !isOwner && !isCreator) return false;
-    }
+    const myId = currentUser?.id;
+    const isAssigned = task.assignedTo?.some(u => (u._id || u.id || u)?.toString() === myId);
+    const isPersonalMine = task.isPersonal && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
+    const isCreatorMgr = isManager(currentUser) && (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
 
-    // ✅ Personal filter — show only tasks marked isPersonal for current user
-    if (filter === "personal") {
-      const myId = currentUser?.id;
-      const isMyPersonal =
-        task.isPersonal &&
-        (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === myId;
-      if (!isMyPersonal) return false;
-      // skip status filter when viewing personal tab
-      if (search && !task.title?.toLowerCase().includes(search.toLowerCase()) && !task.description?.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    }
+    if (tab === "my") {
+  if (!isAssigned && !isPersonalMine && !isCreatorMgr) return false;
+} else {
+  // hide all personal tasks from team tab
+  if (task.isPersonal) return false;
+  if (!isAdmin(currentUser) && !isAssigned && !isCreatorMgr) return false;
+}
 
     const effectiveStatus = (() => {
       if (isAdmin(currentUser)) return task.status;
       const rec = userTaskStatuses.find(
-        uts => uts.userId.toString() === currentUser?.id &&
-               uts.taskId.toString() === (task._id || task.id).toString()
+        uts => uts.userId.toString() === myId && uts.taskId.toString() === (task._id || task.id).toString()
       );
       return rec ? rec.status : task.status;
     })();
 
-    if (filter !== "all" && effectiveStatus !== filter) return false;
-    if (search && !task.title?.toLowerCase().includes(search.toLowerCase()) && !task.description?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (statusFilter !== "all" && effectiveStatus !== statusFilter) return false;
+    if (search && !task.title?.toLowerCase().includes(search.toLowerCase()) &&
+        !task.description?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   list = [...list].sort((a, b) => {
     let cmp = 0;
-    if (sortKey === "title")    cmp = (a.title || "").localeCompare(b.title || "");
+    if (sortKey === "title") cmp = (a.title || "").localeCompare(b.title || "");
     if (sortKey === "priority") cmp = (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2);
-    if (sortKey === "status")   cmp = (STATUS_ORDER[a.status] ?? 2) - (STATUS_ORDER[b.status] ?? 2);
-    if (sortKey === "dueDate")  cmp = new Date(a.dueDate || "9999") - new Date(b.dueDate || "9999");
+    if (sortKey === "status") cmp = (STATUS_ORDER[a.status] ?? 2) - (STATUS_ORDER[b.status] ?? 2);
+    if (sortKey === "dueDate") cmp = new Date(a.dueDate || "9999") - new Date(b.dueDate || "9999");
     return sortDir === "asc" ? cmp : -cmp;
   });
 
   return list;
-}, [tasks, currentUser, filter, search, sortKey, sortDir, userTaskStatuses]);
+}, [tasks, currentUser, tab, statusFilter, search, sortKey, sortDir, userTaskStatuses]);
 
   const handleSort = (key) => { if (sortKey === key) setSortDir(p => p === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("asc"); } };
   const SortIcon = ({ col }) => { if (sortKey !== col) return <span style={{ color: "#d1d5db", fontSize: "0.6rem" }}>↕</span>; return <span style={{ color: "#0d9488", fontSize: "0.6rem" }}>{sortDir === "asc" ? "↑" : "↓"}</span>; };
@@ -1069,9 +1069,9 @@ const visibleTasks = useMemo(() => {
 
       <div className="task-shell-new">
         <div className="d-flex flex-column gap-2 gap-md-3 h-100 p-3 p-md-4">
-          
+
           {/* ── Hero Header (like campaign page) ── */}
-         
+
 
           {/* ── Toolbar (search + filter pills + extras) ── */}
           <div className="toolbar-card">
@@ -1224,38 +1224,65 @@ const visibleTasks = useMemo(() => {
             </div>
 
             {/* Filter pills */}
-            <div
-              className="d-flex justify-between mt-3"
-              style={{ overflowX: "auto", scrollbarWidth: "none" }}
-            >
-              <div className="d-flex flex-wrap gap-2 mt-3">
-              {[
-  ["all",         "All"],
-  ["pending",     "⏳ Pending"],
-  ["in_progress", "🔄 In Progress"],
-  ["completed",   "✅ Done"],
-  ["personal",    "🔒 Personal"],   // ✅ add this
-].map(([id, label]) => (
-  <button
-    key={id}
-    className={`filter-pill ${filter === id ? "filter-pill-active" : ""}`}
-    onClick={() => setFilter(id)}
-  >
-    {label}
-  </button>
-))}
+           <div className="d-flex justify-between mt-3" style={{ alignItems: "flex-start", gap: 10 }}>
+  <div style={{ flex: 1 }}>
+    {/* Main tabs */}
+    <div style={{ display: "flex", gap: 2, background: "#f3f4f6", borderRadius: 9, padding: 3, marginBottom: 10, height: 50 }}>
+      {[
+        { id: "team", label: "Team Tasks", icon: <FiUsers size={14} /> },
+        { id: "my", label: "My Tasks", icon: <FiUser size={14} /> },
+      ].map(({ id, label, icon }) => {
+       const count = id === "my"
+  ? tasks.filter(t =>
+      t.assignedTo?.some(u => (u._id || u.id || u)?.toString() === currentUser?.id) ||
+      (t.isPersonal && (t.createdBy?._id || t.createdBy?.id || t.createdBy)?.toString() === currentUser?.id)
+    ).length
+  : tasks.filter(t => {
+      if (t.isPersonal) return false;
+      if (isAdmin(currentUser)) return true;
+      return t.assignedTo?.some(u => (u._id || u.id || u)?.toString() === currentUser?.id) ||
+        (isManager(currentUser) && (t.createdBy?._id || t.createdBy?.id || t.createdBy)?.toString() === currentUser?.id);
+    }).length;
+        return (
+          <button key={id} onClick={() => { setTab(id); setStatusFilter("all"); }}
+            style={{
+              flex: 1, padding: "6px 0", borderRadius: 7, border: "none", cursor: "pointer",
+              fontSize: "0.77rem", fontWeight: 700, display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 5,
+              background: tab === id ? "linear-gradient(135deg, #0f5f64 0%, #14808a 60%, #22c55e 100%)" : "transparent",
+color: tab === id ? "#fff" : "#9ca3af",
+boxShadow: tab === id ? "0 4px 12px rgba(13,148,136,0.3)" : "none",
+            }}>
+            {icon} {label}
+            <span style={{
+              background: tab === id ? "rgba(255,255,255,0.25)" : "#e5e7eb",
+color: tab === id ? "#fff" : "#9ca3af",
 
-              </div>              <div>
- <button
-                className="cta-btn"
-                onClick={() => setShowCreate(true)}
-                type="button"
-              >
-                <FiPlus size={18} /> New Task
-              </button>
-                
-              </div>
-            </div>
+              fontSize: "0.65rem", fontWeight: 700, padding: "1px 6px", borderRadius: 999,
+            }}>{count}</span>
+          </button>
+        );
+      })}
+    </div>
+
+    {/* Status sub-filters */}
+    <div className="d-flex flex-wrap gap-2">
+      {[["all", "All"], ["pending", "⏳ Pending"], ["in_progress", "🔄 In Progress"], ["completed", "✅ Done"]].map(([id, label]) => (
+        <button key={id}
+          className={`filter-pill ${statusFilter === id ? "filter-pill-active" : ""}`}
+          onClick={() => setStatusFilter(id)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  </div>
+
+  <div style={{ paddingTop: 3 }}>
+    <button className="cta-btn" onClick={() => setShowCreate(true)} type="button">
+      <FiPlus size={18} /> New Task
+    </button>
+  </div>
+</div>
           </div>
 
           {/* ── Task list ── */}
