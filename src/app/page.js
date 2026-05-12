@@ -271,7 +271,7 @@ export default function Page() {
               </svg>
             </div>
             <div className="card-title">WhatsApp Business</div>
-            <div className="card-subtitle">Sign in to your account.HELLLOOOOOOO</div>
+            <div className="card-subtitle">Sign in to your account.</div>
           </div>
 
           {/* ── BODY ── */}
