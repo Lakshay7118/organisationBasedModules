@@ -48,6 +48,26 @@ const fmtRelative = (iso) => {
   return new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
 };
 
+function BellBadge({ size = 16, active = false, unreadCount = 0 }) {
+  return (
+    <>
+      <Bell size={size} color={active ? "#0d9488" : "#374151"} />
+      {unreadCount > 0 && (
+        <span style={{
+          position: "absolute", top: active ? 5 : 4, right: active ? 5 : 4,
+          width: active ? 15 : 16, height: active ? 15 : 16,
+          borderRadius: "50%", background: "#ef4444", color: "#fff",
+          fontSize: "0.52rem", fontWeight: 800,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          border: "2px solid #fff",
+        }}>
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      )}
+    </>
+  );
+}
+
 /* ─────────────────────────────────────────
    Individual notification row
 ───────────────────────────────────────── */
@@ -359,8 +379,6 @@ function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNa
    MAIN TOPBAR
 ───────────────────────────────────────── */
 export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hidden = false }) {
-  if (hidden) return null;
-
   const router = useRouter(); // ✅ Next.js router
 
   const topbarRef      = useRef(null);
@@ -408,19 +426,25 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   }, []);
 
   /* ── Fetch notifications ── */
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const res = await API.get("/notifications");
-      const sorted = (res.data?.data || []).sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
-      setNotifications(sorted);
-    } catch (err) {
-      console.error("Failed to load notifications", err);
-    }
-  }, []);
+  useEffect(() => {
+    let cancelled = false;
 
-  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+    API.get("/notifications")
+      .then((res) => {
+        if (cancelled) return;
+        const sorted = (res.data?.data || []).sort(
+          (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+        );
+        setNotifications(sorted);
+      })
+      .catch((err) => {
+        console.error("Failed to load notifications", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ── Socket: real-time ── */
   useEffect(() => {
@@ -472,24 +496,6 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const cancelLogout  = ()  => setShowLogoutPopup(false);
   const toggleDropdown = (e) => { e.stopPropagation(); setShowDropdown(p => !p); };
 
-  const BellBadge = ({ size = 16, active = false }) => (
-    <>
-      <Bell size={size} color={active ? "#0d9488" : "#374151"} />
-      {unreadCount > 0 && (
-        <span style={{
-          position: "absolute", top: active ? 5 : 4, right: active ? 5 : 4,
-          width: active ? 15 : 16, height: active ? 15 : 16,
-          borderRadius: "50%", background: "#ef4444", color: "#fff",
-          fontSize: "0.52rem", fontWeight: 800,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          border: "2px solid #fff",
-        }}>
-          {unreadCount > 9 ? "9+" : unreadCount}
-        </span>
-      )}
-    </>
-  );
-
   /* ── Shared dropdown props ── */
   const dropdownProps = {
     notifications,
@@ -499,6 +505,8 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
     onClose: () => setShowDropdown(false),
     onNavigate: handleNavigate,  // ✅ passed down
   };
+
+  if (hidden) return null;
 
   return (
     <>
@@ -524,7 +532,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
             <motion.button whileTap={{ scale: 0.9 }} onClick={toggleDropdown}
               style={{ width: 40, height: 40, borderRadius: "50%", background: "#fff", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, position: "relative", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
             >
-              <BellBadge size={17} />
+              <BellBadge size={17} unreadCount={unreadCount} />
             </motion.button>
             <AnimatePresence>
               {showDropdown && <NotifDropdown {...dropdownProps} />}
@@ -563,7 +571,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
             <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={toggleDropdown}
               style={{ width: 36, height: 36, borderRadius: 10, background: showDropdown ? "#ccfbf1" : "#f1f5f9", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", flexShrink: 0, transition: "background 0.2s" }}
             >
-              <BellBadge size={16} active={showDropdown} />
+              <BellBadge size={16} active={showDropdown} unreadCount={unreadCount} />
             </motion.button>
             <AnimatePresence>
               {showDropdown && <NotifDropdown {...dropdownProps} />}

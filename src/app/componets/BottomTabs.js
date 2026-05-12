@@ -12,7 +12,6 @@ const tabs = [
 ];
 
 export default function BottomTabs({ hidden = false }) {
-  if (hidden) return null;
   const router   = useRouter();
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);

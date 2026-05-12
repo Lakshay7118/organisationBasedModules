@@ -31,12 +31,32 @@ import {
   FiShare2,
   FiCopy,
   FiCheckSquare,
+  FiMic,
+  FiMicOff,
 } from "react-icons/fi";
 
 import API from "../utils/api";
 
 // ✅ Backend root URL (without /api) for media files
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
+
+const createIdleCallState = () => ({
+  status: "idle",
+  direction: null,
+  chatId: null,
+  peerPhone: null,
+  peerName: "",
+  offer: null,
+  startedAt: null,
+  error: "",
+});
 
 /* ─────────────────────────────────────────────
   Skeleton components (unchanged)
@@ -316,6 +336,9 @@ const [showContactPicker, setShowContactPicker] = useState(false);
 const [isRecording, setIsRecording] = useState(false);
 const [recordingSeconds, setRecordingSeconds] = useState(0);
 const [audioBlob, setAudioBlob] = useState(null);
+const [callState, setCallState] = useState(createIdleCallState);
+const [callSeconds, setCallSeconds] = useState(0);
+const [isCallMuted, setIsCallMuted] = useState(false);
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
@@ -341,6 +364,11 @@ const recordingTimerRef = useRef(null);
 const cameraStreamRef = useRef(null);
 const videoPreviewRef = useRef(null);
 const audioChunksRef = useRef([]);
+const callStateRef = useRef(createIdleCallState());
+const peerConnectionRef = useRef(null);
+const localStreamRef = useRef(null);
+const remoteAudioRef = useRef(null);
+const pendingIceCandidatesRef = useRef([]);
 
 useEffect(() => {
   selectedChatRef.current = selectedChat;
@@ -349,6 +377,10 @@ useEffect(() => {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
 
   // ── 3. ALL useEffect ──────────────────────────
   useEffect(() => {
@@ -733,6 +765,367 @@ const handleMessagesSeen = ({ chatId: seenChatId }) => {
     cameraStreamRef.current = null;
   }
 }, [showCameraModal]);
+
+const resetCallMedia = () => {
+  pendingIceCandidatesRef.current = [];
+
+  if (peerConnectionRef.current) {
+    peerConnectionRef.current.onicecandidate = null;
+    peerConnectionRef.current.ontrack = null;
+    peerConnectionRef.current.onconnectionstatechange = null;
+    peerConnectionRef.current.close();
+    peerConnectionRef.current = null;
+  }
+
+  localStreamRef.current?.getTracks().forEach(track => track.stop());
+  localStreamRef.current = null;
+
+  if (remoteAudioRef.current) {
+    remoteAudioRef.current.srcObject = null;
+  }
+
+  setIsCallMuted(false);
+  setCallSeconds(0);
+};
+
+const endCall = (reason = "ended", notifyPeer = true) => {
+  const activeCall = callStateRef.current;
+  const from = currentUserRef.current?.phone;
+
+  if (notifyPeer && activeCall?.peerPhone && from) {
+    getSocket().emit("call:end", {
+      to: activeCall.peerPhone,
+      from,
+      chatId: activeCall.chatId,
+      reason,
+    });
+  }
+
+  resetCallMedia();
+  const idleCallState = createIdleCallState();
+  callStateRef.current = idleCallState;
+  setCallState(idleCallState);
+};
+
+const attachRemoteAudio = (stream) => {
+  if (!remoteAudioRef.current || !stream) return;
+
+  remoteAudioRef.current.srcObject = stream;
+  const playPromise = remoteAudioRef.current.play?.();
+  if (playPromise?.catch) playPromise.catch(() => {});
+};
+
+const createPeerConnection = (peerPhone, chatId) => {
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+
+  pc.onicecandidate = (event) => {
+    const from = currentUserRef.current?.phone;
+    if (!event.candidate || !from) return;
+
+    getSocket().emit("call:ice-candidate", {
+      to: peerPhone,
+      from,
+      chatId,
+      candidate: event.candidate,
+    });
+  };
+
+  pc.ontrack = (event) => {
+    attachRemoteAudio(event.streams?.[0]);
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") {
+      const activeCall = callStateRef.current;
+      if (activeCall.status !== "idle") {
+        const connectedCallState = {
+          ...activeCall,
+          status: "connected",
+          startedAt: activeCall.startedAt || Date.now(),
+        };
+        callStateRef.current = connectedCallState;
+        setCallState(connectedCallState);
+      }
+    }
+
+    if (pc.connectionState === "failed") {
+      endCall("connection-failed", true);
+    }
+  };
+
+  peerConnectionRef.current = pc;
+  return pc;
+};
+
+const getLocalAudioStream = async () => {
+  if (localStreamRef.current) return localStreamRef.current;
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: false,
+  });
+  localStreamRef.current = stream;
+  return stream;
+};
+
+const addLocalAudioTracks = async (pc) => {
+  const stream = await getLocalAudioStream();
+  stream.getTracks().forEach(track => pc.addTrack(track, stream));
+};
+
+const flushPendingIceCandidates = async () => {
+  const pc = peerConnectionRef.current;
+  if (!pc || !pc.remoteDescription) return;
+
+  const candidates = [...pendingIceCandidatesRef.current];
+  pendingIceCandidatesRef.current = [];
+
+  for (const candidate of candidates) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.error("Failed to add pending ICE candidate:", err);
+    }
+  }
+};
+
+const startVoiceCall = async () => {
+  if (!selectedChat || selectedChat.isGroup) return;
+
+  const currentUserPhone = currentUserRef.current?.phone;
+  const peerPhone = selectedChat.phone;
+
+  if (!currentUserPhone || !peerPhone) {
+    alert("Unable to start call for this chat.");
+    return;
+  }
+
+  if (callStateRef.current.status !== "idle") {
+    alert("You are already in a call.");
+    return;
+  }
+
+  try {
+    const socket = getSocket();
+    if (!socket.connected) socket.connect();
+
+    const pc = createPeerConnection(peerPhone, selectedChat._id);
+    await addLocalAudioTracks(pc);
+
+    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    await pc.setLocalDescription(offer);
+
+    const outgoingCallState = {
+      status: "outgoing",
+      direction: "outgoing",
+      chatId: selectedChat._id,
+      peerPhone,
+      peerName: selectedChat.name || peerPhone,
+      offer: null,
+      startedAt: null,
+      error: "",
+    };
+    callStateRef.current = outgoingCallState;
+    setCallState(outgoingCallState);
+
+    socket.emit("call:offer", {
+      to: peerPhone,
+      from: currentUserPhone,
+      fromName: currentUserRef.current?.name || currentUserPhone,
+      chatId: selectedChat._id,
+      offer,
+      callType: "audio",
+    });
+  } catch (err) {
+    console.error("Call start failed:", err);
+    alert("Could not start the call. Please allow microphone access.");
+    endCall("setup-failed", false);
+  }
+};
+
+const acceptIncomingCall = async () => {
+  const incomingCall = callStateRef.current;
+  const currentUserPhone = currentUserRef.current?.phone;
+
+  if (incomingCall.status !== "incoming" || !currentUserPhone) return;
+
+  try {
+    const pc = createPeerConnection(incomingCall.peerPhone, incomingCall.chatId);
+    await addLocalAudioTracks(pc);
+    await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+    await flushPendingIceCandidates();
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    const connectingCallState = {
+      ...incomingCall,
+      status: "connecting",
+      offer: null,
+    };
+    callStateRef.current = connectingCallState;
+    setCallState(connectingCallState);
+
+    getSocket().emit("call:answer", {
+      to: incomingCall.peerPhone,
+      from: currentUserPhone,
+      chatId: incomingCall.chatId,
+      answer,
+    });
+  } catch (err) {
+    console.error("Call accept failed:", err);
+    alert("Could not answer the call. Please allow microphone access.");
+    endCall("setup-failed", true);
+  }
+};
+
+const rejectIncomingCall = () => {
+  const incomingCall = callStateRef.current;
+  const currentUserPhone = currentUserRef.current?.phone;
+
+  if (incomingCall.status === "incoming" && incomingCall.peerPhone && currentUserPhone) {
+    getSocket().emit("call:reject", {
+      to: incomingCall.peerPhone,
+      from: currentUserPhone,
+      chatId: incomingCall.chatId,
+      reason: "rejected",
+    });
+  }
+
+  endCall("rejected", false);
+};
+
+const toggleCallMute = () => {
+  const nextMuted = !isCallMuted;
+  localStreamRef.current?.getAudioTracks().forEach(track => {
+    track.enabled = !nextMuted;
+  });
+  setIsCallMuted(nextMuted);
+};
+
+const handleIncomingCall = (payload) => {
+  const currentUserPhone = currentUserRef.current?.phone;
+  if (!currentUserPhone || !payload?.from || String(payload.from) === String(currentUserPhone)) return;
+
+  if (callStateRef.current.status !== "idle") {
+    getSocket().emit("call:busy", {
+      to: payload.from,
+      from: currentUserPhone,
+      chatId: payload.chatId,
+    });
+    return;
+  }
+
+  const incomingCallState = {
+    status: "incoming",
+    direction: "incoming",
+    chatId: payload.chatId,
+    peerPhone: payload.from,
+    peerName: payload.fromName || payload.from,
+    offer: payload.offer,
+    startedAt: null,
+    error: "",
+  };
+  callStateRef.current = incomingCallState;
+  setCallState(incomingCallState);
+};
+
+const handleCallAnswered = async ({ from, answer }) => {
+  const activeCall = callStateRef.current;
+  if (!answer || String(activeCall.peerPhone) !== String(from)) return;
+
+  try {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    await flushPendingIceCandidates();
+
+    const connectedCallState = {
+      ...activeCall,
+      status: "connected",
+      startedAt: activeCall.startedAt || Date.now(),
+      offer: null,
+    };
+    callStateRef.current = connectedCallState;
+    setCallState(connectedCallState);
+  } catch (err) {
+    console.error("Call answer failed:", err);
+    endCall("answer-failed", true);
+  }
+};
+
+const handleRemoteIceCandidate = async ({ from, candidate }) => {
+  const activeCall = callStateRef.current;
+  if (!candidate || String(activeCall.peerPhone) !== String(from)) return;
+
+  const pc = peerConnectionRef.current;
+  if (!pc || !pc.remoteDescription) {
+    pendingIceCandidatesRef.current.push(candidate);
+    return;
+  }
+
+  try {
+    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+  } catch (err) {
+    console.error("Failed to add ICE candidate:", err);
+  }
+};
+
+const handleCallRejected = ({ from }) => {
+  const activeCall = callStateRef.current;
+  if (String(activeCall.peerPhone) !== String(from)) return;
+
+  alert("Call declined.");
+  endCall("rejected", false);
+};
+
+const handleCallBusy = ({ from }) => {
+  const activeCall = callStateRef.current;
+  if (String(activeCall.peerPhone) !== String(from)) return;
+
+  alert("The user is already on another call.");
+  endCall("busy", false);
+};
+
+const handleRemoteCallEnded = ({ from }) => {
+  const activeCall = callStateRef.current;
+  if (String(activeCall.peerPhone) !== String(from)) return;
+
+  endCall("remote-ended", false);
+};
+
+useEffect(() => {
+  const s = getSocket();
+
+  s.on("call:incoming", handleIncomingCall);
+  s.on("call:answered", handleCallAnswered);
+  s.on("call:ice-candidate", handleRemoteIceCandidate);
+  s.on("call:rejected", handleCallRejected);
+  s.on("call:busy", handleCallBusy);
+  s.on("call:ended", handleRemoteCallEnded);
+
+  return () => {
+    s.off("call:incoming", handleIncomingCall);
+    s.off("call:answered", handleCallAnswered);
+    s.off("call:ice-candidate", handleRemoteIceCandidate);
+    s.off("call:rejected", handleCallRejected);
+    s.off("call:busy", handleCallBusy);
+    s.off("call:ended", handleRemoteCallEnded);
+    endCall("unmounted", true);
+  };
+}, []);
+
+useEffect(() => {
+  if (callState.status !== "connected") return;
+
+  const timer = setInterval(() => {
+    const startedAt = callStateRef.current.startedAt || Date.now();
+    setCallSeconds(Math.floor((Date.now() - startedAt) / 1000));
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, [callState.status]);
 
   // ── 4. useMemo ────────────────────────────────
   const tabs = useMemo(() => {
@@ -1714,6 +2107,20 @@ const getChatStatus = (chat) => {
 }
         `}</style>
       <style>{shimmerCSS}</style>
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: "none" }} />
+
+      {callState.status !== "idle" && createPortal(
+        <CallOverlay
+          callState={callState}
+          callSeconds={callSeconds}
+          isMuted={isCallMuted}
+          onAccept={acceptIncomingCall}
+          onReject={rejectIncomingCall}
+          onEnd={() => endCall("ended", true)}
+          onToggleMute={toggleCallMute}
+        />,
+        document.body
+      )}
 
       <div
   ref={pageRef}
@@ -2073,7 +2480,12 @@ onClick={() => {
                         </div>
                         <div className="d-flex gap-1 flex-shrink-0">
                           <HeaderIcon icon={<FiSearch size={18} />} />
-                          <HeaderIcon icon={<FiPhone size={18} />} />
+                          <HeaderIcon
+                            icon={<FiPhone size={18} />}
+                            onClick={startVoiceCall}
+                            disabled={selectedChat?.isGroup || callState.status !== "idle"}
+                            title={selectedChat?.isGroup ? "Voice calls are available in direct chats" : "Voice call"}
+                          />
                           <button
                             type="button"
                             onClick={() => isMobile ? setShowMobileContactInfo(true) : setShowContactInfo(p => !p)}
@@ -3194,7 +3606,7 @@ useEffect(() => {
 
   const handleQuickReplySend = (text) => {
     const newMsg = {
-      id: Date.now(),
+      id: `tmp-quick-reply-${text}`,
       text: text,
       type: "sent",
       messageType: "text",
@@ -4218,7 +4630,6 @@ export function AudioRecorderModal({ isMobile, isRecording, recordingSeconds, au
       animRef.current = requestAnimationFrame(animate);
     } else {
       cancelAnimationFrame(animRef.current);
-      if (!audioBlob) setBars(Array(28).fill(4));
     }
     return () => cancelAnimationFrame(animRef.current);
   }, [isRecording, audioBlob]);
@@ -5013,10 +5424,8 @@ function ContactBubble({ msg, isMine, onStartChat }) {
     </div>
   );
 }
-function MessageMeta({ msg, inline = false }) {
-  const tickColor = msg.seen ? "#53bdeb" : "#8696a0";
-
-const SingleTick = () => (
+function SingleTick() {
+  return (
   <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
     <path
       d="M1.5 5.5L5 9L12.5 1.5"
@@ -5026,9 +5435,11 @@ const SingleTick = () => (
       strokeLinejoin="round"
     />
   </svg>
-);
+  );
+}
 
-  const DoubleTick = () => (
+function DoubleTick({ tickColor }) {
+  return (
   <svg width="18" height="11" viewBox="0 0 18 11" fill="none">
     {/* First tick (back) */}
     <path
@@ -5047,7 +5458,11 @@ const SingleTick = () => (
       strokeLinejoin="round"
     />
   </svg>
-);
+  );
+}
+
+function MessageMeta({ msg, inline = false }) {
+  const tickColor = msg.seen ? "#53bdeb" : "#8696a0";
 
   return (
     <div
@@ -5057,18 +5472,190 @@ const SingleTick = () => (
       <span>{msg.time}</span>
       {msg.type === "sent" && (
         <span style={{ display: "flex" , alignItems: "center", lineHeight: 1 }}>
-          {msg.delivered || msg.seen ? <DoubleTick /> : <SingleTick />}
+          {msg.delivered || msg.seen ? <DoubleTick tickColor={tickColor} /> : <SingleTick />}
         </span>
       )}
     </div>
   );
 }
 
-function HeaderIcon({ icon }) {
+function HeaderIcon({ icon, onClick, title, disabled = false, active = false }) {
   return (
-    <button type="button" className="icon-btn btn border-0 rounded-circle d-flex align-items-center justify-content-center" style={{ width: 38, height: 38, background: "transparent", color: "#54656f" }}>
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      disabled={disabled}
+      className="icon-btn btn border-0 rounded-circle d-flex align-items-center justify-content-center"
+      style={{
+        width: 38,
+        height: 38,
+        background: active ? "#d9fdd3" : "transparent",
+        color: active ? "#00a884" : "#54656f",
+        opacity: disabled ? 0.45 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
       {icon}
     </button>
+  );
+}
+
+function formatCallDuration(seconds = 0) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function CallOverlay({ callState, callSeconds, isMuted, onAccept, onReject, onEnd, onToggleMute }) {
+  const isIncoming = callState.status === "incoming";
+  const isConnected = callState.status === "connected";
+  const statusText =
+    callState.status === "incoming"
+      ? "Incoming voice call"
+      : callState.status === "outgoing"
+      ? "Calling..."
+      : callState.status === "connecting"
+      ? "Connecting..."
+      : formatCallDuration(callSeconds);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10050,
+        background: "rgba(17,27,33,0.64)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 18,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 360,
+          background: "#ffffff",
+          borderRadius: 18,
+          boxShadow: "0 20px 52px rgba(0,0,0,0.25)",
+          padding: "26px 22px 22px",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 86,
+            height: 86,
+            borderRadius: "50%",
+            background: "#d9fdd3",
+            color: "#005c4b",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 16px",
+            fontSize: "2rem",
+            fontWeight: 700,
+          }}
+        >
+          {(callState.peerName || callState.peerPhone || "?").charAt(0).toUpperCase()}
+        </div>
+
+        <div style={{ fontSize: "1.1rem", fontWeight: 600, color: "#111b21", marginBottom: 4 }}>
+          {callState.peerName || callState.peerPhone}
+        </div>
+        <div style={{ fontSize: "0.9rem", color: isConnected ? "#00a884" : "#667781", marginBottom: 22 }}>
+          {statusText}
+        </div>
+
+        {isIncoming ? (
+          <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
+            <button
+              type="button"
+              onClick={onReject}
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: "50%",
+                border: "none",
+                background: "#ef4444",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+              title="Decline"
+            >
+              <FiX size={22} />
+            </button>
+            <button
+              type="button"
+              onClick={onAccept}
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: "50%",
+                border: "none",
+                background: "#00a884",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+              title="Answer"
+            >
+              <FiPhone size={22} />
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", justifyContent: "center", gap: 14 }}>
+            {isConnected && (
+              <button
+                type="button"
+                onClick={onToggleMute}
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: "50%",
+                  border: "1px solid #e9edef",
+                  background: isMuted ? "#fef2f2" : "#f0f2f5",
+                  color: isMuted ? "#dc2626" : "#54656f",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? <FiMicOff size={20} /> : <FiMic size={20} />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onEnd}
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: "50%",
+                border: "none",
+                background: "#ef4444",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+              title="End call"
+            >
+              <FiX size={21} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
