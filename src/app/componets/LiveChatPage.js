@@ -80,6 +80,12 @@ const createIdleCallState = () => ({
   error: "",
 });
 
+const CALL_ERROR_MESSAGES = {
+  "connection-timeout": "Call could not connect. Check both networks and try again.",
+  "connection-failed": "Call media connection failed. A TURN server is required for this network.",
+  "ice-failed": "Call media connection failed. A TURN server is required for this network.",
+};
+
 /* ─────────────────────────────────────────────
   Skeleton components (unchanged)
 ───────────────────────────────────────────── */
@@ -845,6 +851,12 @@ const endCall = (reason = "ended", notifyPeer = true) => {
   setCallState(idleCallState);
 };
 
+const failCall = (reason = "connection-failed", notifyPeer = true) => {
+  const message = CALL_ERROR_MESSAGES[reason];
+  endCall(reason, notifyPeer);
+  if (message) alert(message);
+};
+
 const attachRemoteAudio = (stream) => {
   if (!remoteAudioRef.current || !stream) return;
 
@@ -858,8 +870,7 @@ const startCallConnectTimeout = () => {
   callConnectTimerRef.current = setTimeout(() => {
     const activeCall = callStateRef.current;
     if (activeCall.status === "outgoing" || activeCall.status === "connecting") {
-      endCall("connection-timeout", true);
-      alert("Call could not connect. Please check both devices are online and try again.");
+      failCall("connection-timeout", true);
     }
   }, CALL_CONNECT_TIMEOUT_MS);
 };
@@ -896,7 +907,7 @@ const scheduleConnectionFailureEnd = (reason = "connection-failed") => {
       pc.iceConnectionState === "failed";
 
     if (stillFailed && callStateRef.current.status !== "idle") {
-      endCall(reason, true);
+      failCall(reason, true);
     }
   }, CALL_FAILURE_GRACE_MS);
 };
