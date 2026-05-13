@@ -40,11 +40,30 @@ import API from "../utils/api";
 // ✅ Backend root URL (without /api) for media files
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ],
+const DEFAULT_ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+];
+
+const getRtcConfig = () => {
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+  const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+  return {
+    iceServers: turnUrl
+      ? [
+          ...DEFAULT_ICE_SERVERS,
+          {
+            urls: turnUrl.split(",").map(url => url.trim()).filter(Boolean),
+            username: turnUsername,
+            credential: turnCredential,
+          },
+        ]
+      : DEFAULT_ICE_SERVERS,
+    iceCandidatePoolSize: 10,
+  };
 };
 
 const CALL_CONNECT_TIMEOUT_MS = 30000;
@@ -64,6 +83,8 @@ const createIdleCallState = () => ({
 /* ─────────────────────────────────────────────
   Skeleton components (unchanged)
 ───────────────────────────────────────────── */
+const normalizePhoneKey = (phone) => String(phone || "").replace(/\D/g, "").slice(-10);
+
 const shimmerCSS = `
   @keyframes lc-shimmer {
     0%   { transform: translateX(-100%); }
@@ -881,11 +902,21 @@ const scheduleConnectionFailureEnd = (reason = "connection-failed") => {
 };
 
 const createPeerConnection = (peerPhone, chatId) => {
-  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const pc = new RTCPeerConnection(getRtcConfig());
 
   pc.onicecandidate = (event) => {
     const from = currentUserRef.current?.phone;
-    if (!event.candidate || !from) return;
+    if (!event.candidate || !from) {
+      console.log("[call] ICE gathering complete", { peerPhone, chatId });
+      return;
+    }
+
+    console.log("[call] sending ICE candidate", {
+      to: peerPhone,
+      type: event.candidate.type,
+      protocol: event.candidate.protocol,
+      address: event.candidate.address,
+    });
 
     getSocket().emit("call:ice-candidate", {
       to: peerPhone,
@@ -896,10 +927,18 @@ const createPeerConnection = (peerPhone, chatId) => {
   };
 
   pc.ontrack = (event) => {
+    console.log("[call] remote track received", {
+      peerPhone,
+      streams: event.streams?.length || 0,
+      trackKind: event.track?.kind,
+    });
     attachRemoteAudio(event.streams?.[0]);
+    markCallConnected();
   };
 
   pc.onconnectionstatechange = () => {
+    console.log("[call] connection state", pc.connectionState);
+
     if (pc.connectionState === "connected") {
       markCallConnected();
       return;
@@ -911,6 +950,8 @@ const createPeerConnection = (peerPhone, chatId) => {
   };
 
   pc.oniceconnectionstatechange = () => {
+    console.log("[call] ICE connection state", pc.iceConnectionState);
+
     if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
       markCallConnected();
       return;
@@ -919,6 +960,14 @@ const createPeerConnection = (peerPhone, chatId) => {
     if (pc.iceConnectionState === "failed") {
       scheduleConnectionFailureEnd("ice-failed");
     }
+  };
+
+  pc.onicegatheringstatechange = () => {
+    console.log("[call] ICE gathering state", pc.iceGatheringState);
+  };
+
+  pc.onsignalingstatechange = () => {
+    console.log("[call] signaling state", pc.signalingState);
   };
 
   peerConnectionRef.current = pc;
@@ -1075,7 +1124,11 @@ const toggleCallMute = () => {
 
 const handleIncomingCall = (payload) => {
   const currentUserPhone = currentUserRef.current?.phone;
-  if (!currentUserPhone || !payload?.from || String(payload.from) === String(currentUserPhone)) return;
+  if (
+    !currentUserPhone ||
+    !payload?.from ||
+    normalizePhoneKey(payload.from) === normalizePhoneKey(currentUserPhone)
+  ) return;
 
   if (callStateRef.current.status !== "idle") {
     getSocket().emit("call:busy", {
@@ -1102,7 +1155,7 @@ const handleIncomingCall = (payload) => {
 
 const handleCallAnswered = async ({ from, answer }) => {
   const activeCall = callStateRef.current;
-  if (!answer || String(activeCall.peerPhone) !== String(from)) return;
+  if (!answer || normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
 
   try {
     const pc = peerConnectionRef.current;
@@ -1130,7 +1183,7 @@ const handleCallAnswered = async ({ from, answer }) => {
 
 const handleRemoteIceCandidate = async ({ from, candidate }) => {
   const activeCall = callStateRef.current;
-  if (!candidate || String(activeCall.peerPhone) !== String(from)) return;
+  if (!candidate || normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
 
   const pc = peerConnectionRef.current;
   if (!pc || !pc.remoteDescription) {
@@ -1147,7 +1200,7 @@ const handleRemoteIceCandidate = async ({ from, candidate }) => {
 
 const handleCallRejected = ({ from }) => {
   const activeCall = callStateRef.current;
-  if (String(activeCall.peerPhone) !== String(from)) return;
+  if (normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
 
   alert("Call declined.");
   endCall("rejected", false);
@@ -1155,7 +1208,7 @@ const handleCallRejected = ({ from }) => {
 
 const handleCallBusy = ({ from }) => {
   const activeCall = callStateRef.current;
-  if (String(activeCall.peerPhone) !== String(from)) return;
+  if (normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
 
   alert("The user is already on another call.");
   endCall("busy", false);
@@ -1163,7 +1216,7 @@ const handleCallBusy = ({ from }) => {
 
 const handleRemoteCallEnded = ({ from }) => {
   const activeCall = callStateRef.current;
-  if (String(activeCall.peerPhone) !== String(from)) return;
+  if (normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
 
   endCall("remote-ended", false);
 };
