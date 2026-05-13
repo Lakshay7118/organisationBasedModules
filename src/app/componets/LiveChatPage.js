@@ -47,6 +47,9 @@ const RTC_CONFIG = {
   ],
 };
 
+const CALL_CONNECT_TIMEOUT_MS = 30000;
+const CALL_FAILURE_GRACE_MS = 8000;
+
 const createIdleCallState = () => ({
   status: "idle",
   direction: null,
@@ -369,6 +372,8 @@ const peerConnectionRef = useRef(null);
 const localStreamRef = useRef(null);
 const remoteAudioRef = useRef(null);
 const pendingIceCandidatesRef = useRef([]);
+const callFailureTimerRef = useRef(null);
+const callConnectTimerRef = useRef(null);
 
 useEffect(() => {
   selectedChatRef.current = selectedChat;
@@ -451,9 +456,16 @@ const handleOnlineUsers = ({ users, lastSeen }) => {
   // ================== JOIN USER ==================
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  if (user?.phone) {
-    s.emit("joinUserRoom", user.phone);
-  }
+  const joinUserRoom = () => {
+    if (user?.phone) {
+      s.emit("joinUserRoom", user.phone);
+    }
+  };
+
+  if (s.connected) joinUserRoom();
+  else s.once("connect", joinUserRoom);
+
+  s.on("connect", joinUserRoom);
 
   // ================== 🔥 CRITICAL FIX ==================
 
@@ -480,6 +492,7 @@ const handleOnlineUsers = ({ users, lastSeen }) => {
   // ================== CLEANUP ==================
   return () => {
     s.off("onlineUsers", handleOnlineUsers);
+    s.off("connect", joinUserRoom);
 
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -768,6 +781,10 @@ const handleMessagesSeen = ({ chatId: seenChatId }) => {
 
 const resetCallMedia = () => {
   pendingIceCandidatesRef.current = [];
+  clearTimeout(callFailureTimerRef.current);
+  clearTimeout(callConnectTimerRef.current);
+  callFailureTimerRef.current = null;
+  callConnectTimerRef.current = null;
 
   if (peerConnectionRef.current) {
     peerConnectionRef.current.onicecandidate = null;
@@ -815,6 +832,54 @@ const attachRemoteAudio = (stream) => {
   if (playPromise?.catch) playPromise.catch(() => {});
 };
 
+const startCallConnectTimeout = () => {
+  clearTimeout(callConnectTimerRef.current);
+  callConnectTimerRef.current = setTimeout(() => {
+    const activeCall = callStateRef.current;
+    if (activeCall.status === "outgoing" || activeCall.status === "connecting") {
+      endCall("connection-timeout", true);
+      alert("Call could not connect. Please check both devices are online and try again.");
+    }
+  }, CALL_CONNECT_TIMEOUT_MS);
+};
+
+const markCallConnected = () => {
+  const activeCall = callStateRef.current;
+  if (activeCall.status === "idle") return;
+
+  clearTimeout(callFailureTimerRef.current);
+  clearTimeout(callConnectTimerRef.current);
+  callFailureTimerRef.current = null;
+  callConnectTimerRef.current = null;
+
+  const connectedCallState = {
+    ...activeCall,
+    status: "connected",
+    startedAt: activeCall.startedAt || Date.now(),
+    offer: null,
+    error: "",
+  };
+  callStateRef.current = connectedCallState;
+  setCallState(connectedCallState);
+};
+
+const scheduleConnectionFailureEnd = (reason = "connection-failed") => {
+  if (callFailureTimerRef.current) return;
+
+  callFailureTimerRef.current = setTimeout(() => {
+    const pc = peerConnectionRef.current;
+    const stillFailed =
+      !pc ||
+      pc.connectionState === "failed" ||
+      pc.connectionState === "closed" ||
+      pc.iceConnectionState === "failed";
+
+    if (stillFailed && callStateRef.current.status !== "idle") {
+      endCall(reason, true);
+    }
+  }, CALL_FAILURE_GRACE_MS);
+};
+
 const createPeerConnection = (peerPhone, chatId) => {
   const pc = new RTCPeerConnection(RTC_CONFIG);
 
@@ -836,20 +901,23 @@ const createPeerConnection = (peerPhone, chatId) => {
 
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "connected") {
-      const activeCall = callStateRef.current;
-      if (activeCall.status !== "idle") {
-        const connectedCallState = {
-          ...activeCall,
-          status: "connected",
-          startedAt: activeCall.startedAt || Date.now(),
-        };
-        callStateRef.current = connectedCallState;
-        setCallState(connectedCallState);
-      }
+      markCallConnected();
+      return;
     }
 
-    if (pc.connectionState === "failed") {
-      endCall("connection-failed", true);
+    if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+      scheduleConnectionFailureEnd("connection-failed");
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      markCallConnected();
+      return;
+    }
+
+    if (pc.iceConnectionState === "failed") {
+      scheduleConnectionFailureEnd("ice-failed");
     }
   };
 
@@ -927,6 +995,7 @@ const startVoiceCall = async () => {
     };
     callStateRef.current = outgoingCallState;
     setCallState(outgoingCallState);
+    startCallConnectTimeout();
 
     socket.emit("call:offer", {
       to: peerPhone,
@@ -965,6 +1034,7 @@ const acceptIncomingCall = async () => {
     };
     callStateRef.current = connectingCallState;
     setCallState(connectingCallState);
+    startCallConnectTimeout();
 
     getSocket().emit("call:answer", {
       to: incomingCall.peerPhone,
@@ -1041,14 +1111,17 @@ const handleCallAnswered = async ({ from, answer }) => {
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
     await flushPendingIceCandidates();
 
-    const connectedCallState = {
+    const connectingCallState = {
       ...activeCall,
-      status: "connected",
-      startedAt: activeCall.startedAt || Date.now(),
+      status: "connecting",
       offer: null,
     };
-    callStateRef.current = connectedCallState;
-    setCallState(connectedCallState);
+    callStateRef.current = connectingCallState;
+    setCallState(connectingCallState);
+    startCallConnectTimeout();
+    if (pc.connectionState === "connected" || pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      markCallConnected();
+    }
   } catch (err) {
     console.error("Call answer failed:", err);
     endCall("answer-failed", true);

@@ -71,12 +71,55 @@ function Avatar({ user, size = 32, onClick }) {
 }
 
 /* ---------- StatusPill ---------- */
+/* ---------- StatusPill ---------- */
+let _activePillSetter = null; // global tracker
+
 function StatusPill({ status, onChange, readonly }) {
   const [open, setOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
+  const btnRef = useRef(null);
   const cfg = STATUS[status] || STATUS.pending;
+
+  // Register this pill as the active one; close all others
+  const handleOpen = (e) => {
+    if (readonly) return;
+    if (!open) {
+      // Close any other open pill
+      if (_activePillSetter && _activePillSetter !== setOpen) {
+        _activePillSetter(false);
+      }
+      _activePillSetter = setOpen;
+
+      // Smart positioning: open upward if near bottom of viewport
+      if (btnRef.current) {
+        const rect = btnRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        setDropUp(spaceBelow < 180); // 180px = approx dropdown height
+      }
+    } else {
+      if (_activePillSetter === setOpen) _activePillSetter = null;
+    }
+    setOpen(p => !p);
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (btnRef.current && !btnRef.current.closest('[data-status-pill]')?.contains(e.target)) {
+        setOpen(false);
+        if (_activePillSetter === setOpen) _activePillSetter = null;
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
-      <button onClick={() => !readonly && setOpen(p => !p)}
+    <div data-status-pill="" style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
         style={{
           display: "inline-flex", alignItems: "center", gap: 4,
           padding: "4px 10px", borderRadius: 20,
@@ -89,13 +132,23 @@ function StatusPill({ status, onChange, readonly }) {
       </button>
       {open && (
         <div style={{
-          position: "absolute", top: "calc(100% + 6px)", left: 0,
+          position: "fixed", // use fixed so it escapes table overflow
           background: "#fff", borderRadius: 10,
-          boxShadow: "0 8px 24px rgba(0,0,0,.12)",
-          border: "1px solid #e5e7eb", overflow: "hidden", zIndex: 999, minWidth: 160,
+          boxShadow: "0 8px 24px rgba(0,0,0,.15)",
+          border: "1px solid #e5e7eb",
+          overflow: "hidden", zIndex: 9999, minWidth: 160,
+          // Position calculated via JS below
+          ...((() => {
+            if (!btnRef.current) return {};
+            const rect = btnRef.current.getBoundingClientRect();
+            if (dropUp) {
+              return { bottom: window.innerHeight - rect.top + 4, left: rect.left };
+            }
+            return { top: rect.bottom + 4, left: rect.left };
+          })()),
         }}>
           {Object.entries(STATUS).map(([k, v]) => (
-            <div key={k} onClick={() => { onChange(k); setOpen(false); }}
+            <div key={k} onClick={() => { onChange(k); setOpen(false); if (_activePillSetter === setOpen) _activePillSetter = null; }}
               style={{
                 padding: "9px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 8,
