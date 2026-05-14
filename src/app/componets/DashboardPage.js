@@ -38,13 +38,13 @@ const shimmerKeyframes = `
 
 function Skeleton({ width = "100%", height = 16, radius = 8, style = {} }) {
   return (
-    <div style={{ ...skeletonStyle, width, height, borderRadius: radius, flexShrink: 0, ...style }}>
+    <div className="wa-skeleton-block" style={{ ...skeletonStyle, width, height, borderRadius: radius, flexShrink: 0, ...style }}>
       <div
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)",
+            "linear-gradient(90deg, transparent 0%, var(--skeleton-highlight) 50%, transparent 100%)",
           animation: "wa-shimmer 1.6s ease-in-out infinite",
         }}
       />
@@ -59,6 +59,7 @@ function HeroBannerSkeleton() {
   return (
     <div
       className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden"
+      data-skeleton-panel="true"
       style={{ backgroundColor: "var(--wa-skeleton-base, #e8f0ee)" }}
     >
       <div className="card-body p-4">
@@ -123,6 +124,7 @@ function StepsBannerSkeleton() {
   return (
     <div
       className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden"
+      data-skeleton-panel="true"
       style={{ backgroundColor: "var(--wa-skeleton-base, #e8f0ee)" }}
     >
       <div className="card-body p-4">
@@ -353,10 +355,32 @@ export default function DashboardPage() {
   return (
     <>
       <style>{shimmerKeyframes}</style>
+      <style>{`
+        body[data-theme="dark"] .dashboard-page {
+          --wa-skeleton-base: #1f2c34;
+          --skeleton-highlight: rgba(134, 150, 160, 0.24);
+        }
+        body[data-theme="dark"] .dashboard-page .wa-skeleton-block {
+          background-color: #1f2c34 !important;
+        }
+        body[data-theme="dark"] .dashboard-page [data-skeleton-panel="true"] {
+          background-color: #111b21 !important;
+        }
+        body[data-theme="dark"] .dashboard-page .card {
+          background-color: #111b21 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .dashboard-page [style*="background: rgba(255,255,255,0.12)"],
+        body[data-theme="dark"] .dashboard-page [style*="background: rgba(255,255,255,0.1)"],
+        body[data-theme="dark"] .dashboard-page [style*="background-color: rgba(255, 255, 255, 0.12)"] {
+          background: #202c33 !important;
+          background-color: #202c33 !important;
+        }
+      `}</style>
 
       <div
         ref={rootRef}
-        className="container-fluid py-3 py-lg-4"
+        className="dashboard-page container-fluid py-3 py-lg-4"
         style={{
           minHeight: "100vh",
           background: `linear-gradient(

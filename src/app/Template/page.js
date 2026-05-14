@@ -673,6 +673,62 @@ export default function TemplatesPage() {
         .loading-box { background:rgba(255,255,255,0.92); border:1px solid rgba(226,232,240,0.95); border-radius:20px; padding:30px; text-align:center; color:#64748b; font-weight:700; }
         .view-detail-btn { width:100%; margin-top:10px; padding:8px; border-radius:12px; border:1px solid #e2e8f0; background:#f8fafc; color:#0d5b63; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.2s; }
         .view-detail-btn:hover { background:#e0f7f5; border-color:#0d5b63; }
+        body[data-theme="dark"] .campaigns-page-shell {
+          background: #0b141a !important;
+          color: #e9edef;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .campaigns-topbar-box,
+        body[data-theme="dark"] .campaigns-page-shell .explore-card,
+        body[data-theme="dark"] .campaigns-page-shell .list-card,
+        body[data-theme="dark"] .campaigns-page-shell .list-head,
+        body[data-theme="dark"] .campaigns-page-shell .empty-state,
+        body[data-theme="dark"] .campaigns-page-shell .loading-box {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 12px 28px rgba(0,0,0,0.18) !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .campaigns-search-input,
+        body[data-theme="dark"] .campaigns-page-shell .campaigns-secondary-btn,
+        body[data-theme="dark"] .campaigns-page-shell .campaigns-tab-btn:not(.active),
+        body[data-theme="dark"] .campaigns-page-shell .fav-btn,
+        body[data-theme="dark"] .campaigns-page-shell .icon-btn,
+        body[data-theme="dark"] .campaigns-page-shell .mini-preview-wrap,
+        body[data-theme="dark"] .campaigns-page-shell .mini-carousel-card,
+        body[data-theme="dark"] .campaigns-page-shell .mini-nav-btn,
+        body[data-theme="dark"] .campaigns-page-shell .template-type-chip,
+        body[data-theme="dark"] .campaigns-page-shell .view-detail-btn {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .campaigns-search-input::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .template-name,
+        body[data-theme="dark"] .campaigns-page-shell .mini-carousel-title,
+        body[data-theme="dark"] .campaigns-page-shell .empty-state-title {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .template-subline,
+        body[data-theme="dark"] .campaigns-page-shell .mini-text-preview,
+        body[data-theme="dark"] .campaigns-page-shell .mini-carousel-desc,
+        body[data-theme="dark"] .campaigns-page-shell .created-date,
+        body[data-theme="dark"] .campaigns-page-shell .empty-state,
+        body[data-theme="dark"] .campaigns-page-shell .empty-state-text {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .mini-preview-placeholder {
+          background: #202c33 !important;
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .card-footer-row {
+          border-top-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .campaigns-page-shell .card-category-badge {
+          background: rgba(0,168,132,0.14) !important;
+          border-color: rgba(0,168,132,0.34) !important;
+          color: #6ee7b7 !important;
+        }
         @media (max-width:1399px) { .explore-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
         @media (max-width:1199px) { .explore-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
         @media (max-width:767px) {

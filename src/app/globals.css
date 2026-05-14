@@ -2,6 +2,9 @@
 
 :root {
   --app-bg: #f3f5f7;
+  --app-surface: #ffffff;
+  --app-surface-2: #f8fafc;
+  --app-surface-3: #f1f5f9;
   --app-white: #ffffff;
   --app-border: #e8ecef;
   --app-text: #1f2937;
@@ -27,6 +30,11 @@
   --input-bg: #ffffff;
   --input-border: #d6dbe1;
   --input-focus: rgba(37, 211, 102, 0.15);
+
+  --skeleton-base: #e8edf2;
+  --skeleton-highlight: rgba(255, 255, 255, 0.62);
+  --skeleton-gradient: linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%);
+  --wa-skeleton-base: #e8f0ee;
 
   --btn-radius: 14px;
 
@@ -92,6 +100,71 @@
   --wa-icon-circle-text: #6c757d;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --app-bg: #0b141a;
+  --app-surface: #111b21;
+  --app-surface-2: #202c33;
+  --app-surface-3: #2a3942;
+  --app-white: #111b21;
+  --app-border: #2a3942;
+  --app-text: #e9edef;
+  --app-text-muted: #8696a0;
+
+  --primary-teal: #0f3b40;
+  --primary-teal-dark: #0a2b30;
+
+  --card-bg: #111b21;
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --card-shadow-hover: 0 18px 40px rgba(0, 0, 0, 0.34);
+
+  --input-bg: #202c33;
+  --input-border: #2a3942;
+  --input-focus: rgba(37, 211, 102, 0.2);
+
+  --skeleton-base: #1f2c34;
+  --skeleton-highlight: rgba(134, 150, 160, 0.24);
+  --skeleton-gradient: linear-gradient(90deg, #1f2c34 0%, #2a3942 50%, #1f2c34 100%);
+  --wa-skeleton-base: #1f2c34;
+
+  --sidebar-bg: #111b21;
+  --sidebar-border: #2a3942;
+  --sidebar-divider: #2a3942;
+  --sidebar-hover-bg: #202c33;
+  --sidebar-active-bg: rgba(0, 168, 132, 0.22);
+
+  --topbar-bg: #202c33;
+  --topbar-border: #2a3942;
+  --topbar-shadow: rgba(0, 0, 0, 0.34);
+
+  --text-primary: #e9edef;
+  --text-muted: #8696a0;
+
+  --wa-bg-page-top: #0b141a;
+  --wa-bg-page-mid: #111b21;
+  --wa-bg-page-bottom: #111b21;
+  --wa-bg-card: #111b21;
+  --wa-bg-light: #202c33;
+
+  --wa-text-primary: #e9edef;
+  --wa-text-secondary: #8696a0;
+
+  --wa-success-soft: rgba(34, 197, 94, 0.16);
+  --wa-warning-soft: rgba(245, 158, 11, 0.18);
+
+  --wa-btn-dark: #e5e7eb;
+  --wa-btn-dark-text: #0f172a;
+  --wa-btn-light: #0f172a;
+  --wa-btn-light-text: #e5e7eb;
+
+  --wa-border-light: #2a3942;
+  --wa-border-soft: rgba(134, 150, 160, 0.18);
+
+  --wa-icon-circle-bg: #202c33;
+  --wa-icon-circle-text: #aebac1;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -106,6 +179,252 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   color: var(--app-text);
 }
+
+body[data-theme="dark"] {
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+body[data-theme="dark"] .main-content {
+  background: var(--app-bg) !important;
+  color: var(--app-text) !important;
+}
+
+body[data-theme="dark"] .app-content-shell,
+body[data-theme="dark"] .app-card,
+body[data-theme="dark"] .modal-content,
+body[data-theme="dark"] .dropdown-menu,
+body[data-theme="dark"] .list-group-item {
+  background: var(--card-bg) !important;
+  color: var(--app-text) !important;
+  border-color: var(--app-border) !important;
+}
+
+body[data-theme="dark"] .bg-white,
+body[data-theme="dark"] .bg-light,
+body[data-theme="dark"] .table,
+body[data-theme="dark"] table,
+body[data-theme="dark"] thead,
+body[data-theme="dark"] tbody,
+body[data-theme="dark"] tr,
+body[data-theme="dark"] td,
+body[data-theme="dark"] th {
+  background-color: var(--card-bg) !important;
+  color: var(--app-text) !important;
+  border-color: var(--app-border) !important;
+}
+
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(255, 255, 255)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(255, 255, 255)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgba(255, 255, 255"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgba(255, 255, 255"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgba(255,255,255"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgba(255,255,255"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: white"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: white"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #fff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#fff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: #fff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color:#fff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #ffffff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#ffffff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: #ffffff"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color:#ffffff"] {
+  background: var(--app-surface) !important;
+  background-image: none !important;
+}
+
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(248, 250, 252)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(248, 250, 252)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(249, 250, 251)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(249, 250, 251)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(241, 245, 249)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(241, 245, 249)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(240, 242, 245)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(240, 242, 245)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(250, 251, 252)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(250, 251, 252)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(243, 244, 246)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(243, 244, 246)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: rgb(238, 242, 247)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background-color: rgb(238, 242, 247)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #f8"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#f8"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #f9"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#f9"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #fa"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#fa"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #ee"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#ee"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #e5"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#e5"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #e2"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#e2"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #f1"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#f1"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background: #f0"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="background:#f0"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="linear-gradient(180deg, #f"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, pre)[style*="linear-gradient(180deg, rgb(24"] {
+  background: var(--app-surface-2) !important;
+  background-image: none !important;
+}
+
+body[data-theme="dark"] .text-dark,
+body[data-theme="dark"] .text-black,
+body[data-theme="dark"] .section-title {
+  color: var(--app-text) !important;
+}
+
+body[data-theme="dark"] .text-muted,
+body[data-theme="dark"] .muted-text,
+body[data-theme="dark"] small {
+  color: var(--app-text-muted) !important;
+}
+
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: rgb(15, 23, 42)"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: rgb(17, 24, 39)"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: rgb(17, 27, 33)"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: rgb(31, 41, 55)"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: rgb(55, 65, 81)"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: #0f172a"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: #111827"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: #111b21"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: #1a2233"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: #1f2937"],
+body[data-theme="dark"] :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a, div)[style*="color: #374151"] {
+  color: var(--app-text) !important;
+}
+
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: rgb(84, 101, 111)"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: rgb(100, 116, 139)"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: rgb(102, 119, 129)"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: rgb(107, 114, 128)"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: rgb(148, 163, 184)"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: #54656f"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: #64748b"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: #667781"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: #6b7280"],
+body[data-theme="dark"] :is(p, span, label, small, td, th, button, a, div)[style*="color: #94a3b8"] {
+  color: var(--app-text-muted) !important;
+}
+
+body[data-theme="dark"] input,
+body[data-theme="dark"] textarea,
+body[data-theme="dark"] select,
+body[data-theme="dark"] .form-control,
+body[data-theme="dark"] .form-select,
+body[data-theme="dark"] .app-input {
+  background: var(--input-bg) !important;
+  color: var(--app-text) !important;
+  border-color: var(--input-border) !important;
+  box-shadow: none;
+}
+
+body[data-theme="dark"] input::placeholder,
+body[data-theme="dark"] textarea::placeholder {
+  color: #8696a0 !important;
+  opacity: 1;
+}
+
+body[data-theme="dark"] .btn-light,
+body[data-theme="dark"] .btn-outline-light {
+  background: var(--app-surface-2) !important;
+  color: var(--app-text) !important;
+  border-color: var(--app-border) !important;
+}
+
+body[data-theme="dark"] .btn-outline-secondary,
+body[data-theme="dark"] .btn-outline-dark {
+  color: var(--app-text) !important;
+  border-color: var(--app-border) !important;
+}
+
+body[data-theme="dark"] .border,
+body[data-theme="dark"] .border-top,
+body[data-theme="dark"] .border-end,
+body[data-theme="dark"] .border-bottom,
+body[data-theme="dark"] .border-start {
+  border-color: var(--app-border) !important;
+}
+
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border: 1px solid #e"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border:1px solid #e"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border-top: 1px solid #e"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border-bottom: 1px solid #e"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border-left: 1px solid #e"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border-right: 1px solid #e"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border: 1px solid rgb(226, 232, 240)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border: 1px solid rgb(229, 231, 235)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border-top: 1px solid rgb(241, 245, 249)"],
+body[data-theme="dark"] :is(div, section, article, aside, header, footer, nav, main, form, ul, li, button, label, input, textarea, select, table, tr, td, th)[style*="border-bottom: 1px solid rgb(241, 245, 249)"] {
+  border-color: var(--app-border) !important;
+}
+
+body[data-theme="dark"] .shadow,
+body[data-theme="dark"] .shadow-sm,
+body[data-theme="dark"] .shadow-lg {
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3) !important;
+}
+
+body[data-theme="dark"] svg[stroke="#374151"],
+body[data-theme="dark"] svg[stroke="#6b7280"],
+body[data-theme="dark"] svg[stroke="#94a3b8"],
+body[data-theme="dark"] svg[stroke="#9ca3af"],
+body[data-theme="dark"] svg[stroke="#54656f"],
+body[data-theme="dark"] svg[stroke="#667781"] {
+  stroke: var(--wa-icon-circle-text) !important;
+}
+
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background: #fff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background:#fff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background: #ffffff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background:#ffffff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background-color: #fff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background-color:#fff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="backgroundColor: #fff"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="backgroundColor:#fff"] {
+  background: var(--card-bg) !important;
+}
+
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background: #f8"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background:#f8"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background: #f9"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background:#f9"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background: #f0"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background:#f0"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background: #eef"],
+body[data-theme="dark"] .app-content-shell :is(section, article, aside, header, footer, nav, div)[style*="background:#eef"] {
+  background: var(--app-surface-2) !important;
+}
+
+body[data-theme="dark"] .app-content-shell :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a)[style*="color: #111"],
+body[data-theme="dark"] .app-content-shell :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a)[style*="color:#111"],
+body[data-theme="dark"] .app-content-shell :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a)[style*="color: #1f"],
+body[data-theme="dark"] .app-content-shell :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a)[style*="color:#1f"],
+body[data-theme="dark"] .app-content-shell :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a)[style*="color: #212"],
+body[data-theme="dark"] .app-content-shell :is(h1, h2, h3, h4, h5, h6, p, span, label, strong, b, td, th, button, a)[style*="color:#212"] {
+  color: var(--app-text) !important;
+}
+
+body[data-theme="dark"] .app-content-shell :is(p, span, label, small, td, th, button)[style*="color: #6"],
+body[data-theme="dark"] .app-content-shell :is(p, span, label, small, td, th, button)[style*="color:#6"],
+body[data-theme="dark"] .app-content-shell :is(p, span, label, small, td, th, button)[style*="color: #7"],
+body[data-theme="dark"] .app-content-shell :is(p, span, label, small, td, th, button)[style*="color:#7"],
+body[data-theme="dark"] .app-content-shell :is(p, span, label, small, td, th, button)[style*="color: #8"],
+body[data-theme="dark"] .app-content-shell :is(p, span, label, small, td, th, button)[style*="color:#8"] {
+  color: var(--app-text-muted) !important;
+}
+
+body[data-theme="dark"] .badge,
+body[data-theme="dark"] .btn-primary,
+body[data-theme="dark"] .btn-success,
+body[data-theme="dark"] .btn-danger,
+body[data-theme="dark"] .btn-warning,
+body[data-theme="dark"] .app-btn-primary {
+  color: #ffffff !important;
+}
+
 ::-webkit-scrollbar {
   display: none;
 }

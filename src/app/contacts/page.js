@@ -60,6 +60,81 @@ function TagBadge({ label }) {
   );
 }
 
+function ContactsDarkStyles() {
+  return (
+    <style>{`
+      body[data-theme="dark"] .contacts-page {
+        background: #0b141a !important;
+        color: #e9edef !important;
+      }
+      body[data-theme="dark"] .contacts-page [style*="background: #fff"],
+      body[data-theme="dark"] .contacts-page [style*="background:#fff"],
+      body[data-theme="dark"] .contacts-page [style*="background: rgb(255, 255, 255)"] {
+        background: #111b21 !important;
+        border-color: #2a3942 !important;
+      }
+      body[data-theme="dark"] .contacts-page [style*="background: #fafafa"],
+      body[data-theme="dark"] .contacts-page [style*="background: rgb(250, 250, 250)"],
+      body[data-theme="dark"] .contacts-page [style*="background: #f9fafb"],
+      body[data-theme="dark"] .contacts-page [style*="background: rgb(249, 250, 251)"],
+      body[data-theme="dark"] .contacts-page [style*="background: #f3f4f6"],
+      body[data-theme="dark"] .contacts-page [style*="background: rgb(243, 244, 246)"],
+      body[data-theme="dark"] .contacts-page [style*="background: #f0fdf4"],
+      body[data-theme="dark"] .contacts-page [style*="background: rgb(240, 253, 244)"] {
+        background: #202c33 !important;
+        border-color: #2a3942 !important;
+      }
+      body[data-theme="dark"] .contacts-page :is(h1, h2, h3, h4, p, div, span, label, td, th, button, input, select)[style*="color: #1a2233"],
+      body[data-theme="dark"] .contacts-page :is(h1, h2, h3, h4, p, div, span, label, td, th, button, input, select)[style*="color: rgb(26, 34, 51)"],
+      body[data-theme="dark"] .contacts-page :is(h1, h2, h3, h4, p, div, span, label, td, th, button, input, select)[style*="color: #111827"],
+      body[data-theme="dark"] .contacts-page :is(h1, h2, h3, h4, p, div, span, label, td, th, button, input, select)[style*="color: rgb(17, 24, 39)"],
+      body[data-theme="dark"] .contacts-page :is(h1, h2, h3, h4, p, div, span, label, td, th, button, input, select)[style*="color: #374151"],
+      body[data-theme="dark"] .contacts-page :is(h1, h2, h3, h4, p, div, span, label, td, th, button, input, select)[style*="color: rgb(55, 65, 81)"] {
+        color: #e9edef !important;
+      }
+      body[data-theme="dark"] .contacts-page :is(p, div, span, label, td, th, button)[style*="color: #6b7280"],
+      body[data-theme="dark"] .contacts-page :is(p, div, span, label, td, th, button)[style*="color: rgb(107, 114, 128)"],
+      body[data-theme="dark"] .contacts-page :is(p, div, span, label, td, th, button)[style*="color: #9ca3af"],
+      body[data-theme="dark"] .contacts-page :is(p, div, span, label, td, th, button)[style*="color: rgb(156, 163, 175)"] {
+        color: #aebac1 !important;
+      }
+      body[data-theme="dark"] .contacts-page th,
+      body[data-theme="dark"] .contacts-page [style*="background: #f9fafb"][style*="position: sticky"],
+      body[data-theme="dark"] .contacts-page [style*="background: rgb(249, 250, 251)"][style*="position: sticky"] {
+        background: #202c33 !important;
+        color: #00a884 !important;
+      }
+      body[data-theme="dark"] .contacts-page table,
+      body[data-theme="dark"] .contacts-page tr,
+      body[data-theme="dark"] .contacts-page td,
+      body[data-theme="dark"] .contacts-page th,
+      body[data-theme="dark"] .contacts-page [style*="border-bottom: 1px solid"],
+      body[data-theme="dark"] .contacts-page [style*="border: 1px solid"],
+      body[data-theme="dark"] .contacts-page [style*="border: 1.5px solid"] {
+        border-color: #2a3942 !important;
+      }
+      body[data-theme="dark"] .contacts-page input,
+      body[data-theme="dark"] .contacts-page select {
+        background: #202c33 !important;
+        border-color: #2a3942 !important;
+        color: #e9edef !important;
+      }
+      body[data-theme="dark"] .contacts-page input::placeholder {
+        color: #8696a0 !important;
+      }
+      body[data-theme="dark"] .contacts-page button[style*="background: #fff"],
+      body[data-theme="dark"] .contacts-page button[style*="background: rgb(255, 255, 255)"] {
+        background: #202c33 !important;
+        border-color: #2a3942 !important;
+      }
+      body[data-theme="dark"] .contacts-page .shimmer {
+        background: linear-gradient(90deg, #1f2c34 25%, #2a3942 37%, #1f2c34 63%) !important;
+        background-size: 200px 100% !important;
+      }
+    `}</style>
+  );
+}
+
 /* ---------- AddContactModal ---------- */
 function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
   const [form, setForm] = useState({
@@ -529,7 +604,8 @@ function SkeletonContacts({ isSuperAdmin, isManager, adminView, isMobile }) {
 
   if (isSuperAdmin && adminView === "managers") {
     return (
-      <div style={pageWrapStyle(isMobile)}>
+      <div className="contacts-page" style={pageWrapStyle(isMobile)}>
+        <ContactsDarkStyles />
         <style>{shimmerCSS}</style>
         <div
           style={{
@@ -565,7 +641,8 @@ function SkeletonContacts({ isSuperAdmin, isManager, adminView, isMobile }) {
 
   if (isSuperAdmin && adminView === "pending") {
     return (
-      <div style={pageWrapStyle(isMobile)}>
+      <div className="contacts-page" style={pageWrapStyle(isMobile)}>
+        <ContactsDarkStyles />
         <style>{shimmerCSS}</style>
         <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -609,7 +686,8 @@ function SkeletonContacts({ isSuperAdmin, isManager, adminView, isMobile }) {
   const showCheckbox = isSuperAdmin;
 
   return (
-    <div style={pageWrapStyle(isMobile)}>
+    <div className="contacts-page" style={pageWrapStyle(isMobile)}>
+      <ContactsDarkStyles />
       <style>{shimmerCSS}</style>
       <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -929,7 +1007,8 @@ export default function ContactsPage() {
   // ════════════════════════════════════════
   if (isSuperAdmin && adminView === "managers") {
     return (
-      <div style={pageWrapStyle(isMobile)}>
+      <div className="contacts-page" style={pageWrapStyle(isMobile)}>
+        <ContactsDarkStyles />
         <div style={contentShell}>
           <div
             style={{
@@ -1012,7 +1091,8 @@ export default function ContactsPage() {
   // ════════════════════════════════════════
   if (isSuperAdmin && adminView === "pending") {
     return (
-      <div style={pageWrapStyle(isMobile)}>
+      <div className="contacts-page" style={pageWrapStyle(isMobile)}>
+        <ContactsDarkStyles />
         <div style={contentShell}>
           <div
             style={{
@@ -1158,7 +1238,8 @@ export default function ContactsPage() {
   // CONTACTS TABLE VIEW (all roles)
   // ════════════════════════════════════════
   return (
-    <div style={pageWrapStyle(isMobile)}>
+    <div className="contacts-page" style={pageWrapStyle(isMobile)}>
+      <ContactsDarkStyles />
       <div style={contentShell}>
         {/* Admin Tabs */}
         {isSuperAdmin && (

@@ -104,7 +104,7 @@ function Skeleton({ width = "100%", height = 14, radius = 6, style = {} }) {
       style={{
         position: "relative",
         overflow: "hidden",
-        backgroundColor: "#e9edef",
+        backgroundColor: "var(--skeleton-base)",
         borderRadius: radius,
         width,
         height,
@@ -117,7 +117,7 @@ function Skeleton({ width = "100%", height = 14, radius = 6, style = {} }) {
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%)",
+            "linear-gradient(90deg, transparent 0%, var(--skeleton-highlight) 50%, transparent 100%)",
           animation: "lc-shimmer 1.6s ease-in-out infinite",
         }}
       />
@@ -129,7 +129,7 @@ function HeaderSkeleton({ wide = false }) {
   return (
     <div
       className="d-flex align-items-center justify-content-between px-3 border-bottom flex-shrink-0"
-      style={{ height: 59, background: "#f0f2f5" }}
+      style={{ height: 59, background: "var(--app-surface-2)" }}
     >
       <div className="d-flex align-items-center gap-3">
         <Skeleton width={40} height={40} radius={999} />
@@ -211,7 +211,7 @@ function ChatWindowSkeleton() {
               style={{
                 position: "relative",
                 overflow: "hidden",
-                backgroundColor: b.side === "right" ? "#d1f5c9" : "#e9edef",
+                backgroundColor: b.side === "right" ? "rgba(0, 168, 132, 0.2)" : "var(--skeleton-base)",
                 borderRadius: b.side === "right" ? "12px 12px 0 12px" : "12px 12px 12px 0",
                 width: b.w,
                 height: 42,
@@ -223,7 +223,7 @@ function ChatWindowSkeleton() {
                   position: "absolute",
                   inset: 0,
                   background:
-                    "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)",
+                    "linear-gradient(90deg, transparent 0%, var(--skeleton-highlight) 50%, transparent 100%)",
                   animation: "lc-shimmer 1.6s ease-in-out infinite",
                   animationDelay: `${i * 0.1}s`,
                 }}
@@ -234,7 +234,7 @@ function ChatWindowSkeleton() {
       </div>
       <div
         className="d-flex align-items-center gap-2 p-3 border-top flex-shrink-0"
-        style={{ background: "#f0f2f5" }}
+        style={{ background: "var(--app-surface-2)" }}
       >
         <Skeleton width={42} height={42} radius={999} />
         <Skeleton width={42} height={42} radius={999} />
@@ -253,12 +253,12 @@ function ContactInfoSkeleton() {
     >
       <div
         className="d-flex align-items-center justify-content-center border-bottom flex-shrink-0"
-        style={{ height: 59, background: "#f0f2f5" }}
+        style={{ height: 59, background: "var(--app-surface-2)" }}
       >
         <Skeleton width={120} height={14} />
       </div>
-      <div className="flex-grow-1" style={{ background: "#f7f8fa", overflowY: "hidden" }}>
-        <div className="bg-white text-center px-3 py-4" style={{ borderBottom: "10px solid #f0f2f5" }}>
+      <div className="flex-grow-1" style={{ background: "var(--app-bg)", overflowY: "hidden" }}>
+        <div className="bg-white text-center px-3 py-4" style={{ borderBottom: "10px solid var(--app-surface-2)" }}>
           <Skeleton width={92} height={92} radius={999} style={{ margin: "0 auto 16px" }} />
           <Skeleton width={140} height={16} radius={6} style={{ margin: "0 auto 10px" }} />
           <Skeleton width={110} height={12} radius={6} style={{ margin: "0 auto" }} />
@@ -401,6 +401,35 @@ const remoteAudioRef = useRef(null);
 const pendingIceCandidatesRef = useRef([]);
 const callFailureTimerRef = useRef(null);
 const callConnectTimerRef = useRef(null);
+
+const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) => {
+  const isSentByMe = String(msg.sender) === String(userPhone);
+  return {
+    id: msg._id,
+    clientTempId: msg.clientTempId || null,
+    sender: msg.sender,
+    type: isSentByMe ? "sent" : "received",
+    messageType: msg.messageType || "text",
+    text: msg.text || "",
+    templateMeta: msg.templateMeta || null,
+    createdAt: msg.createdAt,
+    time: new Date(msg.createdAt).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    delivered: msg.status === "delivered" || msg.status === "seen",
+    seen: msg.status === "seen",
+    fileName: msg.fileName,
+    fileSize: typeof msg.fileSize === "number" ? formatFileSize(msg.fileSize) : msg.fileSize,
+    url: msg.fileUrl,
+    isDeleted: msg.isDeleted || false,
+    sending: false,
+    failed: false,
+    contactName: msg.contactName || null,
+    contactPhone: msg.contactPhone || null,
+    contactEmail: msg.contactEmail || null,
+  };
+};
 
 useEffect(() => {
   selectedChatRef.current = selectedChat;
@@ -575,34 +604,17 @@ useEffect(() => {
       if (currentMsgs.some(m => m.id === msg._id)) return prev;
 
       // Replace optimistic temp message if exists
-      const tempIndex = currentMsgs.findIndex(
-        m =>
+      const tempIndex = currentMsgs.findIndex((m) => {
+        if (msg.clientTempId && m.clientTempId === msg.clientTempId) return true;
+        return (
           m.id?.startsWith("tmp-") &&
-          m.text === msg.text &&
-          Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 5000
-      );
+          m.messageType === (msg.messageType || "text") &&
+          (m.text === msg.text || m.fileName === msg.fileName) &&
+          Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 30000
+        );
+      });
 
-     const newMsg = {
-  id: msg._id,
-  sender: msg.sender,
-  type: isSentByMe ? "sent" : "received",
-  messageType: msg.messageType || "text",
-  text: msg.text || "",
-  templateMeta: msg.templateMeta || null,
-  createdAt: msg.createdAt,
-  time: new Date(msg.createdAt).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  }),
-  delivered: true,
-  seen: msg.status === "seen",
-  fileName: msg.fileName,
-  url: msg.fileUrl,
-  isDeleted: false,
-  contactName: msg.contactName || null,
-  contactPhone: msg.contactPhone || null,
-  contactEmail: msg.contactEmail || null,
-};
+      const newMsg = mapServerMessageToUi(msg);
 
       if (tempIndex !== -1) {
         const updated = [...currentMsgs];
@@ -683,42 +695,7 @@ useEffect(() => {
 
       setMessages(prev => ({
         ...prev,
-        [chatId]: data.map(m => {
-          const isSentByMe =
-            String(m.sender) === String(currentUserRef.current?.phone);
-
-          return {
-            id: m._id,
-            sender: m.sender,
-
-            type: isSentByMe ? "sent" : "received",
-
-            messageType: m.messageType || "text",
-            text: m.text || "",
-
-            templateMeta: m.templateMeta || null,
-
-            createdAt: m.createdAt,
-
-            time: new Date(m.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-
-            delivered: m.status === "delivered" || m.status === "seen",
-            seen: m.status === "seen",
-
-            fileName: m.fileName,
-            url: m.fileUrl,
-
-            isDeleted: m.isDeleted || false,
-
-            // In both places where you map messages, add:
-contactName: m.contactName || null,
-contactPhone: m.contactPhone || null,
-contactEmail: m.contactEmail || null,
-          };
-        }),
+        [chatId]: data.map(m => mapServerMessageToUi(m)),
       }));
     } catch (err) {
       console.error("Messages error:", err);
@@ -1716,12 +1693,39 @@ const handleSend = async () => {
       ...prev.filter(c => String(c._id) !== String(chatId)),
     ];
   });
-  const sendMessage = async (textToSend, attachmentData = null) => {
+  const replaceTempMessage = (clientTempId, serverMsg) => {
+    if (!clientTempId || !serverMsg?._id) return;
+    setMessages(prev => {
+      const currentMsgs = prev[chatId] || [];
+      return {
+        ...prev,
+        [chatId]: currentMsgs.map((m) =>
+          m.clientTempId === clientTempId ? mapServerMessageToUi(serverMsg, user.phone) : m
+        ),
+      };
+    });
+  };
+
+  const markTempFailed = (clientTempId) => {
+    if (!clientTempId) return;
+    setMessages(prev => {
+      const currentMsgs = prev[chatId] || [];
+      return {
+        ...prev,
+        [chatId]: currentMsgs.map((m) =>
+          m.clientTempId === clientTempId ? { ...m, sending: false, failed: true } : m
+        ),
+      };
+    });
+  };
+
+  const sendMessage = async (textToSend, attachmentData = null, clientTempId = null) => {
     let messageData = {
       chatId,
       sender: user.phone,
       text: textToSend || "",
       messageType: "text",
+      clientTempId,
     };
     if (attachmentData) {
       messageData = {
@@ -1733,12 +1737,38 @@ const handleSend = async () => {
         text: "",
       };
     }
-    await API.post("/messages", messageData).catch(console.error);
+    const res = await API.post("/messages", messageData);
+    replaceTempMessage(clientTempId, res.data);
+    return res.data;
   };
 
   if (pendingAttachment) {
     const pa = pendingAttachment;
+    const clientTempId = `tmp-${Date.now()}`;
     setPendingAttachment(null);
+    setMessages(prev => ({
+      ...prev,
+      [chatId]: [
+        ...(prev[chatId] || []),
+        {
+          id: clientTempId,
+          clientTempId,
+          type: "sent",
+          messageType: pa.kind,
+          text: "",
+          time: getTimeNow(),
+          createdAt: new Date().toISOString(),
+          delivered: false,
+          seen: false,
+          sending: true,
+          failed: false,
+          fileName: pa.fileName,
+          fileSize: pa.fileSize,
+          url: pa.url,
+          localPreviewUrl: pa.url,
+        },
+      ],
+    }));
 
     try {
       // ✅ Use rawFile directly — no need to re-fetch blob
@@ -1749,9 +1779,10 @@ const handleSend = async () => {
         fileUrl: uploadData.fileUrl,
         fileName: uploadData.fileName || pa.fileName,
         fileSize: uploadData.fileSize || pa.fileSize,
-      });
+      }, clientTempId);
     } catch (err) {
       console.error("Upload failed", err);
+      markTempFailed(clientTempId);
       alert("Failed to upload file");
     }
   }
@@ -1870,6 +1901,7 @@ const handleSend = async () => {
     setPendingAttachment({
       kind: "image", fileName: file.name,
       fileSize: formatFileSize(file.size), url: URL.createObjectURL(file),
+      rawFile: file,
     });
     setAttachmentMenuOpen(false);
     e.target.value = "";
@@ -2223,6 +2255,200 @@ const getChatStatus = (chat) => {
             transition: background 0.16s ease, transform 0.16s ease;
           }
           .emoji-chip:hover { background: #f5f6f6; transform: translateY(-1px); }
+          body[data-theme="dark"] .sticky-chat-shell {
+            background: #111b21 !important;
+            color: #e9edef;
+          }
+          body[data-theme="dark"] .sticky-chat-shell .bg-white {
+            background-color: #111b21 !important;
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell .border-bottom,
+          body[data-theme="dark"] .sticky-chat-shell .border-top,
+          body[data-theme="dark"] .sticky-chat-shell .border-end,
+          body[data-theme="dark"] .sticky-chat-shell .border-start {
+            border-color: #2a3942 !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #f0f2f5"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(240, 242, 245)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background-color: rgb(240, 242, 245)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #f1f5f9"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(241, 245, 249)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #f7f8fa"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(247, 248, 250)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #f8f9fa"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(248, 249, 250)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(248, 249, 250)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #e9edef"] {
+            background: #202c33 !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #fff"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #ffffff"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(255, 255, 255)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background-color: #fff"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background-color: #ffffff"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background-color: rgb(255, 255, 255)"] {
+            background: #111b21 !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: #dfe5e7"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="background: rgb(223, 229, 231)"] {
+            background: #2a3942 !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: #111b21"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: rgb(17, 27, 33)"] {
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: #54656f"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: #667781"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: #94a3b8"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: rgb(84, 101, 111)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: rgb(102, 119, 129)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="color: rgb(148, 163, 184)"] {
+            color: #8696a0 !important;
+          }
+          body[data-theme="dark"] .chat-bg {
+            background-color: #0b141a !important;
+            background-image:
+              radial-gradient(rgba(134,150,160,0.22) 1px, transparent 1px),
+              radial-gradient(rgba(134,150,160,0.1) 1px, transparent 1px) !important;
+            background-position: 0 0, 14px 14px !important;
+            background-size: 28px 28px !important;
+          }
+          body[data-theme="dark"] .chat-item {
+            background: #111b21 !important;
+            border-color: #111b21 !important;
+          }
+          body[data-theme="dark"] .chat-item:hover,
+          body[data-theme="dark"] .chat-item[style*="background: #f0f2f5"],
+          body[data-theme="dark"] .chat-item[style*="background: rgb(240, 242, 245)"] {
+            background: #202c33 !important;
+          }
+          body[data-theme="dark"] .tab-pill {
+            background: #202c33 !important;
+            color: #aebac1 !important;
+          }
+          body[data-theme="dark"] .tab-pill.active-tab {
+            background: rgba(0, 168, 132, 0.24) !important;
+            color: #6ee7b7 !important;
+          }
+          body[data-theme="dark"] .message-bubble:not(.template).sent {
+            background: #005c4b !important;
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .message-bubble:not(.template).received {
+            background: #202c33 !important;
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .message-bubble.template,
+          body[data-theme="dark"] .message-bubble.template * {
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .message-bubble.template.sent > div {
+            background: #005c4b !important;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.2) !important;
+          }
+          body[data-theme="dark"] .message-bubble.template.received > div {
+            background: #202c33 !important;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.2) !important;
+          }
+          body[data-theme="dark"] .message-bubble.template [style*="background: #fff"],
+          body[data-theme="dark"] .message-bubble.template [style*="background: #ffffff"],
+          body[data-theme="dark"] .message-bubble.template [style*="background: rgb(255, 255, 255)"],
+          body[data-theme="dark"] .message-bubble.template [style*="background-color: #fff"],
+          body[data-theme="dark"] .message-bubble.template [style*="background-color: #ffffff"],
+          body[data-theme="dark"] .message-bubble.template [style*="background-color: rgb(255, 255, 255)"] {
+            background: transparent !important;
+          }
+          body[data-theme="dark"] .message-bubble.template [style*="background: #e0e0e0"],
+          body[data-theme="dark"] .message-bubble.template [style*="background: rgb(224, 224, 224)"] {
+            background: rgba(134,150,160,0.32) !important;
+          }
+          body[data-theme="dark"] .message-bubble.template button {
+            background: transparent !important;
+            color: #53bdeb !important;
+            border-color: rgba(134,150,160,0.35) !important;
+          }
+          body[data-theme="dark"] .message-bubble.template select,
+          body[data-theme="dark"] .message-bubble.template input {
+            background: rgba(17,27,33,0.35) !important;
+            color: #e9edef !important;
+            border-color: rgba(134,150,160,0.35) !important;
+          }
+          body[data-theme="dark"] .attach-sheet,
+          body[data-theme="dark"] .emoji-panel {
+            background: #233138 !important;
+            border-color: #2a3942 !important;
+            box-shadow: 0 16px 45px rgba(0,0,0,0.45);
+          }
+          body[data-theme="dark"] .attach-row-btn,
+          body[data-theme="dark"] .emoji-chip,
+          body[data-theme="dark"] .composer-action-btn {
+            color: #aebac1 !important;
+          }
+          body[data-theme="dark"] .attach-row-btn:hover,
+          body[data-theme="dark"] .emoji-chip:hover,
+          body[data-theme="dark"] .composer-action-btn:hover {
+            background: #2a3942 !important;
+          }
+          body[data-theme="dark"] .composer-action-btn.active {
+            background: rgba(0, 168, 132, 0.18) !important;
+            color: #00a884 !important;
+          }
+          body[data-theme="dark"] .send-btn {
+            background: #00a884 !important;
+            color: #ffffff !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell input.form-control,
+          body[data-theme="dark"] .sticky-chat-shell input[type="text"] {
+            background: #2a3942 !important;
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell input::placeholder {
+            color: #8696a0 !important;
+          }
+          body[data-theme="dark"] .sticky-chat-shell [style*="border-bottom: 10px solid rgb(240, 242, 245)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="border-bottom: 8px solid rgb(240, 242, 245)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="border-bottom: 1px solid rgb(240, 242, 245)"],
+          body[data-theme="dark"] .sticky-chat-shell [style*="border-bottom: 0.5px solid rgb(240, 242, 245)"] {
+            border-color: #2a3942 !important;
+          }
+          body[data-theme="dark"] .group-modal-card,
+          body[data-theme="dark"] .group-modal-footer {
+            background: #111b21 !important;
+            color: #e9edef !important;
+            border-color: #2a3942 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(255, 255, 255)"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #ffffff"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #fff"],
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(250, 250, 250)"] {
+            background: #111b21 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(240, 242, 245)"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #f0f2f5"],
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(247, 248, 250)"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #f7f8fa"] {
+            background: #202c33 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="color: rgb(17, 27, 33)"],
+          body[data-theme="dark"] .group-modal-card [style*="color: #111b21"] {
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="color: rgb(84, 101, 111)"],
+          body[data-theme="dark"] .group-modal-card [style*="color: rgb(102, 119, 129)"],
+          body[data-theme="dark"] .group-modal-card [style*="color: #54656f"],
+          body[data-theme="dark"] .group-modal-card [style*="color: #667781"] {
+            color: #8696a0 !important;
+          }
+          body[data-theme="dark"] .group-modal-card input,
+          body[data-theme="dark"] .group-modal-card select {
+            background: #202c33 !important;
+            border-color: #2a3942 !important;
+            color: #e9edef !important;
+          }
+          body[data-theme="dark"] .group-modal-card input::placeholder {
+            color: #8696a0 !important;
+          }
           @keyframes msgIn {
             from { opacity: 0; transform: translateY(8px) scale(0.988); }
             to   { opacity: 1; transform: translateY(0)  scale(1); }
@@ -3649,7 +3875,7 @@ useEffect(() => {
 
   if (msg.isDeleted) {
     return (
-      <div style={bubbleBase}>
+      <div className={`message-bubble ${isMine ? "sent" : "received"}`} style={bubbleBase}>
         <div style={{ fontStyle: "italic", color: "#667781", fontSize: "0.85rem" }}>
           This message was deleted
         </div>
@@ -4134,7 +4360,7 @@ const renderContent = () => {
     // ─── IMAGE MESSAGE ──────────────────────────────────────────
     if (msg.messageType === "image") {
       return (
-        <>
+        <div style={{ position: "relative", width: "240px", maxWidth: "100%" }}>
           <img
             src={msg.url}
             alt={msg.fileName || "image"}
@@ -4142,8 +4368,7 @@ const renderContent = () => {
               setPreviewMedia({ type: "image", url: msg.url })
             }
             style={{
-              width: "240px",
-              maxWidth: "100%",
+              width: "100%",
               height:"300px",
               objectFit: "cover", // Added to prevent image stretching
               borderRadius: 6,
@@ -4151,7 +4376,12 @@ const renderContent = () => {
               cursor: "pointer", // 👈 important
             }}
           />
-        </>
+          {(msg.sending || msg.failed) && (
+            <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "rgba(17, 27, 33, 0.46)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 700 }}>
+              {msg.failed ? "Upload failed" : "Sending..."}
+            </div>
+          )}
+        </div>
       );
     }
 
@@ -4197,7 +4427,7 @@ if (msg.messageType === "contact") {
     // ─── VIDEO MESSAGE ──────────────────────────────────────────
     if (msg.messageType === "video") {
       return (
-        <>
+        <div style={{ position: "relative", width: "240px", maxWidth: "100%" }}>
           <video
             src={msg.url}
             controls
@@ -4205,13 +4435,17 @@ if (msg.messageType === "contact") {
               setPreviewMedia({ type: "video", url: msg.url })
             }
             style={{
-              width: "240px",
-              maxWidth: "100%",
+              width: "100%",
               borderRadius: 6,
               cursor: "pointer",
             }}
           />
-        </>
+          {(msg.sending || msg.failed) && (
+            <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "rgba(17, 27, 33, 0.5)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 700, pointerEvents: "none" }}>
+              {msg.failed ? "Upload failed" : "Sending..."}
+            </div>
+          )}
+        </div>
       );
     }
 
@@ -4315,6 +4549,7 @@ const senderName = getSenderName();
 
   return (
   <div
+    className={`message-bubble ${isMine ? "sent" : "received"} ${isTemplate ? "template" : ""}`}
     ref={bubbleRef}
     style={{
       ...bubbleBase,
@@ -5606,10 +5841,10 @@ function MessageMeta({ msg, inline = false }) {
       className="d-flex justify-content-end align-items-center gap-1 px-1.5"
       style={{ marginTop: inline ? "-2px" : "5px", fontSize: "0.68rem", color: "#667781" }}
     >
-      <span>{msg.time}</span>
+      <span>{msg.failed ? "Failed" : msg.sending ? "Sending..." : msg.time}</span>
       {msg.type === "sent" && (
         <span style={{ display: "flex" , alignItems: "center", lineHeight: 1 }}>
-          {msg.delivered || msg.seen ? <DoubleTick tickColor={tickColor} /> : <SingleTick />}
+          {!msg.sending && !msg.failed && (msg.delivered || msg.seen ? <DoubleTick tickColor={tickColor} /> : <SingleTick />)}
         </span>
       )}
     </div>
@@ -5876,6 +6111,7 @@ console.log("tag sample:", JSON.stringify(tags[0], null, 2));
       }}
     >
       <div
+        className="group-modal-card"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "#ffffff", borderRadius: 16,
@@ -6102,6 +6338,7 @@ console.log("tag sample:", JSON.stringify(tags[0], null, 2));
 
         {/* ── FOOTER ── */}
         <div
+          className="group-modal-footer"
           style={{
             padding: "14px 20px",
             borderTop: "0.5px solid #e9edef",

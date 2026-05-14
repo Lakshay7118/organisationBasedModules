@@ -30,6 +30,11 @@ const NOTIF_META = {
   campaign_approval_requested: { icon: <Megaphone size={13} />, color: "#f97316", bg: "#ffedd5", label: "Campaign Pending",       path: "/Campaigns" },
   campaign_approved:           { icon: <Megaphone size={13} />, color: "#10b981", bg: "#d1fae5", label: "Campaign Approved",      path: "/Campaigns" },
   campaign_rejected:           { icon: <Megaphone size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Campaign Rejected",      path: "/Campaigns" },
+  profile_approval_requested:  { icon: <Shield    size={13} />, color: "#14b8a6", bg: "#ccfbf1", label: "Profile Pending",        path: "/Settings"  },
+  profile_approved:            { icon: <Shield    size={13} />, color: "#10b981", bg: "#d1fae5", label: "Profile Approved",       path: "/Settings"  },
+  profile_rejected:            { icon: <Shield    size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Profile Rejected",       path: "/Settings"  },
+  support_ticket_created:      { icon: <Bell      size={13} />, color: "#06b6d4", bg: "#cffafe", label: "Support Ticket",         path: "/Settings"  },
+  support_ticket_replied:      { icon: <Bell      size={13} />, color: "#3b82f6", bg: "#dbeafe", label: "Support Reply",          path: "/Settings"  },
 };
 
 const getMeta = (type) =>
@@ -171,6 +176,8 @@ function NotifToast({ notification, onClose, onNavigate }) {
 ───────────────────────────────────────── */
 function NotifRow({ n, onRead, onNavigate, compact = false }) {
   const meta = getMeta(n.type);
+  const rowBg = n.read ? "var(--app-surface)" : "color-mix(in srgb, var(--app-surface-2) 86%, #00a884 14%)";
+  const hoverBg = "color-mix(in srgb, var(--app-surface-2) 82%, #00a884 18%)";
 
   const handleClick = async () => {
     if (!n.read) await onRead(n._id || n.id);
@@ -182,18 +189,25 @@ function NotifRow({ n, onRead, onNavigate, compact = false }) {
       onClick={handleClick}
       style={{
         display: "flex", alignItems: "flex-start", gap: compact ? 10 : 11,
-        padding: compact ? "10px 14px" : "11px 18px",
-        background: n.read ? "#fff" : "#f8fafc",
-        borderBottom: "1px solid #f0f2f5", cursor: "pointer", transition: "background 0.15s",
+        padding: compact ? "11px 12px" : "12px 14px",
+        margin: compact ? "0 10px 8px" : "0 12px 10px",
+        background: rowBg,
+        border: "1px solid var(--app-border)",
+        borderRadius: 12,
+        cursor: "pointer",
+        transition: "background 0.15s, border-color 0.15s",
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = "#f0fdf4"; }}
-      onMouseLeave={e => { e.currentTarget.style.background = n.read ? "#fff" : "#f8fafc"; }}
+      onMouseEnter={e => { e.currentTarget.style.background = hoverBg; e.currentTarget.style.borderColor = "color-mix(in srgb, var(--app-border) 70%, #00a884 30%)"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = rowBg; e.currentTarget.style.borderColor = "var(--app-border)"; }}
     >
       <div style={{
         width: compact ? 30 : 34, height: compact ? 30 : 34,
-        borderRadius: compact ? 9 : 10, background: meta.bg, color: meta.color,
+        borderRadius: compact ? 9 : 10,
+        background: `color-mix(in srgb, ${meta.color} 18%, var(--app-surface-2))`,
+        color: meta.color,
         display: "flex", alignItems: "center", justifyContent: "center",
         flexShrink: 0, marginTop: 1,
+        border: `1px solid color-mix(in srgb, ${meta.color} 35%, transparent)`,
       }}>
         {meta.icon}
       </div>
@@ -205,19 +219,19 @@ function NotifRow({ n, onRead, onNavigate, compact = false }) {
         )}
         <div style={{
           fontSize: compact ? "0.81rem" : "0.83rem",
-          color: n.read ? "#6b7280" : "#0f172a",
-          fontWeight: n.read ? 400 : 600, lineHeight: 1.45,
+          color: n.read ? "var(--app-text-muted)" : "var(--app-text)",
+          fontWeight: n.read ? 500 : 750, lineHeight: 1.45,
           overflow: compact ? "hidden" : undefined,
           textOverflow: compact ? "ellipsis" : undefined,
           whiteSpace: compact ? "nowrap" : undefined,
         }}>
           {n.message}
         </div>
-        <div style={{ fontSize: "0.67rem", color: "#94a3b8", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
+        <div style={{ fontSize: "0.67rem", color: "var(--app-text-muted)", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
           <Clock size={9} style={{ verticalAlign: "middle" }} />
           {fmtRelative(n.createdAt || n.timestamp)}
           {meta.path && (
-            <span style={{ color: meta.color, fontWeight: 700, marginLeft: 4 }}>
+            <span style={{ color: meta.color, fontWeight: 800, marginLeft: 4 }}>
               → {meta.label.split(" ")[0]}
             </span>
           )}
@@ -245,14 +259,15 @@ function NotifDropdown({ notifications, onRead, onReadAll, onViewAll, onClose, o
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       style={{
         position: "absolute", top: "calc(100% + 10px)", right: 0,
-        transform: "translateX(-20px)", width: 360, minWidth: 360, maxWidth: "90vw",
-        background: "#fff", borderRadius: 16,
-        boxShadow: "0 20px 60px rgba(15,23,42,0.18)",
-        border: "1px solid #e2e8f0", overflow: "hidden", maxHeight: "500px", zIndex: 9999,
+        transform: "translateX(-20px)", width: 430, minWidth: 360, maxWidth: "90vw",
+        background: "var(--app-surface)", borderRadius: 18,
+        boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+        border: "1px solid var(--app-border)", overflow: "hidden", maxHeight: "520px", zIndex: 9999,
+        color: "var(--app-text)",
       }}
     >
-      <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a" }}>
+      <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--app-border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--app-surface)" }}>
+        <span style={{ fontWeight: 850, fontSize: "0.92rem", color: "var(--app-text)" }}>
           Notifications
           {unreadCount > 0 && (
             <span style={{ marginLeft: 7, background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: "0.62rem", fontWeight: 800 }}>
@@ -262,19 +277,19 @@ function NotifDropdown({ notifications, onRead, onReadAll, onViewAll, onClose, o
         </span>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {unreadCount > 0 && (
-            <button onClick={onReadAll} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.67rem", color: "#0d9488", fontWeight: 700, padding: 0 }}>
+            <button onClick={onReadAll} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.72rem", color: "#00a884", fontWeight: 800, padding: 0 }}>
               Mark all read
             </button>
           )}
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", display: "flex", alignItems: "center" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--app-text-muted)", display: "flex", alignItems: "center" }}>
             <X size={13} />
           </button>
         </div>
       </div>
 
-      <div style={{ maxHeight: "340px", overflowY: "auto" }}>
+      <div style={{ maxHeight: "354px", overflowY: "auto", paddingTop: 10, background: "var(--app-surface)" }}>
         {preview.length === 0 ? (
-          <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontSize: "0.83rem" }}>No notifications</div>
+          <div style={{ padding: 28, textAlign: "center", color: "var(--app-text-muted)", fontSize: "0.83rem" }}>No notifications</div>
         ) : (
           preview.map(n => (
             <NotifRow key={n._id || n.id} n={n} onRead={onRead}
@@ -285,9 +300,9 @@ function NotifDropdown({ notifications, onRead, onReadAll, onViewAll, onClose, o
 
       {notifications.length > 0 && (
         <button onClick={onViewAll} style={{
-          width: "100%", padding: "11px 14px", background: "#f8fafc", border: "none",
-          borderTop: "1px solid #f0f2f5", cursor: "pointer", fontSize: "0.78rem",
-          fontWeight: 700, color: "#0d9488", display: "flex", alignItems: "center",
+          width: "100%", padding: "12px 14px", background: "var(--app-surface-2)", border: "none",
+          borderTop: "1px solid var(--app-border)", cursor: "pointer", fontSize: "0.8rem",
+          fontWeight: 800, color: "#00a884", display: "flex", alignItems: "center",
           justifyContent: "center", gap: 5,
         }}>
           View all {notifications.length} notifications <ChevronRight size={13} />
@@ -580,6 +595,43 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
 
   return (
     <>
+      <style>{`
+        body[data-theme="dark"] .app-topbar-frame {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 12px 28px rgba(0,0,0,0.22) !important;
+        }
+        body[data-theme="dark"] .app-topbar-soft,
+        body[data-theme="dark"] .app-topbar-search,
+        body[data-theme="dark"] .app-topbar-user {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .app-topbar-title,
+        body[data-theme="dark"] .app-topbar-user-name {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .app-topbar-divider {
+          background: #2a3942 !important;
+        }
+        body[data-theme="dark"] .app-topbar-search input {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .app-topbar-search input::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .app-topbar-logout {
+          background: rgba(239, 68, 68, 0.12) !important;
+        }
+        body[data-theme="dark"] .app-topbar-soft svg[stroke="#374151"] {
+          stroke: #e9edef !important;
+        }
+        body[data-theme="dark"] .app-topbar-soft[style*="background: rgb(204, 251, 241)"],
+        body[data-theme="dark"] .app-topbar-soft[style*="background: #ccfbf1"] {
+          background: rgba(0, 168, 132, 0.22) !important;
+        }
+      `}</style>
       <header
         ref={topbarRef}
         style={{ width: "100%", marginBottom: "14px", boxSizing: "border-box", position: "relative", zIndex: 100 }}
@@ -587,12 +639,13 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
         {/* ══════════ MOBILE ══════════ */}
         <div className="flex md:hidden items-center gap-2" style={{ width: "100%" }}>
           <motion.button whileTap={{ scale: 0.9 }} onClick={onMenuClick}
+            className="app-topbar-soft"
             style={{ width: 40, height: 40, borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
           >
             <Menu size={18} color="#374151" />
           </motion.button>
 
-          <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "0 12px", height: 40, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", gap: 8 }}>
+          <div className="app-topbar-search" style={{ flex: 1, display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "0 12px", height: 40, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", gap: 8 }}>
             <Search size={15} color="#9ca3af" />
             <input value={searchValue} onChange={e => setSearchValue(e.target.value)} placeholder="Search..."
               style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#374151" }} />
@@ -600,6 +653,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
 
           <div ref={bellRefMobile} style={{ position: "relative" }}>
             <motion.button whileTap={{ scale: 0.9 }} onClick={toggleDropdown}
+              className="app-topbar-soft"
               style={{ width: 40, height: 40, borderRadius: "50%", background: "#fff", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, position: "relative", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
             >
               <BellBadge size={17} unreadCount={unreadCount} />
@@ -617,19 +671,20 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
         </div>
 
         {/* ══════════ DESKTOP ══════════ */}
-        <div className="hidden md:flex items-center gap-3"
+        <div className="hidden md:flex items-center gap-3 app-topbar-frame"
           style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, padding: "10px 16px", boxShadow: "0 2px 12px rgba(15,23,42,0.06)", width: "100%", boxSizing: "border-box" }}
         >
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }} onClick={onMenuClick}
+            className="app-topbar-soft"
             style={{ width: 36, height: 36, borderRadius: 10, background: "#f1f5f9", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
           >
             <Menu size={17} color="#374151" />
           </motion.button>
 
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#111827", flexShrink: 0 }}>{title}</span>
-          <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+          <span className="app-topbar-title" style={{ fontSize: 15, fontWeight: 700, color: "#111827", flexShrink: 0 }}>{title}</span>
+          <div className="app-topbar-divider" style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
-          <div style={{ display: "flex", alignItems: "center", background: "#f8fafc", border: "1px solid #e9eef3", borderRadius: 12, padding: "0 14px", height: 36, gap: 8, width: 280, flexShrink: 0 }}>
+          <div className="app-topbar-search" style={{ display: "flex", alignItems: "center", background: "#f8fafc", border: "1px solid #e9eef3", borderRadius: 12, padding: "0 14px", height: 36, gap: 8, width: 280, flexShrink: 0 }}>
             <Search size={14} color="#9ca3af" />
             <input value={searchValue} onChange={e => setSearchValue(e.target.value)} placeholder="Search chats..."
               style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#374151" }} />
@@ -639,6 +694,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
 
           <div ref={bellRefDesktop} style={{ position: "relative" }}>
             <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={toggleDropdown}
+              className="app-topbar-soft"
               style={{ width: 36, height: 36, borderRadius: 10, background: showDropdown ? "#ccfbf1" : "#f1f5f9", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", flexShrink: 0, transition: "background 0.2s" }}
             >
               <BellBadge size={16} active={showDropdown} unreadCount={unreadCount} />
@@ -648,14 +704,15 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
             </AnimatePresence>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f1f5f9", borderRadius: 12, padding: "4px 12px 4px 4px", flexShrink: 0 }}>
+          <div className="app-topbar-user" style={{ display: "flex", alignItems: "center", gap: 8, background: "#f1f5f9", borderRadius: 12, padding: "4px 12px 4px 4px", flexShrink: 0 }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#0b535d", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>
               {avatarInitial}
             </div>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{userName || "User"}</span>
+            <span className="app-topbar-user-name" style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{userName || "User"}</span>
           </div>
 
           <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={handleLogout}
+            className="app-topbar-logout"
             style={{ width: 36, height: 36, borderRadius: 10, background: "#fff0f0", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
           >
             <LogOut size={16} color="#ef4444" />

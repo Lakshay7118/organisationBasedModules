@@ -6,9 +6,10 @@
 - Local:         http://localhost:3000
 - Network:       http://0.0.0.0:3000
 - Environments: .env.local
-✓ Ready in 830ms
+✓ Ready in 843ms
 Creating turbopack project {
   dir: 'C:\\Users\\Lakshya\\Desktop\\whatsapp-clone\\frontend',
   testMode: true
 }
 
+ GET /Settings 200 in 1082ms (next.js: 744ms, application-code: 338ms)

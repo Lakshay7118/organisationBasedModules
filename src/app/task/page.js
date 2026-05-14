@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   FiSearch, FiSend, FiPlus, FiX, FiBell,
   FiTrash2, FiLink, FiPhone, FiChevronRight, FiMinus,
-  FiCalendar, FiShield, FiUsers, FiUser,
+  FiCalendar, FiShield, FiUsers, FiUser, FiEdit2,
 } from "react-icons/fi";
 import API from "../utils/api";
 
@@ -31,12 +31,16 @@ const STATUS = {
   completed: { label: "Completed", color: "#065f46", bg: "#d1fae5", icon: "✅" },
   cancelled: { label: "Cancelled", color: "#6b7280", bg: "#f3f4f6", icon: "❌" },
 };
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+const STATUS_ORDER = { in_progress: 0, pending: 1, completed: 2 };
 
 const isAdmin = (u) => u?.role === "super_admin";
 const isManager = (u) => u?.role === "manager";
 const isUser = (u) => u?.role === "user";
 
 const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+const toDateInput = (iso) => iso ? new Date(iso).toISOString().slice(0, 10) : "";
+const toDateTimeInput = (iso) => iso ? new Date(iso).toISOString().slice(0, 16) : "";
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -76,7 +80,7 @@ let _activePillSetter = null; // global tracker
 
 function StatusPill({ status, onChange, readonly }) {
   const [open, setOpen] = useState(false);
-  const [dropUp, setDropUp] = useState(false);
+  const [menuPos, setMenuPos] = useState({});
   const btnRef = useRef(null);
   const cfg = STATUS[status] || STATUS.pending;
 
@@ -94,7 +98,11 @@ function StatusPill({ status, onChange, readonly }) {
       if (btnRef.current) {
         const rect = btnRef.current.getBoundingClientRect();
         const spaceBelow = window.innerHeight - rect.bottom;
-        setDropUp(spaceBelow < 180); // 180px = approx dropdown height
+        const shouldDropUp = spaceBelow < 180; // 180px = approx dropdown height
+        setMenuPos(shouldDropUp
+          ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
+          : { top: rect.bottom + 4, left: rect.left }
+        );
       }
     } else {
       if (_activePillSetter === setOpen) _activePillSetter = null;
@@ -137,15 +145,7 @@ function StatusPill({ status, onChange, readonly }) {
           boxShadow: "0 8px 24px rgba(0,0,0,.15)",
           border: "1px solid #e5e7eb",
           overflow: "hidden", zIndex: 9999, minWidth: 160,
-          // Position calculated via JS below
-          ...((() => {
-            if (!btnRef.current) return {};
-            const rect = btnRef.current.getBoundingClientRect();
-            if (dropUp) {
-              return { bottom: window.innerHeight - rect.top + 4, left: rect.left };
-            }
-            return { top: rect.bottom + 4, left: rect.left };
-          })()),
+          ...menuPos,
         }}>
           {Object.entries(STATUS).map(([k, v]) => (
             <div key={k} onClick={() => { onChange(k); setOpen(false); if (_activePillSetter === setOpen) _activePillSetter = null; }}
@@ -417,10 +417,28 @@ function FieldRow({ title, onRemove, children }) {
   );
 }
 
-function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
+const getTaskUserId = (u) => (u?._id || u?.id || u)?.toString?.() || "";
+const taskToForm = (task, currentUser) => ({
+  title: task?.title || "",
+  description: task?.description || "",
+  assignedTo: (task?.assignedTo || []).map(getTaskUserId).filter(Boolean),
+  priority: task?.priority || "medium",
+  dueDate: toDateInput(task?.dueDate),
+  reminder: toDateTimeInput(task?.reminderAt || task?.reminder),
+  isPersonal: task?.isPersonal ?? (isUser(currentUser) ? true : false),
+  inputFields: task?.inputFields || [],
+  dropdownButtons: task?.dropdownButtons || [],
+  quickReplies: task?.quickReplies || [],
+  ctaButtons: task?.ctaButtons || [],
+  checkboxes: task?.checkboxes || [],
+});
+
+function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task }) {
   const _isAdmin = isAdmin(currentUser);
   const _isManager = isManager(currentUser);
   const _isUser = isUser(currentUser);
+  const isEditing = !!task;
+  const editNeedsApproval = isEditing && _isManager && !_isAdmin;
   const [assignFilter, setAssignFilter] = useState("all");
   const [selectedTag, setSelectedTag] = useState("");
   const [selectedMgr, setSelectedMgr] = useState("");
@@ -430,7 +448,7 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
   const [tagContacts, setTagContacts] = useState([]);
   const [mgrContacts, setMgrContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", assignedTo: [], priority: "medium", dueDate: "", reminder: "", isPersonal: _isUser ? true : false, inputFields: [], dropdownButtons: [], quickReplies: [], ctaButtons: [], checkboxes: [] });
+  const [form, setForm] = useState(() => taskToForm(task, currentUser));
   const [tab, setTab] = useState("basic");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleAssign = (id) => set("assignedTo", form.assignedTo.includes(id) ? form.assignedTo.filter(x => x !== id) : [...form.assignedTo, id]);
@@ -454,13 +472,21 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
   }, []);
 
   useEffect(() => {
-    if (assignFilter !== "tag" || !selectedTag) { setTagContacts([]); return; }
+    if (assignFilter !== "tag" || !selectedTag) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTagContacts([]);
+      return;
+    }
     setLoadingContacts(true);
     API.get(`/contacts?tag=${selectedTag}`).then(res => setTagContacts(Array.isArray(res.data) ? res.data : [])).catch(() => { }).finally(() => setLoadingContacts(false));
   }, [assignFilter, selectedTag]);
 
   useEffect(() => {
-    if (assignFilter !== "manager_contacts" || !selectedMgr) { setMgrContacts([]); return; }
+    if (assignFilter !== "manager_contacts" || !selectedMgr) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMgrContacts([]);
+      return;
+    }
     setLoadingContacts(true);
     API.get(`/contacts?managerId=${selectedMgr}`).then(res => setMgrContacts(Array.isArray(res.data) ? res.data : [])).catch(() => { }).finally(() => setLoadingContacts(false));
   }, [assignFilter, selectedMgr]);
@@ -479,7 +505,10 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
     const assignedTo = form.isPersonal ? [currentUser.id] : form.assignedTo;
     const dropdownButtons = form.dropdownButtons.map(dd => ({ ...dd, options: parseOptions(dd.options) }));
     const checkboxes = form.checkboxes.map(cb => ({ ...cb, options: parseOptions(cb.options) }));
-    onCreate({ ...form, assignedTo, dropdownButtons, checkboxes, needsApproval });
+    const payload = { ...form, assignedTo, reminderAt: form.reminder || null, dropdownButtons, checkboxes, needsApproval };
+    delete payload.reminder;
+    if (isEditing) onUpdate(task._id || task.id, payload);
+    else onCreate(payload);
     onClose();
   };
 
@@ -490,10 +519,10 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, backdropFilter: "blur(4px)" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 480px)", maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
         <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 800, fontSize: "0.96rem", color: "#1a2233" }}>✨ Create New Task</span>
+          <span style={{ fontWeight: 800, fontSize: "0.96rem", color: "#1a2233" }}>{isEditing ? "Edit Task" : "✨ Create New Task"}</span>
           <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}><FiX size={14} /></button>
         </div>
-        {needsApproval && (
+        {needsApproval && !isEditing && (
           <div style={{ margin: "10px 18px 0", padding: "9px 13px", background: "#fef3c7", border: "1.5px solid #fcd34d44", borderRadius: 9, display: "flex", gap: 9, alignItems: "flex-start" }}>
             <span style={{ fontSize: "1rem" }}>⚠️</span>
             <div>
@@ -502,7 +531,7 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
             </div>
           </div>
         )}
-        <div style={{ display: "flex", gap: 5, padding: "9px 18px", borderBottom: "1px solid #f0f2f5", background: "#f9fafb", marginTop: needsApproval ? 10 : 0 }}>
+        <div style={{ display: "flex", gap: 5, padding: "9px 18px", borderBottom: "1px solid #f0f2f5", background: "#f9fafb", marginTop: needsApproval && !isEditing ? 10 : 0 }}>
           {[["basic", "📋 Basic"], ["form", "🧩 Form"]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{ padding: "5px 14px", borderRadius: 20, border: "1.5px solid #e5e7eb", cursor: "pointer", fontSize: "0.77rem", fontWeight: 700, background: tab === id ? "#0d9488" : "#e5e7eb", color: tab === id ? "#fff" : "#6b7280" }}>{label}</button>
           ))}
@@ -536,7 +565,7 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
               )}
               {(_isAdmin || _isManager) && !form.isPersonal && (
                 <div>
-                  <label style={lbl}>Assign To {_isManager && <span style={{ color: "#f59e0b", textTransform: "none", fontSize: "0.64rem" }}>⚠ requires admin approval</span>}</label>
+                  <label style={lbl}>Assign To {_isManager && !isEditing && <span style={{ color: "#f59e0b", textTransform: "none", fontSize: "0.64rem" }}>⚠ requires admin approval</span>}</label>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>
                     {[{ id: "all", label: "👥 All" }, { id: "user", label: "🙋 Users" }, { id: "manager", label: "💼 Managers" }, { id: "tag", label: "🔖 By Tag" }, { id: "manager_contacts", label: "📋 Manager's Contacts" }].map(f => (
                       <button key={f.id} onClick={() => { setAssignFilter(f.id); setSelectedTag(""); setSelectedMgr(""); }} style={{ padding: "3px 11px", borderRadius: 999, border: "1.5px solid", fontSize: "0.71rem", fontWeight: 700, cursor: "pointer", borderColor: assignFilter === f.id ? "#0d9488" : "#e5e7eb", background: assignFilter === f.id ? "#ccfbf1" : "#f9fafb", color: assignFilter === f.id ? "#0d9488" : "#6b7280" }}>{f.label}</button>
@@ -556,7 +585,7 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
                       const subtitle = user ? `${user.role}${contact ? " · " + contact.mobile : ""}` : `${contact?.mobile || ""} · no account`;
                       const canAssign = !!id;
                       const checked = id ? form.assignedTo.includes(id) : false;
-                      const rowKey = contact?._id?.toString() || id || Math.random().toString();
+                      const rowKey = contact?._id?.toString() || contact?.mobile || id || name;
                       return (
                         <label key={rowKey} style={{ display: "flex", alignItems: "center", gap: 9, cursor: canAssign ? "pointer" : "not-allowed", padding: "5px 5px", borderRadius: 7, opacity: canAssign ? 1 : 0.45, background: checked ? "#ccfbf1" : "transparent" }}>
                           <input type="checkbox" checked={checked} disabled={!canAssign} onChange={() => canAssign && toggleAssign(id)} style={{ accentColor: "#0d9488" }} />
@@ -597,7 +626,7 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
         </div>
         <div style={{ padding: "11px 18px", borderTop: "1px solid #f0f2f5", display: "flex", gap: 9, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, border: "1.5px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: "0.86rem", color: "#374151", fontWeight: 600 }}>Cancel</button>
-          <button onClick={handleSubmit} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: needsApproval ? "#f59e0b" : "#0d9488", color: "#fff", cursor: "pointer", fontSize: "0.86rem", fontWeight: 700 }}>{needsApproval ? "⚠ Submit for Approval" : "Create Task"}</button>
+          <button onClick={handleSubmit} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: (needsApproval && !isEditing) || editNeedsApproval ? "#f59e0b" : "#0d9488", color: "#fff", cursor: "pointer", fontSize: "0.86rem", fontWeight: 700 }}>{editNeedsApproval ? "⚠ Submit Edit for Approval" : isEditing ? "Save Changes" : needsApproval ? "⚠ Submit for Approval" : "Create Task"}</button>
         </div>
       </div>
     </div>
@@ -607,10 +636,10 @@ function CreateTaskModal({ onClose, onCreate, currentUser, users }) {
 /* ---------- Approval Panel ---------- */
 function ApprovalPanel({ tasks, users, onApprove, onReject, onClose }) {
   const pending = tasks.filter(t => t.approvalStatus === "pending");
-  const getUserName = (id) => { const uid = id?._id || id?.id || id; const u = users.find(u => u.id === uid?.toString()); return u?.name || "Unknown"; };
+  const getUserName = (id) => { if (id?.name) return id.name; const uid = id?._id || id?.id || id; const u = users.find(u => u.id === uid?.toString()); return u?.name || "Unknown"; };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 460px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", overflow: "hidden" }}>
+      <div className="task-approval-panel" onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 460px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", overflow: "hidden" }}>
         <div style={{ padding: "16px 18px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: "0.96rem", color: "#1a2233" }}>🛡 Approval Requests</div>
@@ -620,25 +649,31 @@ function ApprovalPanel({ tasks, users, onApprove, onReject, onClose }) {
         </div>
         <div style={{ overflowY: "auto", flex: 1, padding: "12px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
           {pending.length === 0 ? <div style={{ textAlign: "center", padding: 36, color: "#9ca3af" }}><div style={{ fontSize: "2rem" }}>✅</div><div>No pending approvals</div></div> : pending.map(t => {
-            const pCfg = PRIORITY[t.priority] || PRIORITY.medium;
+            const pCfg = PRIORITY[t.pendingUpdate?.changes?.priority || t.priority] || PRIORITY.medium;
             const assignees = (t.assignedTo || []).map(enrichUser).filter(Boolean);
+            const isEditRequest = !!t.pendingUpdate?.changes;
+            const pendingChanges = t.pendingUpdate?.changes || {};
+            const proposedAssignees = Array.isArray(pendingChanges.assignedTo)
+              ? pendingChanges.assignedTo.map(id => users.find(u => u.id === id?.toString())).filter(Boolean)
+              : assignees;
             return (
               <div key={t._id || t.id} style={{ border: "1.5px solid #fcd34d44", borderRadius: 12, padding: 14, background: "#fef3c7" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 9 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1a2233" }}>{t.title}</div>
-                    {t.description && <div style={{ fontSize: "0.74rem", color: "#6b7280", marginTop: 2 }}>{t.description}</div>}
+                    <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#92400e", textTransform: "uppercase", marginBottom: 4 }}>{isEditRequest ? "Edit Request" : "New Task Request"}</div>
+                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1a2233" }}>{pendingChanges.title || t.title}</div>
+                    {(pendingChanges.description ?? t.description) && <div style={{ fontSize: "0.74rem", color: "#6b7280", marginTop: 2 }}>{pendingChanges.description ?? t.description}</div>}
                   </div>
                   <span style={{ fontSize: "0.67rem", fontWeight: 700, background: pCfg.bg, color: pCfg.color, padding: "2px 8px", borderRadius: 20, flexShrink: 0, marginLeft: 8 }}>{pCfg.label}</span>
                 </div>
                 <div style={{ display: "flex", gap: 10, fontSize: "0.73rem", color: "#6b7280", marginBottom: 10, flexWrap: "wrap" }}>
-                  <span>👤 <strong style={{ color: "#374151" }}>{getUserName(t.createdBy)}</strong></span>
-                  <span>📅 <strong style={{ color: "#374151" }}>{fmtDate(t.dueDate)}</strong></span>
-                  <span>👥 <strong style={{ color: "#374151" }}>{assignees.map(u => u.name).join(", ") || "—"}</strong></span>
+                  <span>👤 <strong style={{ color: "#374151" }}>{getUserName(isEditRequest ? t.pendingUpdate?.requestedBy : t.createdBy)}</strong></span>
+                  <span>📅 <strong style={{ color: "#374151" }}>{fmtDate(pendingChanges.dueDate || t.dueDate)}</strong></span>
+                  <span>👥 <strong style={{ color: "#374151" }}>{proposedAssignees.map(u => u.name).join(", ") || "—"}</strong></span>
                 </div>
                 <div style={{ display: "flex", gap: 7 }}>
-                  <button onClick={() => onApprove(t._id || t.id)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>✓ Approve</button>
-                  <button onClick={() => onReject(t._id || t.id)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1.5px solid #ef4444", background: "#fff", color: "#ef4444", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>✕ Reject</button>
+                  <button onClick={() => onApprove(t._id || t.id)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>✓ {isEditRequest ? "Approve Edit" : "Approve"}</button>
+                  <button onClick={() => onReject(t._id || t.id)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1.5px solid #ef4444", background: "#fff", color: "#ef4444", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>✕ {isEditRequest ? "Reject Edit" : "Reject"}</button>
                 </div>
               </div>
             );
@@ -669,7 +704,7 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.3)", zIndex: 800, backdropFilter: "blur(2px)" }} />
-      <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(100%, 500px)", background: "#fff", zIndex: 900, display: "flex", flexDirection: "column", boxShadow: "-12px 0 48px rgba(0,0,0,.12)", animation: "slideInRight .25s ease", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
+      <div className="task-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(100%, 500px)", background: "#fff", zIndex: 900, display: "flex", flexDirection: "column", boxShadow: "-12px 0 48px rgba(0,0,0,.12)", animation: "slideInRight .25s ease", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
 
         {/* ── Drawer Header ── */}
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f2f5", background: "#fff", flexShrink: 0 }}>
@@ -827,6 +862,7 @@ export default function TaskPage() {
   const [tasks, setTasks] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showApprovals, setShowApprovals] = useState(false);
@@ -843,7 +879,10 @@ const [statusFilter, setStatusFilter] = useState("all");
   // -- auth --
   useEffect(() => {
     const userStr = localStorage.getItem("user");
-    if (userStr) { try { setCurrentUser(enrichUser(JSON.parse(userStr))); } catch { } }
+    if (userStr) { try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCurrentUser(enrichUser(JSON.parse(userStr)));
+    } catch { } }
     else { API.get("/users/me").then(res => { if (res.data.success) setCurrentUser(enrichUser(res.data.data)); }).catch(() => { }); }
   }, []);
 
@@ -874,7 +913,11 @@ const [statusFilter, setStatusFilter] = useState("all");
     return () => document.removeEventListener("mousedown", fn);
   }, []);
 
-  useEffect(() => { setFormValues({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} }); }, [selectedTask?._id || selectedTask?.id]);
+  const selectedTaskId = selectedTask?._id || selectedTask?.id;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormValues({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} });
+  }, [selectedTaskId]);
 
   const handleFormChange = useCallback((type, id, value, checked) => {
     if (type === "quickReply") setFormValues(p => ({ ...p, quickReplySelected: p.quickReplySelected === id ? "" : id }));
@@ -895,6 +938,24 @@ const [statusFilter, setStatusFilter] = useState("all");
     setSaving(false);
   }, []);
 
+  const handleUpdate = useCallback(async (taskId, form) => {
+    setSaving(true);
+    try {
+      const payload = { ...form };
+      delete payload.needsApproval;
+      const res = await API.put(`/tasks/${taskId}`, payload);
+      if (res.data.success) {
+        setTasks(p => p.map(t => ((t._id || t.id) === taskId ? res.data.data : t)));
+        if ((selectedTask?._id || selectedTask?.id) === taskId) setSelectedTask(res.data.data);
+      } else {
+        setError(res.data.message || "Failed to update task");
+      }
+    } catch {
+      setError("Failed to update task");
+    }
+    setSaving(false);
+  }, [selectedTask]);
+
   const handleStatusChange = useCallback(async (taskId, newStatus) => {
     if (isAdmin(currentUser)) {
       try { const res = await API.patch(`/tasks/${taskId}/status`, { status: newStatus }); if (res.data.success) { setTasks(p => p.map(t => ((t._id || t.id) === taskId ? res.data.data : t))); if ((selectedTask?._id || selectedTask?.id) === taskId) setSelectedTask(res.data.data); } } catch { setError("Failed to update status"); }
@@ -908,10 +969,20 @@ const [statusFilter, setStatusFilter] = useState("all");
   }, []);
 
   const handleReject = useCallback(async (taskId) => {
-    if (!window.confirm("Reject and delete this task request?")) return;
-    try { await API.delete(`/tasks/${taskId}`); } catch { }
-    setTasks(p => p.filter(t => (t._id || t.id) !== taskId));
-  }, []);
+    const task = tasks.find(t => (t._id || t.id) === taskId);
+    const isEditRequest = !!task?.pendingUpdate?.changes;
+    if (!window.confirm(isEditRequest ? "Reject this task edit request?" : "Reject and delete this task request?")) return;
+    try {
+      const res = await API.patch(`/tasks/${taskId}/approve`, { approvalStatus: "rejected" });
+      if (res.data?.data) {
+        setTasks(p => p.map(t => ((t._id || t.id) === taskId ? res.data.data : t)));
+      } else {
+        setTasks(p => p.filter(t => (t._id || t.id) !== taskId));
+      }
+    } catch {
+      setError("Failed to reject task request");
+    }
+  }, [tasks]);
 
   const handleDelete = useCallback(async (taskId) => {
     if (!window.confirm("Delete this task?")) return;
@@ -942,8 +1013,6 @@ const [statusFilter, setStatusFilter] = useState("all");
 
   const unreadCount = notifications.filter(n => !n.read && (n.userId?._id || n.userId)?.toString() === currentUser?.id).length;
   const pendingApprovals = tasks.filter(t => t.approvalStatus === "pending");
-  const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
-  const STATUS_ORDER = { in_progress: 0, pending: 1, completed: 2 };
 
 const visibleTasks = useMemo(() => {
   let list = tasks.filter(task => {
@@ -992,6 +1061,7 @@ const visibleTasks = useMemo(() => {
   if (!currentUser) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "80vh", color: "#6b7280", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>Loading…</div>;
 
   const _isAdmin = isAdmin(currentUser);
+  const _isManager = isManager(currentUser);
 
   return (
     <>
@@ -1111,6 +1181,140 @@ const visibleTasks = useMemo(() => {
           .task-shell-new { top: 60px; left: 0; }
         }
         .tr-hover:hover td { background: #f0fdf4 !important; }
+        body[data-theme="dark"] .task-shell-new {
+          background: #0b141a !important;
+          color: #e9edef;
+        }
+        body[data-theme="dark"] .task-shell-new .toolbar-card,
+        body[data-theme="dark"] .task-shell-new .desktop-table-view > div,
+        body[data-theme="dark"] .task-shell-new .mobile-card-view > div {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 12px 28px rgba(0,0,0,0.18) !important;
+        }
+        body[data-theme="dark"] .task-shell-new .search-input,
+        body[data-theme="dark"] .task-shell-new .filter-pill {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+          box-shadow: none !important;
+        }
+        body[data-theme="dark"] .task-shell-new .search-input::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .task-shell-new .filter-pill:not(.filter-pill-active) {
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .task-shell-new [style*="background: #f3f4f6"],
+        body[data-theme="dark"] .task-shell-new [style*="background: rgb(243, 244, 246)"],
+        body[data-theme="dark"] .task-shell-new [style*="background: #f9fafb"],
+        body[data-theme="dark"] .task-shell-new [style*="background: rgb(249, 250, 251)"] {
+          background: #202c33 !important;
+        }
+        body[data-theme="dark"] .task-shell-new table,
+        body[data-theme="dark"] .task-shell-new tbody,
+        body[data-theme="dark"] .task-shell-new tr,
+        body[data-theme="dark"] .task-shell-new td {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-shell-new thead tr,
+        body[data-theme="dark"] .task-shell-new th {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-shell-new .tr-hover:hover td {
+          background: #202c33 !important;
+        }
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: #1a2233"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: rgb(26, 34, 51)"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: #111827"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: rgb(17, 24, 39)"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: #374151"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: rgb(55, 65, 81)"] {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: #6b7280"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: rgb(107, 114, 128)"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: #9ca3af"],
+        body[data-theme="dark"] .task-shell-new :is(td, th, div, span, input, button)[style*="color: rgb(156, 163, 175)"] {
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .task-drawer,
+        body[data-theme="dark"] .task-approval-panel {
+          background: #111b21 !important;
+          color: #e9edef !important;
+          border-color: #2a3942 !important;
+          box-shadow: -12px 0 48px rgba(0,0,0,0.35) !important;
+        }
+        body[data-theme="dark"] .task-drawer [style*="background: #fff"],
+        body[data-theme="dark"] .task-drawer [style*="background: rgb(255, 255, 255)"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: #fff"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: rgb(255, 255, 255)"] {
+          background: #111b21 !important;
+        }
+        body[data-theme="dark"] .task-drawer [style*="background: #f9fafb"],
+        body[data-theme="dark"] .task-drawer [style*="background: rgb(249, 250, 251)"],
+        body[data-theme="dark"] .task-drawer [style*="background: #f3f4f6"],
+        body[data-theme="dark"] .task-drawer [style*="background: rgb(243, 244, 246)"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: #f9fafb"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: rgb(249, 250, 251)"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: #f3f4f6"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: rgb(243, 244, 246)"] {
+          background: #202c33 !important;
+        }
+        body[data-theme="dark"] .task-drawer [style*="background: #ccfbf1"],
+        body[data-theme="dark"] .task-drawer [style*="background: rgb(204, 251, 241)"] {
+          background: #005c4b !important;
+          border-color: #0a7c68 !important;
+        }
+        body[data-theme="dark"] .task-approval-panel [style*="background: #fef3c7"],
+        body[data-theme="dark"] .task-approval-panel [style*="background: rgb(254, 243, 199)"] {
+          background: #332701 !important;
+          border-color: #8a6d1e !important;
+        }
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #1a2233"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(26, 34, 51)"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #111827"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(17, 24, 39)"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #374151"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(55, 65, 81)"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #1a2233"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(26, 34, 51)"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #111827"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(17, 24, 39)"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #374151"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(55, 65, 81)"] {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #6b7280"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(107, 114, 128)"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #9ca3af"],
+        body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(156, 163, 175)"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #6b7280"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(107, 114, 128)"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #9ca3af"],
+        body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(156, 163, 175)"] {
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .task-drawer input,
+        body[data-theme="dark"] .task-drawer textarea,
+        body[data-theme="dark"] .task-drawer select {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-drawer input::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .task-drawer [style*="border-bottom: 1px solid"],
+        body[data-theme="dark"] .task-drawer [style*="border-top: 1px solid"],
+        body[data-theme="dark"] .task-drawer [style*="border: 1px solid"],
+        body[data-theme="dark"] .task-approval-panel [style*="border-bottom: 1px solid"],
+        body[data-theme="dark"] .task-approval-panel [style*="border-top: 1px solid"],
+        body[data-theme="dark"] .task-approval-panel [style*="border: 1px solid"] {
+          border-color: #2a3942 !important;
+        }
       `}</style>
 
       {error && (
@@ -1356,7 +1560,7 @@ color: tab === id ? "#fff" : "#9ca3af",
                 {/* Desktop Table */}
                 <div className="desktop-table-view" style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.05)" }}>
                   <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: (_isAdmin || _isManager) ? 780 : 680 }}>
                       <thead>
                         <tr style={{ borderBottom: "2px solid #e5e7eb", background: "#f9fafb" }}>
                           {[["title", "Task"], ["priority", "Priority"], ["status", "Status"], ["dueDate", "Due"]].map(([key, label]) => (
@@ -1366,6 +1570,7 @@ color: tab === id ? "#fff" : "#9ca3af",
                           ))}
                           <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>Assigned</th>
                           <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>💬</th>
+                          {(_isAdmin || _isManager) && <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>Action</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -1377,6 +1582,8 @@ color: tab === id ? "#fff" : "#9ca3af",
                           const isPending = task.approvalStatus === "pending";
                           const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser.id && uts.taskId.toString() === (task._id || task.id).toString());
                           const effectiveStatus = _isAdmin ? task.status : (myStatusRec ? myStatusRec.status : task.status);
+                          const isTaskCreator = (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === currentUser?.id;
+                          const canEditTask = _isAdmin || (_isManager && isTaskCreator);
                           return (
                             <tr key={task._id || task.id} className="tr-hover" onClick={() => setSelectedTask(task)}
                               style={{ borderBottom: "1px solid #f3f4f6", background: selected ? "#f0fdf4" : isPending ? "#fef3c7" : "transparent", borderLeft: selected ? "3px solid #0d9488" : isPending ? "3px solid #f59e0b" : "3px solid transparent", cursor: "pointer" }}>
@@ -1411,6 +1618,32 @@ color: tab === id ? "#fff" : "#9ca3af",
                               <td style={{ padding: "12px 16px" }}>
                                 <span style={{ fontSize: "0.8rem", fontWeight: 600, color: task.responses?.length > 0 ? "#0d9488" : "#d1d5db" }}>💬 {task.responses?.length || 0}</span>
                               </td>
+                              {(_isAdmin || _isManager) && (
+                                <td style={{ padding: "12px 16px" }} onClick={e => e.stopPropagation()}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                                    {canEditTask && (
+                                      <button
+                                        type="button"
+                                        title="Edit task"
+                                        onClick={() => setEditingTask(task)}
+                                        style={{ width: 30, height: 30, borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#eff6ff", color: "#2563eb", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                      >
+                                        <FiEdit2 size={14} />
+                                      </button>
+                                    )}
+                                    {_isAdmin && (
+                                      <button
+                                        type="button"
+                                        title="Delete task"
+                                        onClick={() => handleDelete(task._id || task.id)}
+                                        style={{ width: 30, height: 30, borderRadius: 8, border: "1.5px solid #fecaca", background: "#fee2e2", color: "#ef4444", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                      >
+                                        <FiTrash2 size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -1428,6 +1661,8 @@ color: tab === id ? "#fff" : "#9ca3af",
                     const isPending = task.approvalStatus === "pending";
                     const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser.id && uts.taskId.toString() === (task._id || task.id).toString());
                     const effectiveStatus = _isAdmin ? task.status : (myStatusRec ? myStatusRec.status : task.status);
+                    const isTaskCreator = (task.createdBy?._id || task.createdBy?.id || task.createdBy)?.toString() === currentUser?.id;
+                    const canEditTask = _isAdmin || (_isManager && isTaskCreator);
                     return (
                       <div key={task._id || task.id} onClick={() => setSelectedTask(task)}
                         style={{ background: "#fff", borderRadius: 12, border: "1.5px solid", borderColor: isPending ? "#fcd34d44" : "#e5e7eb", padding: 14, display: "flex", flexDirection: "column", gap: 9, boxShadow: "0 1px 3px rgba(0,0,0,.05)", cursor: "pointer" }}>
@@ -1448,6 +1683,20 @@ color: tab === id ? "#fff" : "#9ca3af",
                           </div>
                           <div style={{ fontSize: "0.77rem", fontWeight: 600, color: task.responses?.length > 0 ? "#0d9488" : "#d1d5db" }}>💬 {task.responses?.length || 0}</div>
                         </div>
+                        {(_isAdmin || _isManager) && (canEditTask || _isAdmin) && (
+                          <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 8 }}>
+                            {canEditTask && (
+                              <button type="button" onClick={() => setEditingTask(task)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#eff6ff", color: "#2563eb", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                <FiEdit2 size={13} /> Edit
+                              </button>
+                            )}
+                            {_isAdmin && (
+                              <button type="button" onClick={() => handleDelete(task._id || task.id)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1.5px solid #fecaca", background: "#fee2e2", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                <FiTrash2 size={13} /> Delete
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {isPending && <ApprovalBadge compact />}
                         {overdue && <div style={{ fontSize: "0.69rem", color: "#ef4444", fontWeight: 600 }}>⚠ Overdue</div>}
                       </div>
@@ -1462,6 +1711,7 @@ color: tab === id ? "#fff" : "#9ca3af",
 
       {selectedTaskLive && <ChatDrawer task={selectedTaskLive} currentUser={currentUser} allTasks={tasks} allUsers={users} onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} saving={saving} responseInput={responseInput} setResponseInput={setResponseInput} formValues={formValues} onFormChange={handleFormChange} onSubmit={handleResponse} userTaskStatuses={userTaskStatuses} />}
       {showCreate && <CreateTaskModal currentUser={currentUser} users={users} onClose={() => setShowCreate(false)} onCreate={handleCreate} />}
+      {editingTask && <CreateTaskModal currentUser={currentUser} users={users} task={editingTask} onClose={() => setEditingTask(null)} onCreate={handleCreate} onUpdate={handleUpdate} />}
       {showApprovals && <ApprovalPanel tasks={tasks} users={users} onApprove={handleApprove} onReject={handleReject} onClose={() => setShowApprovals(false)} />}
     </>
   );

@@ -249,7 +249,7 @@ function ApprovalBadge({ status }) {
 /* ---------- Skeleton components ---------- */
 function SkeletonLine({ width = "100%", height = 14, radius = 8 }) {
   return (
-    <div style={{ width, height, borderRadius: radius, background: "linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%)", backgroundSize: "200% 100%", animation: "pulse 1.2s ease-in-out infinite" }} />
+    <div style={{ width, height, borderRadius: radius, background: "var(--skeleton-gradient)", backgroundSize: "200% 100%", animation: "pulse 1.2s ease-in-out infinite" }} />
   );
 }
 
@@ -287,12 +287,12 @@ function SearchFilterSkeleton() {
   return (
     <div style={pageStyles.toolbarCard}>
       <div className="d-flex flex-column flex-lg-row gap-3 justify-content-between align-items-stretch align-items-lg-center">
-        <div className="rounded-4" style={{ width: "100%", height: 46, background: "linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%)" }} />
-        <div className="rounded-pill" style={{ width: 120, height: 44, background: "linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%)" }} />
+        <div className="rounded-4" style={{ width: "100%", height: 46, background: "var(--skeleton-gradient)", backgroundSize: "200% 100%", animation: "pulse 1.2s ease-in-out infinite" }} />
+        <div className="rounded-pill" style={{ width: 120, height: 44, background: "var(--skeleton-gradient)", backgroundSize: "200% 100%", animation: "pulse 1.2s ease-in-out infinite" }} />
       </div>
       <div className="d-flex flex-wrap gap-2 mt-3">
         {[1, 2, 3, 4, 5].map((item) => (
-          <div key={item} className="rounded-pill" style={{ width: 90, height: 36, background: "linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%)" }} />
+          <div key={item} className="rounded-pill" style={{ width: 90, height: 36, background: "var(--skeleton-gradient)", backgroundSize: "200% 100%", animation: "pulse 1.2s ease-in-out infinite" }} />
         ))}
       </div>
     </div>
@@ -1013,6 +1013,53 @@ useEffect(() => {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: 0.35; transform: scale(0.65); }
 }
+        body[data-theme="dark"] .campaign-page-root {
+          background: #0b141a !important;
+          color: #e9edef;
+        }
+        body[data-theme="dark"] .campaign-page-root [style*="rgba(255,255,255"],
+        body[data-theme="dark"] .campaign-page-root [style*="rgba(255, 255, 255"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: #fff"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: rgb(255, 255, 255)"] {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 12px 28px rgba(0,0,0,0.18) !important;
+        }
+        body[data-theme="dark"] .campaign-page-root [style*="background: #f8"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: #f9"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: #fa"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: rgb(248"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: rgb(249"],
+        body[data-theme="dark"] .campaign-page-root [style*="background: rgb(250"] {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .campaign-page-root :is(input, select, textarea, .form-control) {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .campaign-page-root :is(input, textarea)::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .campaign-page-root [style*="color: #0f172a"],
+        body[data-theme="dark"] .campaign-page-root [style*="color: rgb(15, 23, 42)"],
+        body[data-theme="dark"] .campaign-page-root [style*="color: #334155"],
+        body[data-theme="dark"] .campaign-page-root [style*="color: rgb(51, 65, 85)"] {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .campaign-page-root [style*="color: #64748b"],
+        body[data-theme="dark"] .campaign-page-root [style*="color: rgb(100, 116, 139)"],
+        body[data-theme="dark"] .campaign-page-root [style*="color: #94a3b8"],
+        body[data-theme="dark"] .campaign-page-root [style*="color: rgb(148, 163, 184)"] {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .campaign-page-root .table-scroll > div:hover {
+          background: #202c33 !important;
+        }
+        body[data-theme="dark"] .campaign-page-root .table-scroll::-webkit-scrollbar-thumb {
+          background: #2a3942;
+        }
         @media (max-width: 575px) {
           .stat-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .hero-title { font-size: 20px !important; }
@@ -1020,7 +1067,7 @@ useEffect(() => {
         }
       `}</style>
 
-      <div ref={pageRef} className="container-fluid py-2 py-md-4" style={pageStyles.shell}>
+      <div ref={pageRef} className="container-fluid py-2 py-md-4 campaign-page-root" style={pageStyles.shell}>
         <div className="d-flex flex-column gap-2 gap-md-3 h-100">
           {isLoading ? (
             <>

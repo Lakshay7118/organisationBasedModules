@@ -1,7 +1,7 @@
 "use client";
 
 import "./globals.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./componets/sidebar";
 import Topbar from "./componets/Topbar";
@@ -23,16 +23,17 @@ const enrichUser  = (u) => {
 
 export default function RootLayout({ children }) {
   const [isLoggedIn, setIsLoggedIn]     = useState(false);
-  const [activeTab, setActiveTab]       = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile]         = useState(false);
   const [chatOpen, setChatOpen]         = useState(false);
   const [currentUser, setCurrentUser]   = useState(null);
+  const [theme, setTheme]               = useState("light");
 
   const pathname = usePathname();
   const router   = useRouter();
+  const activeTab = pathname?.split("/")[1] || "dashboard";
 
-  const checkLoginStatus = () => {
+  const checkLoginStatus = useCallback(() => {
     const user = localStorage.getItem("user");
     if (!user) {
       setIsLoggedIn(false);
@@ -47,9 +48,36 @@ export default function RootLayout({ children }) {
       }
       setIsLoggedIn(true);
     }
-  };
+  }, [pathname, router]);
 
-  useEffect(() => { checkLoginStatus(); }, [pathname]);
+  useEffect(() => {
+    // localStorage is the app's auth source, so this effect reconciles layout state after route changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkLoginStatus();
+  }, [checkLoginStatus]);
+
+  useEffect(() => {
+    const applyTheme = (nextTheme) => {
+      const safeTheme = nextTheme === "dark" ? "dark" : "light";
+      setTheme(safeTheme);
+      document.documentElement.dataset.theme = safeTheme;
+      document.body.dataset.theme = safeTheme;
+    };
+
+    applyTheme(localStorage.getItem("settingsTheme") || "light");
+
+    const onStorage = (event) => {
+      if (event.key === "settingsTheme") applyTheme(event.newValue || "light");
+    };
+    const onThemeChanged = (event) => applyTheme(event.detail || localStorage.getItem("settingsTheme") || "light");
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("settingsThemeChanged", onThemeChanged);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("settingsThemeChanged", onThemeChanged);
+    };
+  }, []);
 
   useEffect(() => {
     window.addEventListener("storage", checkLoginStatus);
@@ -58,7 +86,7 @@ export default function RootLayout({ children }) {
       window.removeEventListener("storage", checkLoginStatus);
       window.removeEventListener("loginStatusChanged", checkLoginStatus);
     };
-  }, []);
+  }, [checkLoginStatus]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -70,7 +98,7 @@ export default function RootLayout({ children }) {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [pathname]);
+  }, [pathname, router]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 820);
@@ -99,11 +127,6 @@ useEffect(() => {
   };
 }, []);
 
-  useEffect(() => {
-    const segment = pathname?.split("/")[1] || "dashboard";
-    setActiveTab(segment);
-  }, [pathname]);
-
   // ✅ Both Topbar and BottomTabs use this same value
   const hideChrome = isMobile && chatOpen;
 
@@ -126,15 +149,19 @@ useEffect(() => {
     manage:         "Manage",
     developer:      "Developer",
     "all-projects": "All Projects",
+    Settings:       "Settings",
+    settings:       "Settings",
   };
 
   if (!isLoggedIn) {
     return (
-      <html lang="en">
+      <html lang="en" data-theme={theme}>
         <body
+          data-theme={theme}
           style={{
             margin: 0,
-            background: "#eef3f7",
+            background: "var(--app-bg)",
+            color: "var(--app-text)",
             fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
             overflowY: "auto",
           }}
@@ -146,11 +173,13 @@ useEffect(() => {
   }
 
   return (
-    <html lang="en">
+    <html lang="en" data-theme={theme}>
       <body
+        data-theme={theme}
         style={{
           margin: 0,
-          background: "#eef3f7",
+          background: "var(--app-bg)",
+          color: "var(--app-text)",
           fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
           overflowY: "auto",
         }}
@@ -160,6 +189,26 @@ useEffect(() => {
             .main-content {
               margin-left: 108px !important;
             }
+          }
+          body[data-theme="dark"] .bg-white,
+          body[data-theme="dark"] .bg-light {
+            background-color: var(--app-surface) !important;
+            color: var(--app-text) !important;
+          }
+          body[data-theme="dark"] .text-dark,
+          body[data-theme="dark"] .text-black {
+            color: var(--app-text) !important;
+          }
+          body[data-theme="dark"] .text-muted,
+          body[data-theme="dark"] .text-secondary {
+            color: var(--app-text-muted) !important;
+          }
+          body[data-theme="dark"] .border,
+          body[data-theme="dark"] .border-top,
+          body[data-theme="dark"] .border-end,
+          body[data-theme="dark"] .border-bottom,
+          body[data-theme="dark"] .border-start {
+            border-color: var(--app-border) !important;
           }
         `}</style>
 
@@ -197,13 +246,15 @@ useEffect(() => {
           />
 
           <div
+            className="app-content-shell"
             style={{
-              background: "#ffffff",
-              border: "1px solid #dbe4ea",
-              borderRadius: "20px",
-              padding: "18px",
-              boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
-            }}
+            background: "var(--card-bg)",
+            border: "1px solid var(--app-border)",
+            borderRadius: "20px",
+            padding: "18px",
+            boxShadow: "var(--card-shadow)",
+            color: "var(--app-text)",
+          }}
           >
             {children}
           </div>

@@ -37,10 +37,10 @@ const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 const colors = {
   primary: "#0f766e",
   primaryDark: "#115e59",
-  text: "#0f172a",
-  textSoft: "#64748b",
-  border: "#d9e2ec",
-  bgSoft: "#f8fafc",
+  text: "var(--app-text)",
+  textSoft: "var(--app-text-muted)",
+  border: "var(--app-border)",
+  bgSoft: "var(--app-surface-2)",
 };
 
 const fieldStyle = {
@@ -65,18 +65,18 @@ const textareaStyle = {
 };
 
 const sectionStyle = {
-  background: "#ffffff",
-  border: "1px solid #e7edf3",
+  background: "var(--app-surface)",
+  border: "1px solid var(--app-border)",
   borderRadius: "18px",
   padding: "16px",
 };
 
 const infoBoxStyle = {
-  background: "#f8fafc",
-  border: "1px dashed #d6dee8",
+  background: "var(--app-surface-2)",
+  border: "1px dashed var(--app-border)",
   borderRadius: "12px",
   padding: "10px 12px",
-  color: "#64748b",
+  color: "var(--app-text-muted)",
   fontSize: "12px",
   lineHeight: 1.6,
 };
@@ -103,8 +103,8 @@ const iconBoxStyle = {
 };
 
 const actionBoxStyle = {
-  background: "#fbfdff",
-  border: "1px solid #e3eaf2",
+  background: "var(--app-surface-2)",
+  border: "1px solid var(--app-border)",
   borderRadius: "16px",
   padding: "12px",
 };
@@ -112,10 +112,10 @@ const actionBoxStyle = {
 const removeBtnStyle = {
   width: "36px",
   height: "36px",
-  border: "1px solid #dbe3ea",
+  border: "1px solid var(--app-border)",
   borderRadius: "10px",
-  background: "#ffffff",
-  color: "#64748b",
+  background: "var(--app-surface)",
+  color: "var(--app-text-muted)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -138,7 +138,7 @@ const previewActionBtn = {
 
 const inputFocus = (e) => {
   e.target.style.border = `1px solid ${colors.primary}`;
-  e.target.style.background = "#ffffff";
+  e.target.style.background = "var(--input-bg)";
   e.target.style.boxShadow = "0 0 0 4px rgba(15, 118, 110, 0.08)";
 };
 
@@ -636,10 +636,12 @@ setSubmitMessage(
 
   return (
     <div
+      className="add-template-page"
       style={{
         minHeight: "100vh",
         padding: "20px",
-        background: "#f6f8fb",
+        background: "var(--app-bg)",
+        color: "var(--app-text)",
       }}
     >
       <div className="container-fluid" style={{ maxWidth: "1450px" }}>
@@ -778,7 +780,7 @@ setSubmitMessage(
                 <div style={sectionStyle}>
                   <Label icon={<Hash size={14} />} title="Variable Values (for preview)" />
                   <div style={infoBoxStyle}>
-                    Choose how each variable is resolved — use the contact's registered <b>Name</b>, their <b>Phone Number</b>, or enter a <b>Manual</b> value for preview.
+                    Choose how each variable is resolved — use the contact&apos;s registered <b>Name</b>, their <b>Phone Number</b>, or enter a <b>Manual</b> value for preview.
                   </div>
 
                   <div className="d-flex flex-column gap-3 mt-3">
@@ -786,8 +788,8 @@ setSubmitMessage(
                       <div
                         key={key}
                         style={{
-                          background: "#fbfdff",
-                          border: "1px solid #e3eaf2",
+                          background: "var(--app-surface-2)",
+                          border: "1px solid var(--app-border)",
                           borderRadius: "14px",
                           padding: "14px",
                         }}
@@ -823,17 +825,17 @@ setSubmitMessage(
                                   borderRadius: "10px",
                                   border: config.type === opt.value
                                     ? `1px solid ${colors.primary}`
-                                    : "1px solid #dbe3ea",
+                                    : "1px solid var(--app-border)",
                                   background: config.type === opt.value
                                     ? "rgba(15,118,110,0.08)"
-                                    : "#ffffff",
+                                    : "var(--app-surface)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   gap: "7px",
                                   cursor: "pointer",
                                   fontSize: "11px",
                                   fontWeight: 700,
-                                  color: config.type === opt.value ? colors.primary : "#334155",
+                                  color: config.type === opt.value ? colors.primary : "var(--app-text)",
                                   transition: "all 0.18s ease",
                                 }}
                               >
@@ -859,7 +861,7 @@ setSubmitMessage(
                             fontSize: "12px", fontWeight: 700, color: "#15803d", gap: "8px"
                           }}>
                             <span>👤</span>
-                            <span>Will be replaced with contact's registered name</span>
+                            <span>Will be replaced with contact&apos;s registered name</span>
                           </div>
                         )}
                         {config.type === "number" && (
@@ -870,7 +872,7 @@ setSubmitMessage(
                             fontSize: "12px", fontWeight: 700, color: "#1d4ed8", gap: "8px"
                           }}>
                             <span>📞</span>
-                            <span>Will be replaced with contact's phone number</span>
+                            <span>Will be replaced with contact&apos;s phone number</span>
                           </div>
                         )}
                         {config.type === "manual" && (
@@ -997,13 +999,13 @@ setSubmitMessage(
 
               <div className="d-flex flex-wrap gap-2">
                 <button type="button" className="btn" onClick={handleSubmit} disabled={saving} style={{ border: "none", background: "linear-gradient(135deg, #0f766e 0%, #115e59 100%)", color: "#fff", minHeight: "46px", borderRadius: "14px", padding: "0 20px", fontWeight: 800, fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "8px", boxShadow: "0 12px 24px rgba(15, 118, 110, 0.18)", opacity: saving ? 0.8 : 1 }}><Send size={15} />{saving ? "Saving..." : "Submit Template"}</button>
-                <button type="button" className="btn" onClick={handleReset} disabled={saving} style={{ minHeight: "46px", borderRadius: "14px", padding: "0 18px", fontWeight: 700, fontSize: "13px", border: "1px solid #dbe3ea", background: "#fff", color: "#334155" }}>Reset</button>
+                <button type="button" className="btn" onClick={handleReset} disabled={saving} style={{ minHeight: "46px", borderRadius: "14px", padding: "0 18px", fontWeight: 700, fontSize: "13px", border: "1px solid var(--app-border)", background: "var(--app-surface)", color: "var(--app-text)" }}>Reset</button>
               </div>
 
               {submittedData && (
                 <div style={sectionStyle}>
                   <div style={{ fontSize: "13px", fontWeight: 800, color: colors.text, marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}><Sparkles size={15} /> Submitted Data</div>
-                  <pre style={{ margin: 0, fontSize: "11px", color: "#334155", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px", maxHeight: "320px", overflow: "auto" }}>{JSON.stringify(submittedData, null, 2)}</pre>
+                  <pre style={{ margin: 0, fontSize: "11px", color: "var(--app-text)", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--app-surface-2)", border: "1px solid var(--app-border)", borderRadius: "12px", padding: "12px", maxHeight: "320px", overflow: "auto" }}>{JSON.stringify(submittedData, null, 2)}</pre>
                 </div>
               )}
             </div>
@@ -1040,7 +1042,7 @@ setSubmitMessage(
                         )}
 
                         <div style={{ fontSize: "10px", fontWeight: 800, color: colors.primary, marginBottom: "8px" }}>{(form.category || "Category") + " • " + (form.language || "Language")}</div>
-                        <div style={{ fontSize: "13px", color: "#111827", lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }} dangerouslySetInnerHTML={{ __html: formattedPreview }} />
+                        <div style={{ fontSize: "13px", color: "var(--app-text)", lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }} dangerouslySetInnerHTML={{ __html: formattedPreview }} />
                         {form.footer && <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e5e7eb", fontSize: "10px", color: "#6b7280" }}>{form.footer}</div>}
 
                         {/* Dropdowns (interactive) */}
@@ -1107,22 +1109,38 @@ setSubmitMessage(
         .stickyPreview { position: sticky; top: 20px; align-self: flex-start; }
         .col-xl-5 { position: relative; overflow: visible; }
         @media (max-width: 1199px) { .stickyPreview { position: static; } }
-        .actionTitle { font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
-        .smallCount { font-size: 10px; color: #64748b; text-align: right; margin-top: 4px; }
-        .uploadBox { min-height: 46px; border-radius: 14px; border: 1px dashed #b9c7d6; background: #f8fafc; color: #0f172a; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 12px 14px; transition: 0.2s ease; }
-        .uploadBox:hover { border-color: #0f766e; background: #ffffff; }
+        .actionTitle { font-size: 11px; font-weight: 700; color: var(--app-text); margin-bottom: 6px; }
+        .smallCount { font-size: 10px; color: var(--app-text-muted); text-align: right; margin-top: 4px; }
+        .uploadBox { min-height: 46px; border-radius: 14px; border: 1px dashed var(--app-border); background: var(--app-surface-2); color: var(--app-text); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 12px 14px; transition: 0.2s ease; }
+        .uploadBox:hover { border-color: #0f766e; background: var(--app-surface); }
+        body[data-theme="dark"] .add-template-page .form-control,
+        body[data-theme="dark"] .add-template-page .form-select {
+          background: var(--input-bg) !important;
+          color: var(--app-text) !important;
+          border-color: var(--input-border) !important;
+        }
+        body[data-theme="dark"] .add-template-page [style*="background: rgb(246, 248, 251)"],
+        body[data-theme="dark"] .add-template-page [style*="background: rgb(251, 253, 255)"],
+        body[data-theme="dark"] .add-template-page [style*="background: rgb(248, 250, 252)"],
+        body[data-theme="dark"] .add-template-page [style*="background: rgb(243, 244, 246)"] {
+          background: var(--app-surface-2) !important;
+        }
+        body[data-theme="dark"] .add-template-page [style*="background: rgb(255, 255, 255)"],
+        body[data-theme="dark"] .add-template-page [style*="background-color: rgb(255, 255, 255)"] {
+          background: var(--app-surface) !important;
+        }
       `}</style>
     </div>
   );
 }
 
 const navBtnStyle = {
-  border: "1px solid #dbe3ea",
-  background: "#fff",
+  border: "1px solid var(--app-border)",
+  background: "var(--app-surface)",
   borderRadius: "10px",
   fontSize: "11px",
   fontWeight: 700,
-  color: "#334155",
+  color: "var(--app-text)",
   padding: "5px 12px",
 };
 
@@ -1137,7 +1155,7 @@ function Label({ icon, title }) {
 
 function RadioCard({ label, checked, onChange }) {
   return (
-    <label style={{ minHeight: "42px", padding: "0 12px", borderRadius: "12px", border: checked ? "1px solid #0f766e" : "1px solid #dbe3ea", background: checked ? "rgba(15,118,110,0.08)" : "#ffffff", display: "inline-flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>
+    <label style={{ minHeight: "42px", padding: "0 12px", borderRadius: "12px", border: checked ? "1px solid #0f766e" : "1px solid var(--app-border)", background: checked ? "rgba(15,118,110,0.08)" : "var(--app-surface)", display: "inline-flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, color: "var(--app-text)" }}>
       <input type="radio" checked={checked} onChange={onChange} style={{ width: "15px", height: "15px", accentColor: "#0f766e", cursor: "pointer" }} />
       <span>{label}</span>
     </label>
@@ -1146,19 +1164,19 @@ function RadioCard({ label, checked, onChange }) {
 
 function ActionChip({ label, count, icon, onClick, disabled }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="btn" style={{ minHeight: "38px", borderRadius: "12px", border: "1px solid #d6dde5", background: disabled ? "#f3f4f6" : "#ffffff", color: disabled ? "#a8b0ba" : "#334155", padding: "0 12px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "11px", boxShadow: disabled ? "none" : "0 6px 14px rgba(15, 23, 42, 0.04)" }}>
+    <button type="button" onClick={onClick} disabled={disabled} className="btn" style={{ minHeight: "38px", borderRadius: "12px", border: "1px solid var(--app-border)", background: disabled ? "var(--app-surface-2)" : "var(--app-surface)", color: disabled ? "var(--app-text-muted)" : "var(--app-text)", padding: "0 12px", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "11px", boxShadow: disabled ? "none" : "0 6px 14px rgba(15, 23, 42, 0.04)" }}>
       <span style={{ display: "flex", alignItems: "center" }}>{icon}</span>
       <span>{label}</span>
-      <span style={{ minWidth: "26px", height: "22px", borderRadius: "999px", background: disabled ? "#e8eaee" : "#eef2f6", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 8px", fontSize: "10px", fontWeight: 800, color: disabled ? "#9aa4af" : "#475569" }}>{count}</span>
+      <span style={{ minWidth: "26px", height: "22px", borderRadius: "999px", background: "var(--app-surface-2)", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 8px", fontSize: "10px", fontWeight: 800, color: "var(--app-text-muted)" }}>{count}</span>
     </button>
   );
 }
 
 function PreviewMeta({ label, value }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", background: "#f8fafc", border: "1px solid #e5e7eb", padding: "9px 11px", borderRadius: "11px", fontSize: "11px" }}>
-      <span style={{ color: "#64748b" }}>{label}:</span>
-      <strong style={{ color: "#0f172a", fontWeight: 700 }}>{value}</strong>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", background: "var(--app-surface-2)", border: "1px solid var(--app-border)", padding: "9px 11px", borderRadius: "11px", fontSize: "11px" }}>
+      <span style={{ color: "var(--app-text-muted)" }}>{label}:</span>
+      <strong style={{ color: "var(--app-text)", fontWeight: 700 }}>{value}</strong>
     </div>
   );
 }

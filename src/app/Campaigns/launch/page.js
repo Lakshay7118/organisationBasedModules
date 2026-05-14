@@ -372,6 +372,97 @@ export default function LaunchCampaignPage() {
         .summary-value { text-align: right; color: #64748b; font-weight: 600; flex: 1; }
         .var-card { border: 1px solid #e5e7eb; border-radius: 16px; background: #fff; }
         .audience-scroll { max-height: 220px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #dbe3eb transparent; }
+        body[data-theme="dark"] .launch-shell {
+          background: radial-gradient(circle at top left, rgba(0,168,132,0.08), transparent 24%),
+                      radial-gradient(circle at top right, rgba(34,197,94,0.06), transparent 22%),
+                      linear-gradient(180deg, #0b141a 0%, #111b21 100%) !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .premium-card,
+        body[data-theme="dark"] .stepper-wrap,
+        body[data-theme="dark"] .soft-panel,
+        body[data-theme="dark"] .var-card,
+        body[data-theme="dark"] .template-card,
+        body[data-theme="dark"] .message-preview {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+          box-shadow: 0 16px 40px rgba(0,0,0,0.26) !important;
+        }
+        body[data-theme="dark"] .stepper-wrap,
+        body[data-theme="dark"] .soft-panel {
+          background: #111b21 !important;
+        }
+        body[data-theme="dark"] .input-premium,
+        body[data-theme="dark"] .select-premium {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+          box-shadow: none !important;
+        }
+        body[data-theme="dark"] .input-premium:focus,
+        body[data-theme="dark"] .select-premium:focus {
+          background: #202c33 !important;
+          border-color: #00a884 !important;
+          box-shadow: 0 0 0 3px rgba(0,168,132,0.18) !important;
+        }
+        body[data-theme="dark"] .section-title,
+        body[data-theme="dark"] .form-label,
+        body[data-theme="dark"] .summary-key,
+        body[data-theme="dark"] .template-card .fw-bold,
+        body[data-theme="dark"] .soft-panel h5 {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .section-subtitle,
+        body[data-theme="dark"] .step-label,
+        body[data-theme="dark"] .summary-value,
+        body[data-theme="dark"] .text-secondary,
+        body[data-theme="dark"] .small {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .step-node {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .step-node.active,
+        body[data-theme="dark"] .step-node.done {
+          color: #fff !important;
+          border-color: transparent !important;
+        }
+        body[data-theme="dark"] .step-line {
+          background: #2a3942 !important;
+        }
+        body[data-theme="dark"] .btn-back-premium,
+        body[data-theme="dark"] .tag-checkbox,
+        body[data-theme="dark"] .contact-row {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .template-card.selected {
+          background: rgba(0,168,132,0.16) !important;
+          border-color: #00a884 !important;
+        }
+        body[data-theme="dark"] .tag-checkbox.selected,
+        body[data-theme="dark"] .contact-row.selected {
+          background: linear-gradient(135deg, #007867 0%, #00a884 100%) !important;
+          border-color: #00a884 !important;
+          color: #fff !important;
+        }
+        body[data-theme="dark"] .summary-row {
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .launch-shell [style*="background: rgb(255, 255, 255)"],
+        body[data-theme="dark"] .launch-shell [style*="background: #fff"],
+        body[data-theme="dark"] .launch-shell [style*="background: #ffffff"] {
+          background: #111b21 !important;
+        }
+        body[data-theme="dark"] .launch-shell [style*="background: rgb(248, 250, 252)"],
+        body[data-theme="dark"] .launch-shell [style*="background: rgb(251, 253, 255)"],
+        body[data-theme="dark"] .launch-shell [style*="background: rgb(241, 245, 249)"] {
+          background: #202c33 !important;
+        }
         @media (max-width: 991px) { .launch-shell { top: 60px; left: 0; } }
       `}</style>
 
@@ -473,7 +564,7 @@ export default function LaunchCampaignPage() {
                       <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
                       <div style={{ fontWeight: 800, fontSize: 16, color: "#92400e", marginBottom: 6 }}>No Approved Templates</div>
                       <div style={{ fontSize: 13, color: "#78350f" }}>
-                        You don't have any approved templates yet. Please wait for the Super Admin to approve your templates before launching a campaign.
+                        You don&apos;t have any approved templates yet. Please wait for the Super Admin to approve your templates before launching a campaign.
                       </div>
                     </div>
                   ) : (
