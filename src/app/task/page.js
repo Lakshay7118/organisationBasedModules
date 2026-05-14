@@ -407,7 +407,7 @@ function TaskFormElements({ task, values, onChange, onSubmit, readonly = false }
 /* ---------- Create Task Modal ---------- */
 function FieldRow({ title, onRemove, children }) {
   return (
-    <div style={{ border: "1.5px solid #e5e7eb", borderRadius: 10, padding: 11, position: "relative", background: "#f9fafb", marginBottom: 9 }}>
+    <div className="task-field-row" style={{ border: "1.5px solid #e5e7eb", borderRadius: 10, padding: 11, position: "relative", background: "#f9fafb", marginBottom: 9 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7, alignItems: "center" }}>
         <span style={{ fontSize: "0.67rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>{title}</span>
         <button onClick={onRemove} style={{ background: "#fee2e2", border: "none", borderRadius: 5, cursor: "pointer", padding: "2px 5px", color: "#ef4444" }}><FiMinus size={11} /></button>
@@ -517,7 +517,7 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, backdropFilter: "blur(4px)" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 480px)", maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
+      <div className="task-create-modal" onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 480px)", maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
         <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontWeight: 800, fontSize: "0.96rem", color: "#1a2233" }}>{isEditing ? "Edit Task" : "✨ Create New Task"}</span>
           <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}><FiX size={14} /></button>
@@ -1241,6 +1241,7 @@ const visibleTasks = useMemo(() => {
           color: #aebac1 !important;
         }
         body[data-theme="dark"] .task-drawer,
+        body[data-theme="dark"] .task-create-modal,
         body[data-theme="dark"] .task-approval-panel {
           background: #111b21 !important;
           color: #e9edef !important;
@@ -1249,6 +1250,8 @@ const visibleTasks = useMemo(() => {
         }
         body[data-theme="dark"] .task-drawer [style*="background: #fff"],
         body[data-theme="dark"] .task-drawer [style*="background: rgb(255, 255, 255)"],
+        body[data-theme="dark"] .task-create-modal [style*="background: #fff"],
+        body[data-theme="dark"] .task-create-modal [style*="background: rgb(255, 255, 255)"],
         body[data-theme="dark"] .task-approval-panel [style*="background: #fff"],
         body[data-theme="dark"] .task-approval-panel [style*="background: rgb(255, 255, 255)"] {
           background: #111b21 !important;
@@ -1257,6 +1260,13 @@ const visibleTasks = useMemo(() => {
         body[data-theme="dark"] .task-drawer [style*="background: rgb(249, 250, 251)"],
         body[data-theme="dark"] .task-drawer [style*="background: #f3f4f6"],
         body[data-theme="dark"] .task-drawer [style*="background: rgb(243, 244, 246)"],
+        body[data-theme="dark"] .task-create-modal [style*="background: #f9fafb"],
+        body[data-theme="dark"] .task-create-modal [style*="background: rgb(249, 250, 251)"],
+        body[data-theme="dark"] .task-create-modal [style*="background: #f3f4f6"],
+        body[data-theme="dark"] .task-create-modal [style*="background: rgb(243, 244, 246)"],
+        body[data-theme="dark"] .task-create-modal [style*="background: #e5e7eb"],
+        body[data-theme="dark"] .task-create-modal [style*="background: rgb(229, 231, 235)"],
+        body[data-theme="dark"] .task-create-modal [style*="background: transparent"],
         body[data-theme="dark"] .task-approval-panel [style*="background: #f9fafb"],
         body[data-theme="dark"] .task-approval-panel [style*="background: rgb(249, 250, 251)"],
         body[data-theme="dark"] .task-approval-panel [style*="background: #f3f4f6"],
@@ -1264,7 +1274,9 @@ const visibleTasks = useMemo(() => {
           background: #202c33 !important;
         }
         body[data-theme="dark"] .task-drawer [style*="background: #ccfbf1"],
-        body[data-theme="dark"] .task-drawer [style*="background: rgb(204, 251, 241)"] {
+        body[data-theme="dark"] .task-drawer [style*="background: rgb(204, 251, 241)"],
+        body[data-theme="dark"] .task-create-modal [style*="background: #ccfbf1"],
+        body[data-theme="dark"] .task-create-modal [style*="background: rgb(204, 251, 241)"] {
           background: #005c4b !important;
           border-color: #0a7c68 !important;
         }
@@ -1279,6 +1291,12 @@ const visibleTasks = useMemo(() => {
         body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(17, 24, 39)"],
         body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #374151"],
         body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(55, 65, 81)"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: #1a2233"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: rgb(26, 34, 51)"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: #111827"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: rgb(17, 24, 39)"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: #374151"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: rgb(55, 65, 81)"],
         body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #1a2233"],
         body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(26, 34, 51)"],
         body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #111827"],
@@ -1291,6 +1309,10 @@ const visibleTasks = useMemo(() => {
         body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(107, 114, 128)"],
         body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: #9ca3af"],
         body[data-theme="dark"] .task-drawer :is(div, span, input, button, strong)[style*="color: rgb(156, 163, 175)"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: #6b7280"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: rgb(107, 114, 128)"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: #9ca3af"],
+        body[data-theme="dark"] .task-create-modal :is(div, span, input, textarea, select, button, strong)[style*="color: rgb(156, 163, 175)"],
         body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #6b7280"],
         body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: rgb(107, 114, 128)"],
         body[data-theme="dark"] .task-approval-panel :is(div, span, input, button, strong)[style*="color: #9ca3af"],
@@ -1299,13 +1321,28 @@ const visibleTasks = useMemo(() => {
         }
         body[data-theme="dark"] .task-drawer input,
         body[data-theme="dark"] .task-drawer textarea,
-        body[data-theme="dark"] .task-drawer select {
+        body[data-theme="dark"] .task-drawer select,
+        body[data-theme="dark"] .task-create-modal input,
+        body[data-theme="dark"] .task-create-modal textarea,
+        body[data-theme="dark"] .task-create-modal select {
           background: #202c33 !important;
           border-color: #2a3942 !important;
           color: #e9edef !important;
         }
-        body[data-theme="dark"] .task-drawer input::placeholder {
+        body[data-theme="dark"] .task-drawer input::placeholder,
+        body[data-theme="dark"] .task-create-modal input::placeholder,
+        body[data-theme="dark"] .task-create-modal textarea::placeholder {
           color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .task-create-modal .task-field-row {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-create-modal [style*="border-bottom: 1px solid"],
+        body[data-theme="dark"] .task-create-modal [style*="border-top: 1px solid"],
+        body[data-theme="dark"] .task-create-modal [style*="border: 1px solid"],
+        body[data-theme="dark"] .task-create-modal [style*="border: 1.5px solid"] {
+          border-color: #2a3942 !important;
         }
         body[data-theme="dark"] .task-drawer [style*="border-bottom: 1px solid"],
         body[data-theme="dark"] .task-drawer [style*="border-top: 1px solid"],

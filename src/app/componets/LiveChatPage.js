@@ -2444,27 +2444,55 @@ const getChatStatus = (chat) => {
             color: #e9edef !important;
             border-color: #2a3942 !important;
           }
+          body[data-theme="dark"] .group-modal-card {
+            box-shadow: 0 24px 70px rgba(0,0,0,0.5) !important;
+          }
+          body[data-theme="dark"] .group-modal-footer {
+            background: #111b21 !important;
+            border-top-color: #2a3942 !important;
+          }
           body[data-theme="dark"] .group-modal-card [style*="background: rgb(255, 255, 255)"],
           body[data-theme="dark"] .group-modal-card [style*="background: #ffffff"],
           body[data-theme="dark"] .group-modal-card [style*="background: #fff"],
-          body[data-theme="dark"] .group-modal-card [style*="background: rgb(250, 250, 250)"] {
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(250, 250, 250)"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #fafafa"] {
             background: #111b21 !important;
           }
           body[data-theme="dark"] .group-modal-card [style*="background: rgb(240, 242, 245)"],
           body[data-theme="dark"] .group-modal-card [style*="background: #f0f2f5"],
           body[data-theme="dark"] .group-modal-card [style*="background: rgb(247, 248, 250)"],
-          body[data-theme="dark"] .group-modal-card [style*="background: #f7f8fa"] {
+          body[data-theme="dark"] .group-modal-card [style*="background: #f7f8fa"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #f0faf7"],
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(240, 250, 247)"],
+          body[data-theme="dark"] .group-modal-card [style*="background: #e9edef"],
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(233, 237, 239)"] {
             background: #202c33 !important;
           }
+          body[data-theme="dark"] .group-modal-card [style*="background: #fff3cd"],
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(255, 243, 205)"] {
+            background: #332701 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="background: #d9fdd3"],
+          body[data-theme="dark"] .group-modal-card [style*="background: rgb(217, 253, 211)"] {
+            background: #005c4b !important;
+          }
           body[data-theme="dark"] .group-modal-card [style*="color: rgb(17, 27, 33)"],
-          body[data-theme="dark"] .group-modal-card [style*="color: #111b21"] {
+          body[data-theme="dark"] .group-modal-card [style*="color: #111b21"],
+          body[data-theme="dark"] .group-modal-card [style*="color: #54656f"],
+          body[data-theme="dark"] .group-modal-card [style*="color: rgb(84, 101, 111)"] {
             color: #e9edef !important;
           }
-          body[data-theme="dark"] .group-modal-card [style*="color: rgb(84, 101, 111)"],
           body[data-theme="dark"] .group-modal-card [style*="color: rgb(102, 119, 129)"],
-          body[data-theme="dark"] .group-modal-card [style*="color: #54656f"],
           body[data-theme="dark"] .group-modal-card [style*="color: #667781"] {
             color: #8696a0 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="color: #856404"],
+          body[data-theme="dark"] .group-modal-card [style*="color: rgb(133, 100, 4)"] {
+            color: #facc15 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="color: #005c4b"],
+          body[data-theme="dark"] .group-modal-card [style*="color: rgb(0, 92, 75)"] {
+            color: #9af6dd !important;
           }
           body[data-theme="dark"] .group-modal-card input,
           body[data-theme="dark"] .group-modal-card select {
@@ -2474,6 +2502,12 @@ const getChatStatus = (chat) => {
           }
           body[data-theme="dark"] .group-modal-card input::placeholder {
             color: #8696a0 !important;
+          }
+          body[data-theme="dark"] .group-modal-card [style*="border-bottom: 1px solid"],
+          body[data-theme="dark"] .group-modal-card [style*="border-bottom: 0.5px solid"],
+          body[data-theme="dark"] .group-modal-card [style*="border-top: 0.5px solid"],
+          body[data-theme="dark"] .group-modal-card [style*="border: 1px solid"] {
+            border-color: #2a3942 !important;
           }
           @keyframes msgIn {
             from { opacity: 0; transform: translateY(8px) scale(0.988); }
@@ -6099,12 +6133,10 @@ function GroupModal({ contacts, tags, onClose, onCreate, groupName, setGroupName
 }
     if (q && !c.name?.toLowerCase().includes(q) && !c.mobile?.includes(q)) return false;
 
-    console.log("contact sample:", JSON.stringify(contacts[0], null, 2));
-console.log("tag sample:", JSON.stringify(tags[0], null, 2));
     return true;
   });
   
-}, [contacts, filter, tagFilter, search, tags]);
+}, [contacts, filter, tagFilter, search]);
 
   const toggle = (contact) => {
     const exists = selectedContacts.some((c) => c.mobile === contact.mobile);
