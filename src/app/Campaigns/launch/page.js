@@ -45,6 +45,8 @@ export default function LaunchCampaignPage() {
   const pageRef = useRef(null);
   const stepperLineRefs = useRef([]);
   const stepContentRef = useRef(null);
+  const processingRef = useRef(false);
+  const launchKeyRef = useRef(null);
 
   const [step, setStep] = useState(1);
   const [processing, setProcessing] = useState(false);
@@ -255,21 +257,33 @@ export default function LaunchCampaignPage() {
 };
 
   const handleNext = async () => {
-    if (processing) return;
+    if (processingRef.current || processing) return;
 
     if (step < steps.length) {
+      processingRef.current = true;
       setProcessing(true);
       gsap.to(stepContentRef.current, {
         opacity: 0.4, y: 8, duration: 0.18,
-        onComplete: () => { setStep((prev) => prev + 1); setProcessing(false); },
+        onComplete: () => {
+          setStep((prev) => prev + 1);
+          processingRef.current = false;
+          setProcessing(false);
+        },
       });
       return;
     }
 
     // ── STEP 4: Submit ──
+    processingRef.current = true;
     setProcessing(true);
+    if (!launchKeyRef.current) {
+      launchKeyRef.current =
+        crypto?.randomUUID?.() ||
+        `campaign-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
 
     const payload = {
+      launchKey: launchKeyRef.current,
       campaignName: form.campaignName,
       messageType: form.messageType,
       audienceType: form.audienceType,
@@ -309,12 +323,13 @@ export default function LaunchCampaignPage() {
       console.error(error);
       alert("Error scheduling campaign: " + (error.response?.data?.message || error.message));
     } finally {
+      processingRef.current = false;
       setProcessing(false);
     }
   };
 
   const handleBack = () => {
-    if (processing) return;
+    if (processingRef.current || processing) return;
     if (step === 1) { router.push("/Campaigns"); return; }
     setStep((prev) => prev - 1);
   };

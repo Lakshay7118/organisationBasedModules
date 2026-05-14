@@ -402,15 +402,35 @@ const pendingIceCandidatesRef = useRef([]);
 const callFailureTimerRef = useRef(null);
 const callConnectTimerRef = useRef(null);
 
+const getMessageKey = (msg = {}) =>
+  msg.campaignDeliveryKey ||
+  (msg.id ? String(msg.id) : null) ||
+  (msg._id ? String(msg._id) : null) ||
+  msg.clientTempId ||
+  null;
+
+const dedupeMessages = (list = []) => {
+  const seen = new Set();
+  return list.filter((msg) => {
+    const key = getMessageKey(msg);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) => {
   const isSentByMe = String(msg.sender) === String(userPhone);
   const delivered =
     msg.status === "delivered" ||
     msg.status === "seen" ||
     (msg.messageType === "template" && msg.status === "sent");
+  const id = msg._id ? String(msg._id) : msg.id ? String(msg.id) : getMessageKey(msg);
 
   return {
-    id: msg._id,
+    id,
+    campaignDeliveryKey: msg.campaignDeliveryKey || null,
     clientTempId: msg.clientTempId || null,
     sender: msg.sender,
     type: isSentByMe ? "sent" : "received",
@@ -604,9 +624,10 @@ useEffect(() => {
 
     setMessages(prev => {
       const currentMsgs = prev[currentChatId] || [];
+      const incomingKey = getMessageKey(msg);
 
       // Avoid duplicates
-      if (currentMsgs.some(m => m.id === msg._id)) return prev;
+      if (incomingKey && currentMsgs.some(m => getMessageKey(m) === incomingKey)) return prev;
 
       // Replace optimistic temp message if exists
       const tempIndex = currentMsgs.findIndex((m) => {
@@ -627,7 +648,7 @@ useEffect(() => {
         return { ...prev, [currentChatId]: updated };
       }
 
-      return { ...prev, [currentChatId]: [...currentMsgs, newMsg] };
+      return { ...prev, [currentChatId]: dedupeMessages([...currentMsgs, newMsg]) };
     });
   };
 
@@ -700,7 +721,7 @@ useEffect(() => {
 
       setMessages(prev => ({
         ...prev,
-        [chatId]: data.map(m => mapServerMessageToUi(m)),
+        [chatId]: dedupeMessages(data.map(m => mapServerMessageToUi(m))),
       }));
     } catch (err) {
       console.error("Messages error:", err);
