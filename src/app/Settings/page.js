@@ -1571,20 +1571,6 @@ export default function SettingsPage() {
               <h1 style={{ margin: 0, color: colors.text, fontSize: 21 }}>Settings</h1>
               <p style={{ margin: "4px 0 0", color: colors.muted, fontSize: 13 }}>Account, support and approvals</p>
             </div>
-            <button type="button" onClick={logout} title="Logout" style={{
-              width: 38,
-              height: 38,
-              border: "none",
-              borderRadius: 8,
-              background: "#fee2e2",
-              color: colors.danger,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}>
-              <LogOut size={18} />
-            </button>
           </div>
 
           <div style={{ position: "relative", marginTop: 16 }}>

@@ -404,6 +404,11 @@ const callConnectTimerRef = useRef(null);
 
 const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) => {
   const isSentByMe = String(msg.sender) === String(userPhone);
+  const delivered =
+    msg.status === "delivered" ||
+    msg.status === "seen" ||
+    (msg.messageType === "template" && msg.status === "sent");
+
   return {
     id: msg._id,
     clientTempId: msg.clientTempId || null,
@@ -417,7 +422,7 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
       hour: "2-digit",
       minute: "2-digit",
     }),
-    delivered: msg.status === "delivered" || msg.status === "seen",
+    delivered,
     seen: msg.status === "seen",
     fileName: msg.fileName,
     fileSize: typeof msg.fileSize === "number" ? formatFileSize(msg.fileSize) : msg.fileSize,
