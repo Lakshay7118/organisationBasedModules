@@ -1409,7 +1409,7 @@ export default function ContactsPage() {
                         fontSize: 14,
                       }}
                     >
-                      No contacts found. Click "+ Add Contact" to get started.
+                      No contacts found. Click &quot;+ Add Contact&quot; to get started.
                     </td>
                   </tr>
                 )}

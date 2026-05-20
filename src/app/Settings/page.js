@@ -1750,3 +1750,4 @@ function noticeBox(colors, type) {
     cursor: type === "warning" ? "default" : "pointer",
   };
 }
+  

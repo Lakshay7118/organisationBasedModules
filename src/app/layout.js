@@ -32,6 +32,7 @@ export default function RootLayout({ children }) {
   const pathname = usePathname();
   const router   = useRouter();
   const activeTab = pathname?.split("/")[1] || "dashboard";
+  const isHrPage = pathname?.toLowerCase() === "/hr";
 
   const checkLoginStatus = useCallback(() => {
     const user = localStorage.getItem("user");
@@ -143,6 +144,8 @@ useEffect(() => {
     "live-chat":    "Live Chat",
     history:        "History",
     contacts:       "Contacts",
+    HR:             "HR Management",
+    hr:             "HR Management",
     campaigns:      "Campaigns",
     "ads-manager":  "Ads Manager",
     flows:          "Flows",
@@ -232,8 +235,10 @@ useEffect(() => {
           style={{
             marginLeft: 0,
             minHeight: "100vh",
-            padding: "14px 10px 0px 10px",
-            paddingBottom: isMobile ? "74px" : "14px",
+            paddingTop: isHrPage ? "10px" : "14px",
+            paddingRight: "10px",
+            paddingBottom: isMobile ? "74px" : isHrPage ? "10px" : "14px",
+            paddingLeft: "10px",
             boxSizing: "border-box",
           }}
         >
@@ -248,11 +253,14 @@ useEffect(() => {
           <div
             className="app-content-shell"
             style={{
-            background: "var(--card-bg)",
-            border: "1px solid var(--app-border)",
-            borderRadius: "20px",
-            padding: "18px",
-            boxShadow: "var(--card-shadow)",
+            background: isHrPage ? "transparent" : "var(--card-bg)",
+            border: isHrPage ? "0" : "1px solid var(--app-border)",
+            borderRadius: isHrPage ? "0" : "20px",
+            paddingTop: isHrPage ? "0" : "18px",
+            paddingRight: isHrPage ? "0" : "18px",
+            paddingBottom: isHrPage ? "0" : "18px",
+            paddingLeft: isHrPage ? "0" : "18px",
+            boxShadow: isHrPage ? "none" : "var(--card-shadow)",
             color: "var(--app-text)",
           }}
           >

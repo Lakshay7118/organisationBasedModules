@@ -1,0 +1,17 @@
+
+> whatsapp@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.132:3000
+- Environments: .env.local
+✓ Ready in 583ms
+Creating turbopack project {
+  dir: 'C:\\Users\\Lakshya\\Desktop\\whatsapp-clone\\frontend',
+  testMode: true
+}
+
+ GET /Settings 200 in 1418ms (next.js: 1069ms, application-code: 349ms)
+ GET /HR 200 in 84ms (next.js: 31ms, application-code: 54ms)
+ GET /HR 200 in 53ms (next.js: 6ms, application-code: 47ms)
