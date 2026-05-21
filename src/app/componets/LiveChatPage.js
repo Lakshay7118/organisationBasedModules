@@ -40,30 +40,80 @@ import API from "../utils/api";
 // ✅ Backend root URL (without /api) for media files
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-const DEFAULT_ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun.cloudflare.com:3478" },
+const DEFAULT_STUN_URLS = [
+  "stun:stun.l.google.com:19302",
+  "stun:stun1.l.google.com:19302",
+  "stun:stun2.l.google.com:19302",
+  "stun:stun.cloudflare.com:3478",
 ];
 
-const getRtcConfig = () => {
-  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+const parseRtcUrls = (value = "") =>
+  value
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+let cachedRtcConfig = null;
+let cachedRtcConfigExpiresAt = 0;
+
+const buildFallbackRtcConfig = () => {
+  const stunUrls = parseRtcUrls(process.env.NEXT_PUBLIC_STUN_URLS);
+  const turnUrls = parseRtcUrls(
+    process.env.NEXT_PUBLIC_TURN_URLS || process.env.NEXT_PUBLIC_TURN_URL
+  );
   const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
   const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+  const iceServers = [
+    {
+      urls: stunUrls.length > 0 ? stunUrls : DEFAULT_STUN_URLS,
+    },
+  ];
+
+  if (turnUrls.length > 0) {
+    iceServers.push({
+      urls: turnUrls,
+      username: turnUsername || undefined,
+      credential: turnCredential || undefined,
+    });
+  }
 
   return {
-    iceServers: turnUrl
-      ? [
-          ...DEFAULT_ICE_SERVERS,
-          {
-            urls: turnUrl.split(",").map(url => url.trim()).filter(Boolean),
-            username: turnUsername,
-            credential: turnCredential,
-          },
-        ]
-      : DEFAULT_ICE_SERVERS,
+    iceServers,
+    iceTransportPolicy: "all",
+    bundlePolicy: "max-bundle",
+    rtcpMuxPolicy: "require",
     iceCandidatePoolSize: 10,
   };
+};
+
+const normalizeRtcConfig = (config = {}) => ({
+  iceServers:
+    Array.isArray(config.iceServers) && config.iceServers.length > 0
+      ? config.iceServers
+      : buildFallbackRtcConfig().iceServers,
+  iceTransportPolicy: config.iceTransportPolicy || "all",
+  bundlePolicy: config.bundlePolicy || "max-bundle",
+  rtcpMuxPolicy: config.rtcpMuxPolicy || "require",
+  iceCandidatePoolSize: Number(config.iceCandidatePoolSize || 10),
+});
+
+const getRtcConfig = async () => {
+  if (cachedRtcConfig && Date.now() < cachedRtcConfigExpiresAt) {
+    return cachedRtcConfig;
+  }
+
+  try {
+    const res = await API.get("/rtc/ice-servers");
+    cachedRtcConfig = normalizeRtcConfig(res.data);
+    const ttlMs = Math.max(60, Number(res.data?.ttlSeconds || 300)) * 1000;
+    cachedRtcConfigExpiresAt = Date.now() + ttlMs - 30000;
+    return cachedRtcConfig;
+  } catch (err) {
+    console.warn("[call] Could not load backend ICE config, using frontend fallback.", err);
+    cachedRtcConfig = buildFallbackRtcConfig();
+    cachedRtcConfigExpiresAt = Date.now() + 5 * 60 * 1000;
+    return cachedRtcConfig;
+  }
 };
 
 const CALL_CONNECT_TIMEOUT_MS = 30000;
@@ -85,6 +135,14 @@ const CALL_ERROR_MESSAGES = {
   "connection-failed": "Call media connection failed. A TURN server is required for this network.",
   "ice-failed": "Call media connection failed. A TURN server is required for this network.",
 };
+
+const CALL_LOG_TEXT_RE = /^(voice call|video call|missed voice call|missed video call|cancelled voice call|cancelled video call|call declined|voice call declined|video call declined|call busy|call failed)\b/i;
+
+const isCallLogMessage = (source = {}) =>
+  source.messageType === "call" ||
+  Boolean(source.callStatus) ||
+  Boolean(source.callType) ||
+  (typeof source.text === "string" && CALL_LOG_TEXT_RE.test(source.text.trim()));
 
 /* ─────────────────────────────────────────────
   Skeleton components (unchanged)
@@ -321,7 +379,7 @@ export default function LiveChatPage() {
 
   // ── 1. ALL useState ──────────────────────────
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("active");
+  const [activeTab, setActiveTab] = useState("all");
   const [chatList, setChatList] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -422,6 +480,7 @@ const dedupeMessages = (list = []) => {
 
 const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) => {
   const isSentByMe = String(msg.sender) === String(userPhone);
+  const isCallLog = isCallLogMessage(msg);
   const delivered =
     msg.status === "delivered" ||
     msg.status === "seen" ||
@@ -434,7 +493,7 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
     clientTempId: msg.clientTempId || null,
     sender: msg.sender,
     type: isSentByMe ? "sent" : "received",
-    messageType: msg.messageType || "text",
+    messageType: isCallLog ? "call" : msg.messageType || "text",
     text: msg.text || "",
     templateMeta: msg.templateMeta || null,
     createdAt: msg.createdAt,
@@ -448,6 +507,9 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
     fileSize: typeof msg.fileSize === "number" ? formatFileSize(msg.fileSize) : msg.fileSize,
     url: msg.fileUrl,
     isDeleted: msg.isDeleted || false,
+    callStatus: msg.callStatus || null,
+    callDuration: msg.callDuration || 0,
+    callType: msg.callType || null,
     sending: false,
     failed: false,
     contactName: msg.contactName || null,
@@ -456,9 +518,66 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
   };
 };
 
+const getCallLogText = (source = {}, currentUserPhone) => {
+  const isOutgoing = String(source.sender || "") === String(currentUserPhone || "");
+  const status = source.callStatus || "ended";
+
+  if (!source.callStatus && source.text) return source.text;
+
+  if (status === "rejected") return isOutgoing ? "Voice call declined" : "Missed voice call";
+  if (status === "missed" || status === "cancelled") return isOutgoing ? "Cancelled voice call" : "Missed voice call";
+  if (status === "busy") return "Call busy";
+  if (status === "failed") return "Call failed";
+
+  return source.callDuration > 0
+    ? `Voice call · ${formatCallDuration(source.callDuration)}`
+    : "Voice call";
+};
+
+const buildLastMessageFromUi = (msg) => {
+  if (!msg) return null;
+
+  return {
+    text: msg.text || "",
+    messageType: isCallLogMessage(msg) ? "call" : msg.messageType || "text",
+    fileName: msg.fileName || null,
+    contactName: msg.contactName || null,
+    createdAt: msg.createdAt || new Date().toISOString(),
+    sender: msg.sender || null,
+    isDeleted: Boolean(msg.isDeleted),
+    status: msg.status || null,
+    callStatus: msg.callStatus || null,
+    callDuration: msg.callDuration || 0,
+    callType: msg.callType || null,
+  };
+};
+
 useEffect(() => {
   selectedChatRef.current = selectedChat;
 }, [selectedChat]);
+
+const applyChatPreview = (chatId, lastMessage) => {
+  setChatList(prev =>
+    prev.map(chat =>
+      String(chat._id) === String(chatId)
+        ? {
+            ...chat,
+            lastMessage,
+            updatedAt: lastMessage?.createdAt || chat.updatedAt,
+          }
+        : chat
+    )
+  );
+};
+
+const applyPreviewFromMessages = (chatId, nextMessages, serverLastMessage = undefined) => {
+  const nextLastMessage =
+    serverLastMessage !== undefined
+      ? serverLastMessage
+      : buildLastMessageFromUi(nextMessages[nextMessages.length - 1]);
+
+  applyChatPreview(chatId, nextLastMessage);
+};
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -600,9 +719,16 @@ useEffect(() => {
           // ✅ ADD THIS — keep lastMessage in sync
           lastMessage: {
             text: msg.text || "",
-            messageType: msg.messageType || "text",
+            messageType: isCallLogMessage(msg) ? "call" : msg.messageType || "text",
             fileName: msg.fileName || null,
+            contactName: msg.contactName || null,
             createdAt: msg.createdAt,
+            sender: msg.sender || null,
+            isDeleted: Boolean(msg.isDeleted),
+            status: msg.status || null,
+            callStatus: msg.callStatus || null,
+            callDuration: msg.callDuration || 0,
+            callType: msg.callType || null,
           },
         },
         ...prev.filter(c => String(c._id) !== String(msg.chatId)),
@@ -652,8 +778,53 @@ useEffect(() => {
     });
   };
 
+  const handleMessageDeletedForEveryone = ({ messageId, chatId, lastMessage }) => {
+    setMessages(prev => {
+      const currentMsgs = prev[chatId] || [];
+      if (!currentMsgs.length) return prev;
+
+      return {
+        ...prev,
+        [chatId]: currentMsgs.map(msg =>
+          String(msg.id) === String(messageId)
+            ? {
+                ...msg,
+                isDeleted: true,
+                text: "This message was deleted",
+                url: null,
+                fileName: null,
+                templateMeta: null,
+              }
+            : msg
+        ),
+      };
+    });
+
+    applyChatPreview(chatId, lastMessage || null);
+  };
+
+  const handleMessageDeletedForMe = ({ messageId, chatId, lastMessage }) => {
+    setMessages(prev => {
+      const currentMsgs = prev[chatId] || [];
+      if (!currentMsgs.length) return prev;
+
+      return {
+        ...prev,
+        [chatId]: currentMsgs.filter(msg => String(msg.id) !== String(messageId)),
+      };
+    });
+
+    applyChatPreview(chatId, lastMessage || null);
+  };
+
   s.on("newMessage", handleGlobalNewMessage);
-  return () => s.off("newMessage", handleGlobalNewMessage);
+  s.on("messageDeletedForEveryone", handleMessageDeletedForEveryone);
+  s.on("messageDeletedForMe", handleMessageDeletedForMe);
+  return () => {
+    s.off("newMessage", handleGlobalNewMessage);
+    s.off("messageDeletedForEveryone", handleMessageDeletedForEveryone);
+    s.off("messageDeletedForMe", handleMessageDeletedForMe);
+  };
 }, []);
 
 // ✅ Fix — only approved templates
@@ -840,11 +1011,21 @@ const endCall = (reason = "ended", notifyPeer = true) => {
   const from = currentUserRef.current?.phone;
 
   if (notifyPeer && activeCall?.peerPhone && from) {
+    const wasConnected = activeCall.status === "connected";
+    const durationSeconds =
+      wasConnected && activeCall.startedAt
+        ? Math.max(0, Math.floor((Date.now() - activeCall.startedAt) / 1000))
+        : 0;
+
     getSocket().emit("call:end", {
       to: activeCall.peerPhone,
       from,
       chatId: activeCall.chatId,
       reason,
+      initiator: activeCall.direction === "incoming" ? activeCall.peerPhone : from,
+      durationSeconds,
+      wasConnected,
+      callType: "audio",
     });
   }
 
@@ -915,8 +1096,18 @@ const scheduleConnectionFailureEnd = (reason = "connection-failed") => {
   }, CALL_FAILURE_GRACE_MS);
 };
 
-const createPeerConnection = (peerPhone, chatId) => {
-  const pc = new RTCPeerConnection(getRtcConfig());
+const createPeerConnection = async (peerPhone, chatId) => {
+  const rtcConfig = await getRtcConfig();
+  console.log("[call] RTC config", {
+    iceServers: rtcConfig.iceServers.map((server) => ({
+      urls: server.urls,
+      hasUsername: Boolean(server.username),
+      hasCredential: Boolean(server.credential),
+    })),
+    iceTransportPolicy: rtcConfig.iceTransportPolicy,
+  });
+
+  const pc = new RTCPeerConnection(rtcConfig);
 
   pc.onicecandidate = (event) => {
     const from = currentUserRef.current?.phone;
@@ -930,6 +1121,7 @@ const createPeerConnection = (peerPhone, chatId) => {
       type: event.candidate.type,
       protocol: event.candidate.protocol,
       address: event.candidate.address,
+      candidate: event.candidate.candidate,
     });
 
     getSocket().emit("call:ice-candidate", {
@@ -1040,7 +1232,7 @@ const startVoiceCall = async () => {
     const socket = getSocket();
     if (!socket.connected) socket.connect();
 
-    const pc = createPeerConnection(peerPhone, selectedChat._id);
+    const pc = await createPeerConnection(peerPhone, selectedChat._id);
     await addLocalAudioTracks(pc);
 
     const offer = await pc.createOffer({ offerToReceiveAudio: true });
@@ -1082,7 +1274,7 @@ const acceptIncomingCall = async () => {
   if (incomingCall.status !== "incoming" || !currentUserPhone) return;
 
   try {
-    const pc = createPeerConnection(incomingCall.peerPhone, incomingCall.chatId);
+    const pc = await createPeerConnection(incomingCall.peerPhone, incomingCall.chatId);
     await addLocalAudioTracks(pc);
     await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
     await flushPendingIceCandidates();
@@ -1122,6 +1314,7 @@ const rejectIncomingCall = () => {
       from: currentUserPhone,
       chatId: incomingCall.chatId,
       reason: "rejected",
+      callType: "audio",
     });
   }
 
@@ -1149,6 +1342,7 @@ const handleIncomingCall = (payload) => {
       to: payload.from,
       from: currentUserPhone,
       chatId: payload.chatId,
+      callType: "audio",
     });
     return;
   }
@@ -1270,11 +1464,10 @@ useEffect(() => {
   // ── 4. useMemo ────────────────────────────────
   const tabs = useMemo(() => {
     if (!Array.isArray(chatList)) return [];
-    const count = (s) => chatList.filter((c) => c.status === s).length;
     return [
-      { id: "active", label: "ACTIVE", count: count("active") },
-      { id: "requesting", label: "REQUESTING", count: count("requesting") },
-      { id: "intervened", label: "INTERVENED", count: count("intervened") },
+      { id: "all", label: "ALL", count: chatList.length },
+      { id: "unread", label: "UNREAD", count: chatList.filter((c) => (c.unread || 0) > 0).length },
+      { id: "groups", label: "GROUPS", count: chatList.filter((c) => c.isGroup).length },
     ];
   }, [chatList]);
 
@@ -1291,9 +1484,10 @@ const filteredChats = useMemo(() => {
   if (!Array.isArray(chatList)) return [];
   return chatList
     .filter((c) => {
-      // ✅ FIX: treat missing/undefined status as "active"
-      const chatStatus = c.status || "active";
-      return chatStatus === activeTab;
+      // Chat-list filters replace the older status tabs.
+      if (activeTab === "unread") return (c.unread || 0) > 0;
+      if (activeTab === "groups") return Boolean(c.isGroup);
+      return true;
     })
     .filter((c) => {
       const v = search.toLowerCase();
@@ -1433,6 +1627,7 @@ const deleteForMe = async () => {
       updated[chatId] = updated[chatId].filter(
         msg => msg.id !== selectedMessageId
       );
+      applyPreviewFromMessages(chatId, updated[chatId] || []);
       return updated;
     });
 
@@ -1453,6 +1648,7 @@ const deleteForMe = async () => {
         updated[chatId] = updated[chatId].filter(
           msg => msg.id !== selectedMessageId
         );
+        applyPreviewFromMessages(chatId, updated[chatId] || [], res.data?.lastMessage);
         return updated;
       });
 
@@ -1497,6 +1693,7 @@ const deleteForEveryone = async () => {
             : msg
         );
 
+        applyPreviewFromMessages(chatId, updated[chatId] || [], res.data?.lastMessage);
         return updated;
       });
 
@@ -1512,7 +1709,11 @@ const deleteForEveryone = async () => {
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
-    const next = chatList.filter((c) => c.status === tabId);
+    const next = chatList.filter((c) => {
+      if (tabId === "unread") return (c.unread || 0) > 0;
+      if (tabId === "groups") return Boolean(c.isGroup);
+      return true;
+    });
     setSelectedChat(next[0] || null);
     setMobileChatOpen(false);
     setShowEmojiPicker(false);
@@ -2136,6 +2337,7 @@ if (source.messageType === "audio") return "🎙️ Audio";
 if (source.messageType === "file") return `📎 ${source.fileName || "File"}`;
 if (source.messageType === "template") return "📋 Template";
 if (source.messageType === "contact") return `👤 ${source.contactName || source.text || "Contact"}`;
+if (isCallLogMessage(source)) return getCallLogText(source, currentUser?.phone);
 return source.text || "Start conversation";
 };
 
@@ -2977,6 +3179,11 @@ onClick={() => {
       >
         <MessageBubble
           msg={msg}
+          chatLastMessage={
+            index === msgs.length - 1
+              ? chatList.find(c => String(c._id) === String(selectedChat?._id))?.lastMessage
+              : null
+          }
           onDeleteClick={openDeleteModal}
           onForward={handleForwardMessage}
           isGroup={selectedChat?.isGroup}
@@ -3875,6 +4082,7 @@ onClick={() => {
 ───────────────────────────────────────────── */
 function MessageBubble({
   msg,
+  chatLastMessage,
   onDeleteClick,
   onForward,
   onSelect,
@@ -4418,6 +4626,50 @@ const renderContent = () => {
     }
 
     // ─── IMAGE MESSAGE ──────────────────────────────────────────
+    const fallbackCallSource =
+      msg.messageType === "text" &&
+      !String(msg.text || "").trim() &&
+      isCallLogMessage(chatLastMessage)
+        ? { ...chatLastMessage, sender: msg.sender, callDuration: chatLastMessage.callDuration || 0 }
+        : null;
+    const callSource = isCallLogMessage(msg) ? msg : fallbackCallSource;
+
+    if (callSource) {
+      const status = callSource.callStatus || "ended";
+      const isProblemCall = ["missed", "rejected", "busy", "cancelled", "failed"].includes(status);
+      const title =
+        !callSource.callStatus && callSource.text
+          ? callSource.text
+          :
+        status === "rejected"
+          ? (isMine ? "Voice call declined" : "Missed voice call")
+          : status === "missed" || status === "cancelled"
+          ? (isMine ? "Cancelled voice call" : "Missed voice call")
+          : status === "busy"
+          ? "Call busy"
+          : status === "failed"
+          ? "Call failed"
+          : "Voice call";
+      const detail =
+        status === "ended" && callSource.callDuration > 0
+          ? formatCallDuration(callSource.callDuration)
+          : callSource.callType === "video"
+          ? "Video"
+          : "Audio";
+
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 190, maxWidth: 260, padding: "4px 2px" }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: isProblemCall ? "#ffe5e5" : "#d9fdd3", color: isProblemCall ? "#d93025" : "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <FiPhone size={17} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#111b21" }}>{title}</div>
+            <div style={{ fontSize: "0.74rem", color: "#667781", marginTop: 1 }}>{detail}</div>
+          </div>
+        </div>
+      );
+    }
+
     if (msg.messageType === "image") {
       return (
         <div style={{ position: "relative", width: "240px", maxWidth: "100%" }}>

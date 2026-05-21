@@ -17,7 +17,10 @@ const getSocketURL = () => {
   if (process.env.NEXT_PUBLIC_BACKEND_URL) {
     return process.env.NEXT_PUBLIC_BACKEND_URL;
   }
-  // Use same hostname as browser automatically
+  if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    return window.location.origin;
+  }
+  // Local development fallback.
   return `${window.location.protocol}//${window.location.hostname}:5000`;
 };
 

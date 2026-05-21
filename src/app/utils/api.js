@@ -1,12 +1,24 @@
 import axios from "axios";
 
 // 🔥 BASE URL HANDLING (IMPORTANT)
-const BASE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+const getBaseURL = () => {
+  if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+    return process.env.NEXT_PUBLIC_BACKEND_URL;
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    !["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ) {
+    return window.location.origin;
+  }
+
+  return "http://localhost:5000";
+};
 
 // Create axios instance
 const API = axios.create({
-  baseURL: `${BASE_URL}/api`,
+  baseURL: `${getBaseURL()}/api`,
 });
 
 // 🔐 REQUEST INTERCEPTOR (attach token)
