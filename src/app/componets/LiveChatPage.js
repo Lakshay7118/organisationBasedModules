@@ -33,6 +33,7 @@ import {
   FiCheckSquare,
   FiMic,
   FiMicOff,
+  FiVideo,
 } from "react-icons/fi";
 
 import API from "../utils/api";
@@ -128,6 +129,7 @@ const createIdleCallState = () => ({
   offer: null,
   startedAt: null,
   error: "",
+  callType: "audio",
 });
 
 const CALL_ERROR_MESSAGES = {
@@ -427,6 +429,9 @@ const [audioBlob, setAudioBlob] = useState(null);
 const [callState, setCallState] = useState(createIdleCallState);
 const [callSeconds, setCallSeconds] = useState(0);
 const [isCallMuted, setIsCallMuted] = useState(false);
+const [showCallTypePicker, setShowCallTypePicker] = useState(false);
+const [localCallStream, setLocalCallStream] = useState(null);
+const [remoteCallStream, setRemoteCallStream] = useState(null);
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
@@ -455,6 +460,7 @@ const audioChunksRef = useRef([]);
 const callStateRef = useRef(createIdleCallState());
 const peerConnectionRef = useRef(null);
 const localStreamRef = useRef(null);
+const remoteStreamRef = useRef(null);
 const remoteAudioRef = useRef(null);
 const pendingIceCandidatesRef = useRef([]);
 const callFailureTimerRef = useRef(null);
@@ -521,17 +527,18 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
 const getCallLogText = (source = {}, currentUserPhone) => {
   const isOutgoing = String(source.sender || "") === String(currentUserPhone || "");
   const status = source.callStatus || "ended";
+  const callLabel = source.callType === "video" ? "Video call" : "Voice call";
 
   if (!source.callStatus && source.text) return source.text;
 
-  if (status === "rejected") return isOutgoing ? "Voice call declined" : "Missed voice call";
-  if (status === "missed" || status === "cancelled") return isOutgoing ? "Cancelled voice call" : "Missed voice call";
+  if (status === "rejected") return isOutgoing ? `${callLabel} declined` : `Missed ${callLabel.toLowerCase()}`;
+  if (status === "missed" || status === "cancelled") return isOutgoing ? `Cancelled ${callLabel.toLowerCase()}` : `Missed ${callLabel.toLowerCase()}`;
   if (status === "busy") return "Call busy";
   if (status === "failed") return "Call failed";
 
   return source.callDuration > 0
-    ? `Voice call · ${formatCallDuration(source.callDuration)}`
-    : "Voice call";
+    ? `${callLabel} · ${formatCallDuration(source.callDuration)}`
+    : callLabel;
 };
 
 const buildLastMessageFromUi = (msg) => {
@@ -997,11 +1004,14 @@ const resetCallMedia = () => {
 
   localStreamRef.current?.getTracks().forEach(track => track.stop());
   localStreamRef.current = null;
+  remoteStreamRef.current = null;
 
   if (remoteAudioRef.current) {
     remoteAudioRef.current.srcObject = null;
   }
 
+  setLocalCallStream(null);
+  setRemoteCallStream(null);
   setIsCallMuted(false);
   setCallSeconds(0);
 };
@@ -1025,7 +1035,7 @@ const endCall = (reason = "ended", notifyPeer = true) => {
       initiator: activeCall.direction === "incoming" ? activeCall.peerPhone : from,
       durationSeconds,
       wasConnected,
-      callType: "audio",
+      callType: activeCall.callType || "audio",
     });
   }
 
@@ -1041,12 +1051,17 @@ const failCall = (reason = "connection-failed", notifyPeer = true) => {
   if (message) alert(message);
 };
 
-const attachRemoteAudio = (stream) => {
-  if (!remoteAudioRef.current || !stream) return;
+const attachRemoteStream = (stream) => {
+  if (!stream) return;
 
-  remoteAudioRef.current.srcObject = stream;
-  const playPromise = remoteAudioRef.current.play?.();
-  if (playPromise?.catch) playPromise.catch(() => {});
+  remoteStreamRef.current = stream;
+  setRemoteCallStream(stream);
+
+  if ((callStateRef.current.callType || "audio") === "audio" && remoteAudioRef.current) {
+    remoteAudioRef.current.srcObject = stream;
+    const playPromise = remoteAudioRef.current.play?.();
+    if (playPromise?.catch) playPromise.catch(() => {});
+  }
 };
 
 const startCallConnectTimeout = () => {
@@ -1138,7 +1153,7 @@ const createPeerConnection = async (peerPhone, chatId) => {
       streams: event.streams?.length || 0,
       trackKind: event.track?.kind,
     });
-    attachRemoteAudio(event.streams?.[0]);
+    attachRemoteStream(event.streams?.[0]);
     markCallConnected();
   };
 
@@ -1180,19 +1195,26 @@ const createPeerConnection = async (peerPhone, chatId) => {
   return pc;
 };
 
-const getLocalAudioStream = async () => {
+const getLocalMediaStream = async (callType = "audio") => {
   if (localStreamRef.current) return localStreamRef.current;
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,
-    video: false,
+    video: callType === "video"
+      ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
+        }
+      : false,
   });
   localStreamRef.current = stream;
+  setLocalCallStream(stream);
   return stream;
 };
 
-const addLocalAudioTracks = async (pc) => {
-  const stream = await getLocalAudioStream();
+const addLocalMediaTracks = async (pc, callType = "audio") => {
+  const stream = await getLocalMediaStream(callType);
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
 };
 
@@ -1212,7 +1234,7 @@ const flushPendingIceCandidates = async () => {
   }
 };
 
-const startVoiceCall = async () => {
+const startCall = async (callType = "audio") => {
   if (!selectedChat || selectedChat.isGroup) return;
 
   const currentUserPhone = currentUserRef.current?.phone;
@@ -1233,9 +1255,12 @@ const startVoiceCall = async () => {
     if (!socket.connected) socket.connect();
 
     const pc = await createPeerConnection(peerPhone, selectedChat._id);
-    await addLocalAudioTracks(pc);
+    await addLocalMediaTracks(pc, callType);
 
-    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: callType === "video",
+    });
     await pc.setLocalDescription(offer);
 
     const outgoingCallState = {
@@ -1247,6 +1272,7 @@ const startVoiceCall = async () => {
       offer: null,
       startedAt: null,
       error: "",
+      callType,
     };
     callStateRef.current = outgoingCallState;
     setCallState(outgoingCallState);
@@ -1258,11 +1284,11 @@ const startVoiceCall = async () => {
       fromName: currentUserRef.current?.name || currentUserPhone,
       chatId: selectedChat._id,
       offer,
-      callType: "audio",
+      callType,
     });
   } catch (err) {
     console.error("Call start failed:", err);
-    alert("Could not start the call. Please allow microphone access.");
+    alert(callType === "video" ? "Could not start the video call. Please allow camera and microphone access." : "Could not start the call. Please allow microphone access.");
     endCall("setup-failed", false);
   }
 };
@@ -1274,8 +1300,9 @@ const acceptIncomingCall = async () => {
   if (incomingCall.status !== "incoming" || !currentUserPhone) return;
 
   try {
+    const callType = incomingCall.callType || "audio";
     const pc = await createPeerConnection(incomingCall.peerPhone, incomingCall.chatId);
-    await addLocalAudioTracks(pc);
+    await addLocalMediaTracks(pc, callType);
     await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
     await flushPendingIceCandidates();
 
@@ -1299,7 +1326,7 @@ const acceptIncomingCall = async () => {
     });
   } catch (err) {
     console.error("Call accept failed:", err);
-    alert("Could not answer the call. Please allow microphone access.");
+    alert(incomingCall.callType === "video" ? "Could not answer the video call. Please allow camera and microphone access." : "Could not answer the call. Please allow microphone access.");
     endCall("setup-failed", true);
   }
 };
@@ -1314,7 +1341,7 @@ const rejectIncomingCall = () => {
       from: currentUserPhone,
       chatId: incomingCall.chatId,
       reason: "rejected",
-      callType: "audio",
+      callType: incomingCall.callType || "audio",
     });
   }
 
@@ -1327,6 +1354,16 @@ const toggleCallMute = () => {
     track.enabled = !nextMuted;
   });
   setIsCallMuted(nextMuted);
+};
+
+const openCallTypePicker = () => {
+  if (!selectedChat || selectedChat.isGroup || callStateRef.current.status !== "idle") return;
+  setShowCallTypePicker(true);
+};
+
+const handleCallTypeSelect = (callType) => {
+  setShowCallTypePicker(false);
+  startCall(callType);
 };
 
 const handleIncomingCall = (payload) => {
@@ -1342,7 +1379,7 @@ const handleIncomingCall = (payload) => {
       to: payload.from,
       from: currentUserPhone,
       chatId: payload.chatId,
-      callType: "audio",
+      callType: payload.callType || "audio",
     });
     return;
   }
@@ -1356,6 +1393,7 @@ const handleIncomingCall = (payload) => {
     offer: payload.offer,
     startedAt: null,
     error: "",
+    callType: payload.callType || "audio",
   };
   callStateRef.current = incomingCallState;
   setCallState(incomingCallState);
@@ -1518,6 +1556,7 @@ const handleSelectChat = (chat) => {
   setShowEmojiPicker(false);
   setAttachmentMenuOpen(false);
   setPendingAttachment(null);
+  setShowCallTypePicker(false);
   setChatList((prev) =>
     prev.map((item) => item._id === chat._id ? { ...item, unread: 0 } : item)
   );
@@ -2739,10 +2778,21 @@ const getChatStatus = (chat) => {
           callState={callState}
           callSeconds={callSeconds}
           isMuted={isCallMuted}
+          localStream={localCallStream}
+          remoteStream={remoteCallStream}
           onAccept={acceptIncomingCall}
           onReject={rejectIncomingCall}
           onEnd={() => endCall("ended", true)}
           onToggleMute={toggleCallMute}
+        />,
+        document.body
+      )}
+
+      {showCallTypePicker && createPortal(
+        <CallTypePicker
+          chat={selectedChat}
+          onClose={() => setShowCallTypePicker(false)}
+          onSelect={handleCallTypeSelect}
         />,
         document.body
       )}
@@ -3107,9 +3157,9 @@ onClick={() => {
                           <HeaderIcon icon={<FiSearch size={18} />} />
                           <HeaderIcon
                             icon={<FiPhone size={18} />}
-                            onClick={startVoiceCall}
+                            onClick={openCallTypePicker}
                             disabled={selectedChat?.isGroup || callState.status !== "idle"}
-                            title={selectedChat?.isGroup ? "Voice calls are available in direct chats" : "Voice call"}
+                            title={selectedChat?.isGroup ? "Calls are available in direct chats" : "Start call"}
                           />
                           <button
                             type="button"
@@ -4637,34 +4687,39 @@ const renderContent = () => {
     if (callSource) {
       const status = callSource.callStatus || "ended";
       const isProblemCall = ["missed", "rejected", "busy", "cancelled", "failed"].includes(status);
+      const callLabel = callSource.callType === "video" ? "Video call" : "Voice call";
       const title =
         !callSource.callStatus && callSource.text
           ? callSource.text
           :
         status === "rejected"
-          ? (isMine ? "Voice call declined" : "Missed voice call")
+          ? (isMine ? `${callLabel} declined` : `Missed ${callLabel.toLowerCase()}`)
           : status === "missed" || status === "cancelled"
-          ? (isMine ? "Cancelled voice call" : "Missed voice call")
+          ? (isMine ? `Cancelled ${callLabel.toLowerCase()}` : `Missed ${callLabel.toLowerCase()}`)
           : status === "busy"
           ? "Call busy"
           : status === "failed"
           ? "Call failed"
-          : "Voice call";
+          : callLabel;
       const detail =
         status === "ended" && callSource.callDuration > 0
-          ? formatCallDuration(callSource.callDuration)
+          ? `Duration ${formatCallDuration(callSource.callDuration)}`
+          : isProblemCall
+          ? "Tap call icon to try again"
           : callSource.callType === "video"
           ? "Video"
           : "Audio";
 
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 190, maxWidth: 260, padding: "4px 2px" }}>
-          <div style={{ width: 34, height: 34, borderRadius: "50%", background: isProblemCall ? "#ffe5e5" : "#d9fdd3", color: isProblemCall ? "#d93025" : "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <FiPhone size={17} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 220, maxWidth: 290, padding: "6px 4px 3px" }}>
+          <div style={{ width: 42, height: 42, borderRadius: "50%", background: isProblemCall ? "#fff0f0" : "#e7f8f2", color: isProblemCall ? "#d93025" : "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {callSource.callType === "video" ? <FiVideo size={19} /> : <FiPhone size={18} />}
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#111b21" }}>{title}</div>
-            <div style={{ fontSize: "0.74rem", color: "#667781", marginTop: 1 }}>{detail}</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: "0.92rem", fontWeight: 700, color: "#111b21", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+            </div>
+            <div style={{ fontSize: "0.74rem", color: "#667781", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</div>
           </div>
         </div>
       );
@@ -6185,161 +6240,487 @@ function HeaderIcon({ icon, onClick, title, disabled = false, active = false }) 
   );
 }
 
-function formatCallDuration(seconds = 0) {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
-function CallOverlay({ callState, callSeconds, isMuted, onAccept, onReject, onEnd, onToggleMute }) {
-  const isIncoming = callState.status === "incoming";
-  const isConnected = callState.status === "connected";
-  const statusText =
-    callState.status === "incoming"
-      ? "Incoming voice call"
-      : callState.status === "outgoing"
-      ? "Calling..."
-      : callState.status === "connecting"
-      ? "Connecting..."
-      : formatCallDuration(callSeconds);
+function CallTypePicker({ chat, onClose, onSelect }) {
+  const name = chat?.name || chat?.phone || "Contact";
 
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 10050,
-        background: "rgba(17,27,33,0.64)",
-        backdropFilter: "blur(4px)",
+        zIndex: 10040,
+        background: "rgba(11, 20, 26, 0.38)",
+        backdropFilter: "blur(3px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: 18,
       }}
+      onClick={onClose}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 360,
+          maxWidth: 350,
           background: "#ffffff",
-          borderRadius: 18,
-          boxShadow: "0 20px 52px rgba(0,0,0,0.25)",
-          padding: "26px 22px 22px",
-          textAlign: "center",
+          borderRadius: 8,
+          boxShadow: "0 16px 42px rgba(0,0,0,0.2)",
+          padding: 18,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "0.78rem", color: "#667781", fontWeight: 700, textTransform: "uppercase" }}>Start call</div>
+            <div style={{ fontSize: "1.02rem", color: "#111b21", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: "#f0f2f5", color: "#54656f", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+            title="Close"
+          >
+            <FiX size={18} />
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => onSelect("audio")}
+            style={{ border: "1px solid #e9edef", background: "#ffffff", borderRadius: 8, padding: "13px 14px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", textAlign: "left" }}
+          >
+            <span style={{ width: 42, height: 42, borderRadius: "50%", background: "#e7f8f2", color: "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <FiPhone size={19} />
+            </span>
+            <span style={{ minWidth: 0, fontSize: "0.95rem", color: "#111b21", fontWeight: 800 }}>Voice call</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelect("video")}
+            style={{ border: "1px solid #d1f4e4", background: "#f2fbf7", borderRadius: 8, padding: "13px 14px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", textAlign: "left" }}
+          >
+            <span style={{ width: 42, height: 42, borderRadius: "50%", background: "#00a884", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <FiVideo size={20} />
+            </span>
+            <span style={{ minWidth: 0, fontSize: "0.95rem", color: "#111b21", fontWeight: 800 }}>Video call</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatCallDuration(seconds = 0) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute }) {
+  const isIncoming = callState.status === "incoming";
+  const isConnected = callState.status === "connected";
+  const isConnecting = callState.status === "connecting";
+  const isOutgoing = callState.status === "outgoing";
+  const callType = callState.callType || "audio";
+  const isVideoCall = callType === "video";
+  const callLabel = isVideoCall ? "Video call" : "Voice call";
+  const displayName = callState.peerName || callState.peerPhone || "Unknown";
+  const displayPhone = callState.peerPhone && callState.peerPhone !== callState.peerName ? callState.peerPhone : "";
+  const initial = displayName.charAt(0).toUpperCase();
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+
+  useEffect(() => {
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+  }, [localStream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream || null;
+      const playPromise = remoteVideoRef.current.play?.();
+      if (playPromise?.catch) playPromise.catch(() => {});
+    }
+  }, [remoteStream]);
+
+  const statusText =
+    callState.status === "incoming"
+      ? `Incoming ${callLabel.toLowerCase()}`
+      : callState.status === "outgoing"
+      ? "Ringing..."
+      : callState.status === "connecting"
+      ? "Connecting..."
+      : formatCallDuration(callSeconds);
+  const callToneText = isConnected ? callLabel : isConnecting ? "Securing media..." : isOutgoing ? `Starting ${callLabel.toLowerCase()}` : callLabel;
+
+  const overlayCSS = `
+    @keyframes call-pulse-ring {
+      0% { transform: scale(0.86); opacity: 0.8; }
+      80%, 100% { transform: scale(1.32); opacity: 0; }
+    }
+    @keyframes call-card-in {
+      from { opacity: 0; transform: translateY(14px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @media (max-width: 640px) {
+      .call-notification-card {
+        left: 12px !important;
+        right: 12px !important;
+        top: 12px !important;
+        width: auto !important;
+      }
+      .call-active-card {
+        width: calc(100vw - 28px) !important;
+        max-width: none !important;
+      }
+    }
+  `;
+
+  const renderCallAvatar = (size = 104, compact = false) => (
+    <div
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {!isConnected && (
+        <>
+          <span
+            style={{
+              position: "absolute",
+              inset: compact ? 4 : 0,
+              borderRadius: "50%",
+              background: isIncoming ? "rgba(37, 211, 102, 0.28)" : "rgba(0, 168, 132, 0.22)",
+              animation: "call-pulse-ring 1.55s ease-out infinite",
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              inset: compact ? 4 : 0,
+              borderRadius: "50%",
+              background: isIncoming ? "rgba(37, 211, 102, 0.2)" : "rgba(0, 168, 132, 0.16)",
+              animation: "call-pulse-ring 1.55s ease-out 0.52s infinite",
+            }}
+          />
+        </>
+      )}
+      <div
+        style={{
+          position: "relative",
+          width: compact ? size - 12 : size - 14,
+          height: compact ? size - 12 : size - 14,
+          borderRadius: "50%",
+          background: isIncoming ? "#00a884" : "#d9fdd3",
+          color: isIncoming ? "#ffffff" : "#053b31",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: compact ? "1.25rem" : "2.2rem",
+          fontWeight: 800,
+          boxShadow: compact ? "0 10px 26px rgba(0,0,0,0.18)" : "0 18px 42px rgba(0, 168, 132, 0.28)",
+        }}
+      >
+        {initial}
+      </div>
+    </div>
+  );
+
+  if (isIncoming) {
+    return (
+      <>
+        <style>{overlayCSS}</style>
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10050,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            className="call-notification-card"
+            style={{
+              position: "fixed",
+              top: 86,
+              right: 22,
+              width: 388,
+              background: "#111b21",
+              color: "#ffffff",
+              borderRadius: 8,
+              boxShadow: "0 18px 48px rgba(0,0,0,0.34)",
+              padding: 18,
+              animation: "call-card-in 0.22s ease-out",
+              pointerEvents: "auto",
+              border: "1px solid rgba(255,255,255,0.09)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14, position: "relative" }}>
+              {renderCallAvatar(64, true)}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.78rem", color: "#b7e4d7", fontWeight: 700, textTransform: "uppercase" }}>
+                  Incoming {callLabel.toLowerCase()}
+                </div>
+                <div style={{ marginTop: 3, fontSize: "1.08rem", fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {displayName}
+                </div>
+                {displayPhone && (
+                  <div style={{ marginTop: 2, fontSize: "0.82rem", color: "#cfe7df", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {displayPhone}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 18, position: "relative" }}>
+              <button
+                type="button"
+                onClick={onReject}
+                style={{
+                  flex: 1,
+                  height: 48,
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(239, 68, 68, 0.95)",
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  fontSize: "0.9rem",
+                }}
+                title="Decline"
+              >
+                <FiX size={18} />
+                Decline
+              </button>
+              <button
+                type="button"
+                onClick={onAccept}
+                style={{
+                  flex: 1,
+                  height: 48,
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "#25d366",
+                  color: "#073b2f",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  fontSize: "0.9rem",
+                }}
+                title="Answer"
+              >
+                {isVideoCall ? <FiVideo size={18} /> : <FiPhone size={18} />}
+                Answer
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <style>{overlayCSS}</style>
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10050,
+          background: "rgba(7, 20, 24, 0.72)",
+          backdropFilter: "blur(5px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 18,
         }}
       >
         <div
+          className="call-active-card"
           style={{
-            width: 86,
-            height: 86,
-            borderRadius: "50%",
-            background: "#d9fdd3",
-            color: "#005c4b",
+            width: "100%",
+            maxWidth: 392,
+            minHeight: 500,
+            background: "#111b21",
+            color: "#ffffff",
+            borderRadius: 8,
+            boxShadow: "0 24px 70px rgba(0,0,0,0.38)",
+            padding: "26px 24px 22px",
+            textAlign: "center",
+            border: "1px solid rgba(255,255,255,0.08)",
+            overflow: "hidden",
+            position: "relative",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            margin: "0 auto 16px",
-            fontSize: "2rem",
-            fontWeight: 700,
+            flexDirection: "column",
           }}
         >
-          {(callState.peerName || callState.peerPhone || "?").charAt(0).toUpperCase()}
-        </div>
-
-        <div style={{ fontSize: "1.1rem", fontWeight: 600, color: "#111b21", marginBottom: 4 }}>
-          {callState.peerName || callState.peerPhone}
-        </div>
-        <div style={{ fontSize: "0.9rem", color: isConnected ? "#00a884" : "#667781", marginBottom: 22 }}>
-          {statusText}
-        </div>
-
-        {isIncoming ? (
-          <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
-            <button
-              type="button"
-              onClick={onReject}
+          <div style={{ position: "relative", width: "100%", flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div
               style={{
-                width: 54,
-                height: 54,
-                borderRadius: "50%",
-                border: "none",
-                background: "#ef4444",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
+                alignSelf: "center",
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: isConnected ? "rgba(37, 211, 102, 0.14)" : "rgba(255,255,255,0.08)",
+                color: isConnected ? "#8ff0b5" : "#cfe7df",
+                fontSize: "0.78rem",
+                fontWeight: 800,
+                textTransform: "uppercase",
+                marginBottom: 30,
               }}
-              title="Decline"
             >
-              <FiX size={22} />
-            </button>
-            <button
-              type="button"
-              onClick={onAccept}
-              style={{
-                width: 54,
-                height: 54,
-                borderRadius: "50%",
-                border: "none",
-                background: "#00a884",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-              title="Answer"
-            >
-              <FiPhone size={22} />
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: "flex", justifyContent: "center", gap: 14 }}>
-            {isConnected && (
+              {callToneText}
+            </div>
+
+            {isVideoCall ? (
+              <div
+                style={{
+                  width: "100%",
+                  aspectRatio: "16 / 10",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  background: "#050f12",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  position: "relative",
+                  boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+                }}
+              >
+                {remoteStream ? (
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", background: "#050f12" }}
+                  />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                    {renderCallAvatar(88)}
+                    <div style={{ color: "#cfe7df", fontSize: "0.86rem", fontWeight: 700 }}>
+                      {isConnected ? "Waiting for video..." : "Waiting for answer"}
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    bottom: 12,
+                    width: 104,
+                    aspectRatio: "3 / 4",
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: "#111b21",
+                    border: "2px solid rgba(255,255,255,0.72)",
+                    boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  {localStream ? (
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", display: "block" }}
+                    />
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#aebac1" }}>
+                      <FiVideo size={22} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              renderCallAvatar(116)
+            )}
+
+            <div style={{ marginTop: isVideoCall ? 18 : 28, width: "100%" }}>
+              <div style={{ fontSize: "1.35rem", fontWeight: 850, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayName}
+              </div>
+              {displayPhone && (
+                <div style={{ marginTop: 4, fontSize: "0.9rem", color: "#aebac1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {displayPhone}
+                </div>
+              )}
+              <div
+                style={{
+                  marginTop: 16,
+                  fontSize: isConnected ? "1.1rem" : "0.95rem",
+                  color: isConnected ? "#25d366" : "#cfe7df",
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: isConnected ? 800 : 600,
+                }}
+              >
+                {statusText}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "auto", width: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+                {isConnected && (
+                  <button
+                    type="button"
+                    onClick={onToggleMute}
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: "50%",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      background: isMuted ? "rgba(239, 68, 68, 0.18)" : "rgba(255,255,255,0.1)",
+                      color: isMuted ? "#ffb4b4" : "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    title={isMuted ? "Unmute" : "Mute"}
+                  >
+                    {isMuted ? <FiMicOff size={22} /> : <FiMic size={22} />}
+                  </button>
+                )}
               <button
                 type="button"
-                onClick={onToggleMute}
+                onClick={onEnd}
                 style={{
-                  width: 50,
-                  height: 50,
+                  width: isConnected ? 64 : 62,
+                  height: isConnected ? 64 : 62,
                   borderRadius: "50%",
-                  border: "1px solid #e9edef",
-                  background: isMuted ? "#fef2f2" : "#f0f2f5",
-                  color: isMuted ? "#dc2626" : "#54656f",
+                  border: "none",
+                  background: "#ef4444",
+                  color: "#ffffff",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
+                  boxShadow: "0 14px 32px rgba(239, 68, 68, 0.38)",
                 }}
-                title={isMuted ? "Unmute" : "Mute"}
+                title="End call"
               >
-                {isMuted ? <FiMicOff size={20} /> : <FiMic size={20} />}
+                <FiX size={24} />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onEnd}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: "50%",
-                border: "none",
-                background: "#ef4444",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-              title="End call"
-            >
-              <FiX size={21} />
-            </button>
+              </div>
+              <div style={{ marginTop: 12, fontSize: "0.78rem", color: "#aebac1", minHeight: 18 }}>
+                {isConnected ? (isMuted ? "Microphone muted" : "Call connected") : "Waiting for answer"}
+              </div>
+            </div>
           </div>
-        )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

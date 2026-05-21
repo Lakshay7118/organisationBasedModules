@@ -518,7 +518,7 @@ export default function SettingsPage() {
         return;
       }
       setChat((prev) => [
-        ...prev,
+        ...prev,   
         { by: "bot", text: error.response?.data?.error || "I could not create the ticket. Please try again." },
       ]);
       setNotice({ type: "error", text: error.response?.data?.error || "Could not create ticket." });

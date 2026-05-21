@@ -43,9 +43,9 @@ const DAY_OPTIONS = [
 ];
 
 const HR_MAIN_TABS = [
+  { id: "overview", label: "Overview", icon: ListChecks },
   { id: "staff-payroll", label: "Staff & Payroll", icon: Users },
   { id: "banks-loans", label: "Banks & Loans", icon: Landmark },
-  { id: "overview", label: "Overview", icon: ListChecks },
 ];
 
 const PAYROLL_CYCLE_OPTIONS = [1, 7, 15];
@@ -97,10 +97,24 @@ const emptyBank = {
   balance: "",
 };
 
+const emptyBankTopUp = {
+  amount: "",
+  note: "",
+};
+
 const emptyBankPayment = {
+  bankId: "",
+  direction: "out",
+  partyType: "employee",
+  purpose: "salary",
+  staff: "",
+  loan: "",
+  payroll: "",
   beneficiaryName: "",
   beneficiaryAccount: "",
   amount: "",
+  emi: "",
+  issueDate: localDate(),
   note: "",
 };
 
@@ -305,6 +319,76 @@ function formatMoney(value) {
   })}`;
 }
 
+function transactionPeriodLabel(transaction) {
+  return transaction?.periodLabel
+    || transaction?.payrollPeriodLabel
+    || transaction?.payroll?.periodLabel
+    || transaction?.payroll?.periodEnd
+    || "";
+}
+
+function transactionGrossSalary(transaction) {
+  return Number(transaction?.grossSalary ?? transaction?.payroll?.grossSalary ?? 0);
+}
+
+function transactionNetPay(transaction) {
+  return Number(transaction?.netPay ?? transaction?.payroll?.netPay ?? 0);
+}
+
+function transactionLoanDeduction(transaction) {
+  return Number(transaction?.loanDeduction ?? transaction?.payroll?.loanDeduction ?? 0);
+}
+
+function transactionBreakdownText(transaction) {
+  const gross = transactionGrossSalary(transaction);
+  const emi = transactionLoanDeduction(transaction);
+  const net = transactionNetPay(transaction);
+  const parts = [];
+  if (gross > 0) parts.push(`Gross ${formatMoney(gross)}`);
+  if (emi > 0) parts.push(`Deducted ${formatMoney(emi)}`);
+  if (net > 0) parts.push(`Net ${formatMoney(net)}`);
+  return parts.join(" | ");
+}
+
+function transactionDirection(transaction) {
+  if (transaction?.direction === "in" || transaction?.direction === "out") return transaction.direction;
+  return ["manual_in", "loan_repayment"].includes(transaction?.type) ? "in" : "out";
+}
+
+function transactionTitle(transaction) {
+  const titles = {
+    salary: "Salary payment",
+    manual_out: "Payment out",
+    manual_in: "Payment in",
+    loan_out: "Employee loan paid",
+    loan_repayment: "Loan repayment",
+    advance_out: "Advance paid",
+  };
+  return titles[transaction?.type] || "Bank transaction";
+}
+
+function staffTransactionTitle(transaction) {
+  const titles = {
+    salary: "Salary received",
+    loan_out: "Loan received",
+    advance_out: "Advance received",
+    loan_repayment: "EMI payment",
+    manual_in: "Payment made",
+    manual_out: "Payment received",
+  };
+  return titles[transaction?.type] || transactionTitle(transaction);
+}
+
+function staffTransactionDirection(transaction) {
+  if (["salary", "loan_out", "advance_out", "manual_out"].includes(transaction?.type)) return "in";
+  if (["loan_repayment", "manual_in"].includes(transaction?.type)) return "out";
+  return transactionDirection(transaction);
+}
+
+function repaymentKindLabel(item) {
+  return item?.category === "advance" ? "Advance" : "Loan";
+}
+
 function dayLabels(days = []) {
   if (!days.length) return "No weekly off";
   return days.map((day) => DAY_OPTIONS.find((item) => item.id === Number(day))?.label).filter(Boolean).join(", ");
@@ -381,7 +465,7 @@ function estimateHourlyRateForStaff(person, referenceDate = localDate()) {
 }
 
 export default function HRPage() {
-  const [active, setActive] = useState("staff-payroll");
+  const [active, setActive] = useState("overview");
   const [toolsOpen, setToolsOpen] = useState("");
   const [attendanceSettings, setAttendanceSettings] = useState({
     autoMark: false,
@@ -416,8 +500,10 @@ export default function HRPage() {
   const [payrollScope, setPayrollScope] = useState("monthly:1");
   const [payrollDueDate, setPayrollDueDate] = useState(localDate());
   const [attendanceDrafts, setAttendanceDrafts] = useState({});
-  const [bankTopUps, setBankTopUps] = useState({});
+  const [bankTxnFilter, setBankTxnFilter] = useState({ mode: "all", date: localDate(), month: localDate().slice(0, 7) });
   const [selectedBank, setSelectedBank] = useState(null);
+  const [addMoneyBank, setAddMoneyBank] = useState(null);
+  const [bankTopUpForm, setBankTopUpForm] = useState(emptyBankTopUp);
   const [payNowBank, setPayNowBank] = useState(null);
   const [bankPaymentForm, setBankPaymentForm] = useState(emptyBankPayment);
   const [clearDuePayroll, setClearDuePayroll] = useState(null);
@@ -487,8 +573,18 @@ export default function HRPage() {
     [payrollScope, payrolls]
   );
 
+  const currentPayrollDueDate = useMemo(
+    () => normalizePayrollDateForScope(payrollDueDate || localDate(), payrollScope),
+    [payrollDueDate, payrollScope]
+  );
+
+  const currentCyclePayrolls = useMemo(
+    () => cyclePayrolls.filter((item) => item.periodEnd === currentPayrollDueDate),
+    [currentPayrollDueDate, cyclePayrolls]
+  );
+
   const payrollTotals = useMemo(
-    () => cyclePayrolls.reduce((acc, item) => {
+    () => currentCyclePayrolls.reduce((acc, item) => {
       acc.gross += Number(item.grossSalary || 0);
       acc.net += Number(item.netPay || 0);
       acc.loan += Number(item.loanDeduction || 0);
@@ -499,14 +595,14 @@ export default function HRPage() {
       if (item.status !== "paid") acc.dues += Number(item.balanceDue ?? item.netPay ?? 0);
       return acc;
     }, { gross: 0, net: 0, loan: 0, deductions: 0, overtime: 0, fine: 0, paid: 0, dues: 0 }),
-    [cyclePayrolls]
+    [currentCyclePayrolls]
   );
 
   const payrollByStaff = useMemo(() => {
     const map = new Map();
-    cyclePayrolls.forEach((item) => map.set(idOf(item.staff), item));
+    currentCyclePayrolls.forEach((item) => map.set(idOf(item.staff), item));
     return map;
-  }, [cyclePayrolls]);
+  }, [currentCyclePayrolls]);
 
   const staffDueSummaryByStaff = useMemo(() => {
     const map = new Map();
@@ -567,33 +663,135 @@ export default function HRPage() {
     return bankTransactions.filter((t) => idOf(t.staff) === selectedId);
   }, [bankTransactions, selectedDetailStaff]);
 
-  const selectedStaffLoans = useMemo(() => {
-    if (!selectedDetailStaff) return [];
-    const selectedId = idOf(selectedDetailStaff);
-    return loans.filter((loan) => idOf(loan.staff) === selectedId);
-  }, [loans, selectedDetailStaff]);
-
-  const loanTransactions = useMemo(
-    () => loans.flatMap((loan) => [
-      { id: `${idOf(loan)}-issued`, type: "Loan issued", staff: loan.staff, amount: Number(loan.amount || 0), date: loan.issueDate || loan.createdAt, note: loan.note || "", status: loan.status },
-      ...((loan.repayments || []).map((r) => ({ id: `${idOf(loan)}-${r._id || r.paidAt}`, type: "EMI repayment", staff: loan.staff, amount: Number(r.amount || 0), date: r.paidAt, note: loan.note || "", status: loan.status }))),
-    ]).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
+  const activeLoans = useMemo(
+    () => loans.filter((loan) => loan.status === "active" && Number(loan.outstanding || 0) > 0),
     [loans]
   );
 
-  const financeActivity = useMemo(
-    () => [
-      ...bankTransactions.map((t) => ({ id: t._id, date: t.paidAt, category: "Bank", title: t.type === "salary" ? "Salary payment" : "Bank payment", name: t.staff?.name || t.beneficiaryName || "Receiver", source: t.bank?.name || "--", amount: Number(t.amount || 0), note: t.note || t.periodLabel || "" })),
-      ...loanTransactions.map((t) => ({ id: t.id, date: t.date, category: "Loan", title: t.type, name: t.staff?.name || "Staff", source: t.status || "active", amount: Number(t.amount || 0), note: t.note || "" })),
-    ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
-    [bankTransactions, loanTransactions]
+  const selectedBankAccount = useMemo(() => {
+    const selectedId = idOf(selectedBank);
+    return banks.find((bank) => idOf(bank) === selectedId) || banks[0] || null;
+  }, [banks, selectedBank]);
+
+  const selectedPaymentBank = useMemo(() => (
+    banks.find((bank) => idOf(bank) === bankPaymentForm.bankId) || selectedBankAccount || banks[0] || null
+  ), [bankPaymentForm.bankId, banks, selectedBankAccount]);
+
+  const selectedPaymentStaff = useMemo(() => (
+    staff.find((person) => idOf(person) === bankPaymentForm.staff) || null
+  ), [bankPaymentForm.staff, staff]);
+
+  const selectedPaymentLoans = useMemo(() => {
+    if (!bankPaymentForm.staff) return [];
+    return activeLoans.filter((loan) => idOf(loan.staff) === bankPaymentForm.staff);
+  }, [activeLoans, bankPaymentForm.staff]);
+
+  const selectedPaymentLoan = useMemo(() => (
+    selectedPaymentLoans.find((loan) => idOf(loan) === bankPaymentForm.loan) || null
+  ), [bankPaymentForm.loan, selectedPaymentLoans]);
+
+  const selectedPaymentPayrolls = useMemo(() => {
+    if (!bankPaymentForm.staff) return [];
+    return payrolls
+      .filter((payroll) => idOf(payroll.staff) === bankPaymentForm.staff && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0)
+      .sort((a, b) => new Date(a.periodEnd || a.createdAt || 0) - new Date(b.periodEnd || b.createdAt || 0));
+  }, [bankPaymentForm.staff, payrolls]);
+
+  const selectedPaymentPayroll = useMemo(() => (
+    selectedPaymentPayrolls.find((payroll) => idOf(payroll) === bankPaymentForm.payroll) || null
+  ), [bankPaymentForm.payroll, selectedPaymentPayrolls]);
+
+  const bankPaymentPreview = useMemo(() => {
+    const amount = Number(bankPaymentForm.amount || 0);
+    const emi = Number(bankPaymentForm.emi || 0);
+    const bankBalance = Number(selectedPaymentBank?.balance || 0);
+    const direction = bankPaymentForm.direction;
+    const nextBankBalance = direction === "in" ? bankBalance + amount : bankBalance - amount;
+    const selectedLoanOutstanding = Number(selectedPaymentLoan?.outstanding || 0);
+    const loanRemaining = selectedPaymentLoan ? Math.max(0, selectedLoanOutstanding - amount) : 0;
+    const selectedPayrollDue = Number(selectedPaymentPayroll?.balanceDue ?? selectedPaymentPayroll?.netPay ?? 0);
+    const salaryRemaining = selectedPaymentPayroll ? Math.max(0, selectedPayrollDue - amount) : 0;
+    return {
+      amount,
+      emi,
+      months: amount > 0 && emi > 0 ? Math.ceil(amount / emi) : 0,
+      nextBankBalance,
+      loanRemaining,
+      salaryRemaining,
+    };
+  }, [bankPaymentForm.amount, bankPaymentForm.direction, bankPaymentForm.emi, selectedPaymentBank, selectedPaymentLoan, selectedPaymentPayroll]);
+
+  const bankTransactionRows = useMemo(
+    () => bankTransactions
+      .map((t) => ({
+        id: idOf(t) || `${idOf(t.bank)}-${t.paidAt}`,
+        bankId: idOf(t.bank),
+        date: t.paidAt,
+        type: t.type,
+        direction: transactionDirection(t),
+        title: transactionTitle(t),
+        name: t.staff?.name || t.beneficiaryName || "Receiver",
+        source: t.bank?.name || "--",
+        amount: Number(t.amount || 0),
+        note: t.note || "",
+        periodLabel: transactionPeriodLabel(t),
+        grossSalary: transactionGrossSalary(t),
+        netPay: transactionNetPay(t),
+        loanDeduction: transactionLoanDeduction(t),
+        breakdown: transactionBreakdownText(t),
+        loanOutstandingAfter: Number(t.loanOutstandingAfter || 0),
+        loanCategory: t.loan?.category || (t.type === "advance_out" ? "advance" : "loan"),
+        hasLoanBalance: Boolean(t.loan || ["loan_out", "advance_out", "loan_repayment"].includes(t.type)),
+        bankBalanceAfter: Number(t.bankBalanceAfter || 0),
+      }))
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
+    [bankTransactions]
   );
 
-  const selectedBankTransactions = useMemo(() => {
-    if (!selectedBank) return [];
-    const selectedBankId = idOf(selectedBank);
-    return bankTransactions.filter((t) => idOf(t.bank) === selectedBankId);
-  }, [bankTransactions, selectedBank]);
+  const allBankTransactionTotals = useMemo(
+    () => bankTransactionRows.reduce((acc, item) => {
+      if (item.direction === "in") acc.in += item.amount;
+      else acc.out += item.amount;
+      return acc;
+    }, { in: 0, out: 0 }),
+    [bankTransactionRows]
+  );
+
+  const repaymentBreakdown = useMemo(
+    () => activeLoans.reduce((acc, item) => {
+      if (item.category === "advance") acc.advance += Number(item.outstanding || 0);
+      else acc.loan += Number(item.outstanding || 0);
+      acc.deduction += Number(item.emi || 0);
+      acc.count += 1;
+      return acc;
+    }, { loan: 0, advance: 0, deduction: 0, count: 0 }),
+    [activeLoans]
+  );
+
+  const recentBankTransactions = useMemo(
+    () => bankTransactionRows.slice(0, 6),
+    [bankTransactionRows]
+  );
+
+  const filteredBankTransactions = useMemo(() => {
+    return bankTransactionRows.filter((item) => {
+      if (selectedBankAccount && item.bankId !== idOf(selectedBankAccount)) return false;
+      if (!item.date || bankTxnFilter.mode === "all") return true;
+      const txDate = localDate(new Date(item.date));
+      if (bankTxnFilter.mode === "date") return txDate === bankTxnFilter.date;
+      if (bankTxnFilter.mode === "month") return txDate.slice(0, 7) === bankTxnFilter.month;
+      return true;
+    });
+  }, [bankTransactionRows, bankTxnFilter, selectedBankAccount]);
+
+  const bankTransactionTotals = useMemo(
+    () => filteredBankTransactions.reduce((acc, item) => {
+      if (item.direction === "in") acc.in += item.amount;
+      else acc.out += item.amount;
+      return acc;
+    }, { in: 0, out: 0 }),
+    [filteredBankTransactions]
+  );
 
   const selectedStaffFormDepartment = useMemo(
     () => departments.find((department) => idOf(department) === staffForm.department) || null,
@@ -1064,38 +1262,138 @@ export default function HRPage() {
     }
   };
 
-  const addBankMoney = async (bank) => {
-    const amount = Number(bankTopUps[idOf(bank)] || 0);
+  const openBankPayment = (bank = selectedBankAccount, defaults = {}) => {
+    const targetBank = bank || selectedBankAccount || banks[0] || null;
+    const staffId = defaults.staff || "";
+    const firstLoan = staffId ? activeLoans.find((loan) => idOf(loan.staff) === staffId) : null;
+    const firstPayroll = staffId
+      ? payrolls
+        .filter((payroll) => idOf(payroll.staff) === staffId && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0)
+        .sort((a, b) => new Date(a.periodEnd || a.createdAt || 0) - new Date(b.periodEnd || b.createdAt || 0))[0]
+      : null;
+    const purpose = defaults.purpose || (defaults.direction === "in" ? (firstLoan ? "loan" : "general") : "salary");
+    const amount = defaults.amount ?? (purpose === "salary" && firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : "");
+    setPayNowBank(targetBank || {});
+    setBankPaymentForm({
+      ...emptyBankPayment,
+      bankId: idOf(targetBank) || idOf(banks[0]) || "",
+      direction: defaults.direction || "out",
+      partyType: defaults.partyType || "employee",
+      purpose,
+      staff: staffId,
+      loan: defaults.loan || (purpose === "loan" && firstLoan ? idOf(firstLoan) : ""),
+      payroll: defaults.payroll || (purpose === "salary" && firstPayroll ? idOf(firstPayroll) : ""),
+      amount,
+      issueDate: localDate(),
+    });
+  };
+
+  const openAddBankMoney = (bank = selectedBankAccount) => {
+    const targetBank = bank || selectedBankAccount || banks[0] || null;
+    setAddMoneyBank(targetBank || {});
+    setBankTopUpForm(emptyBankTopUp);
+  };
+
+  const addMoneyToBank = async () => {
+    if (!addMoneyBank) return;
+    const amount = Number(bankTopUpForm.amount || 0);
     if (amount <= 0) return showNotice("error", "Enter an amount greater than zero.");
+    setSaving(true);
     try {
-      const res = await API.post(`/hr/banks/${idOf(bank)}/add-money`, { amount });
-      setBanks((prev) => prev.map((item) => (idOf(item) === idOf(bank) ? res.data.data : item)));
-      setBankTopUps((prev) => ({ ...prev, [idOf(bank)]: "" }));
-      showNotice("success", "Bank balance updated.");
+      const res = await API.post(`/hr/banks/${idOf(addMoneyBank)}/add-money`, {
+        amount,
+        note: bankTopUpForm.note,
+      });
+      setBanks((prev) => prev.map((item) => (idOf(item) === idOf(res.data.data) ? res.data.data : item)));
+      if (res.data.transaction) setBankTransactions((prev) => [res.data.transaction, ...prev]);
+      setAddMoneyBank(null);
+      setBankTopUpForm(emptyBankTopUp);
+      showNotice("success", "Money added to bank.");
       refreshSummary();
     } catch (error) {
       showNotice("error", error.response?.data?.error || "Could not add money.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const openBankPayment = (bank) => { setPayNowBank(bank); setBankPaymentForm(emptyBankPayment); };
-
   const payFromBank = async () => {
     if (!payNowBank) return;
-    if (!bankPaymentForm.beneficiaryName.trim()) return showNotice("error", "Receiver name is required.");
-    if (!bankPaymentForm.beneficiaryAccount.trim()) return showNotice("error", "Receiver account number is required.");
+    const bankId = bankPaymentForm.bankId || idOf(selectedPaymentBank);
+    if (!bankId) return showNotice("error", "Add or select a bank first.");
     if (Number(bankPaymentForm.amount || 0) <= 0) return showNotice("error", "Enter an amount greater than zero.");
+    if (bankPaymentForm.partyType === "employee" && !bankPaymentForm.staff) return showNotice("error", "Select an employee.");
+    if (
+      bankPaymentForm.partyType === "employee"
+      && bankPaymentForm.direction === "out"
+      && bankPaymentForm.purpose === "salary"
+      && !bankPaymentForm.payroll
+    ) {
+      return showNotice("error", "Select generated payroll for salary payment.");
+    }
+    if (
+      bankPaymentForm.partyType === "employee"
+      && bankPaymentForm.direction === "out"
+      && ["loan", "advance"].includes(bankPaymentForm.purpose)
+      && Number(bankPaymentForm.emi || 0) <= 0
+    ) {
+      return showNotice("error", "Enter how much should be deducted from salary.");
+    }
+    if (
+      bankPaymentForm.partyType === "employee"
+      && bankPaymentForm.direction === "in"
+      && bankPaymentForm.purpose === "loan"
+      && !bankPaymentForm.loan
+    ) {
+      return showNotice("error", "Select the employee loan to reduce.");
+    }
+    if (bankPaymentForm.partyType === "other" && !bankPaymentForm.beneficiaryName.trim()) {
+      return showNotice("error", bankPaymentForm.direction === "in" ? "Sender name is required." : "Receiver name is required.");
+    }
     setSaving(true);
     try {
-      const res = await API.post(`/hr/banks/${idOf(payNowBank)}/pay-now`, { ...bankPaymentForm, amount: Number(bankPaymentForm.amount || 0) });
+      if (bankPaymentForm.partyType === "employee" && bankPaymentForm.direction === "out" && bankPaymentForm.purpose === "salary") {
+        const res = await API.post(`/hr/payroll/${bankPaymentForm.payroll}/pay`, {
+          bankId,
+          amount: Number(bankPaymentForm.amount || 0),
+          note: bankPaymentForm.note,
+        });
+        setPayrolls((prev) => prev.map((item) => (idOf(item) === idOf(bankPaymentForm.payroll) ? res.data.data : item)));
+        if (res.data.bank) setBanks((prev) => prev.map((item) => (idOf(item) === idOf(res.data.bank) ? res.data.bank : item)));
+        const loansRes = await API.get("/hr/loans");
+        setLoans(loansRes.data?.data || []);
+        if (res.data.transaction) setBankTransactions((prev) => [res.data.transaction, ...prev]);
+        else { const txRes = await API.get("/hr/banks/transactions"); setBankTransactions(txRes.data?.data || []); }
+        setPayNowBank(null);
+        setBankPaymentForm(emptyBankPayment);
+        showNotice("success", "Salary payment completed.");
+        refreshSummary();
+        return;
+      }
+      const payload = {
+        ...bankPaymentForm,
+        amount: Number(bankPaymentForm.amount || 0),
+        emi: Number(bankPaymentForm.emi || 0),
+        loan: bankPaymentForm.direction === "in" && bankPaymentForm.purpose === "loan" ? bankPaymentForm.loan : "",
+      };
+      const res = await API.post(`/hr/banks/${bankId}/payment`, payload);
       setBanks((prev) => prev.map((item) => (idOf(item) === idOf(res.data.bank) ? res.data.bank : item)));
       setBankTransactions((prev) => [res.data.data, ...prev]);
+      if (res.data.loan) {
+        setLoans((prev) => {
+          const exists = prev.some((loan) => idOf(loan) === idOf(res.data.loan));
+          return exists
+            ? prev.map((loan) => (idOf(loan) === idOf(res.data.loan) ? res.data.loan : loan))
+            : [res.data.loan, ...prev];
+        });
+      }
+      if (res.data.payrolls?.length) mergePayrolls(res.data.payrolls);
       setPayNowBank(null);
       setBankPaymentForm(emptyBankPayment);
-      showNotice("success", "Bank payment completed.");
+      showNotice("success", bankPaymentForm.direction === "in" ? "Payment received." : "Payment completed.");
       refreshSummary();
     } catch (error) {
-      showNotice("error", error.response?.data?.error || "Could not pay from bank.");
+      showNotice("error", error.response?.data?.error || "Could not save payment.");
     } finally {
       setSaving(false);
     }
@@ -1218,7 +1516,7 @@ export default function HRPage() {
     if (dueDate > localDate()) return showNotice("error", "Payroll cycle is not due yet.");
     if (!isPayrollDueOnDate(person, dueDate)) return showNotice("error", `${person.name} does not have payroll due on this date.`);
     if ((basis === "hourly" || basis === "daily") && referenceDate === attendanceDate && !attendanceByStaff.has(idOf(person))) {
-      return showNotice("error", "Mark attendance first, then clear dues.");
+      return showNotice("error", "Mark attendance first, then generate payroll.");
     }
 
     setSaving(true);
@@ -1232,9 +1530,7 @@ export default function HRPage() {
       const generated = res.data?.data || [];
       if (generated.length === 0) return showNotice("error", "No payable due was generated.");
       mergePayrolls(generated);
-      const payable = generated.find((item) => item.status !== "paid" && Number(item.balanceDue ?? item.netPay ?? 0) > 0);
-      if (payable) openClearDue(payable);
-      else showNotice("success", "Payroll is already settled for this cycle.");
+      showNotice("success", "Payroll generated. Use Make Payment to pay salary.");
       refreshSummary();
     } catch (error) {
       showNotice("error", error.response?.data?.error || "Could not generate due.");
@@ -1279,9 +1575,14 @@ export default function HRPage() {
   const makeStaffPayment = async (person) => {
     const dueSummary = staffDueSummaryByStaff.get(idOf(person));
     const payroll = dueSummary?.payroll || payrollByStaff.get(idOf(person));
-    if (payroll?.status && payroll.status !== "paid") { openClearDue(payroll); return; }
-    if (payroll?.status === "paid") { showNotice("success", `${person.name}'s salary is already paid for this cycle.`); return; }
-    await generateDuePayrollForStaff(person);
+    openBankPayment(selectedBankAccount, {
+      staff: idOf(person),
+      partyType: "employee",
+      direction: "out",
+      purpose: "salary",
+      payroll: payroll && payroll.status !== "paid" ? idOf(payroll) : "",
+      amount: payroll && payroll.status !== "paid" ? (payroll.balanceDue ?? payroll.netPay ?? "") : "",
+    });
   };
 
   const autoMarkUnmarkedAttendance = async () => {
@@ -1447,12 +1748,12 @@ export default function HRPage() {
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {canShowPayrollDue ? (
-                        <button className="hr-btn hr-btn-outline-danger" onClick={() => openClearDue(duePayrollForSelectedDate)}>
-                          Clear Dues
+                        <button className="hr-btn hr-btn-outline-danger" onClick={() => makeStaffPayment(person)}>
+                          Make Payment
                         </button>
                       ) : canGenerateDue ? (
                         <button className="hr-btn hr-btn-outline-danger" onClick={() => generateDuePayrollForStaff(person, selectedDate)} disabled={saving}>
-                          Clear Dues
+                          Generate Payroll
                         </button>
                       ) : null}
                     </td>
@@ -1752,13 +2053,8 @@ export default function HRPage() {
               <InfoRow label="Hourly rate" value={formatMoney(payroll.hourlyRate)} />
               <InfoRow label="Deduction" value={formatMoney(payroll.attendanceDeduction)} />
               <InfoRow label="Overtime / Fine" value={`${formatMoney(payroll.overtimeAmount)} / ${formatMoney(payroll.fineAmount)}`} />
-              <InfoRow label="Loan EMI" value={formatMoney(payroll.loanDeduction)} />
+              <InfoRow label="Loan / advance deduction" value={formatMoney(payroll.loanDeduction)} />
               <InfoRow label="Net due" value={formatMoney(payroll.balanceDue ?? payroll.netPay)} strong />
-              {payroll.status !== "paid" && (
-                <button className="hr-btn hr-btn-primary wide-action" onClick={() => openClearDue(payroll)}>
-                  <CreditCard size={14} /> Clear Dues
-                </button>
-              )}
             </div>
           </div>
         ) : (
@@ -1770,27 +2066,46 @@ export default function HRPage() {
 
   const renderDetailTransactions = () => (
     <div className="hr-detail-transactions">
-      <div className="hr-two-col">
-        <div className="hr-mini-card">
+      <div className="hr-mini-card">
+        <div className="hr-sub-head-row">
           <h4>Transactions</h4>
-          <table className="hr-mini-table">
-            <thead><tr><th>Date</th><th>Bank</th><th>Amount</th></tr></thead>
-            <tbody>
-              {selectedStaffTransactions.length === 0 ? <tr><td colSpan={3} className="hr-empty-cell">No transactions yet.</td></tr> : selectedStaffTransactions.map((t) => (
-                <tr key={t._id}><td>{t.paidAt ? new Date(t.paidAt).toLocaleDateString() : "--"}</td><td>{t.bank?.name || "--"}</td><td><strong>{formatMoney(t.amount)}</strong></td></tr>
-              ))}
-            </tbody>
-          </table>
+          <button className="hr-btn hr-btn-primary compact" onClick={() => makeStaffPayment(selectedDetailStaff)} disabled={saving}>
+            <CreditCard size={14} /> Make Payment
+          </button>
         </div>
-        <div className="hr-mini-card">
-          <h4>Loans</h4>
-          {selectedStaffLoans.length === 0 ? <p className="hr-muted">No loans for this staff.</p> : selectedStaffLoans.map((loan) => (
-            <div key={idOf(loan)} className="hr-loan-row">
-              <span><strong>{formatMoney(loan.outstanding)}</strong><small>EMI {formatMoney(loan.emi)}</small></span>
-              <span className={`hr-pill ${loan.status === "active" ? "amber" : "green"}`}>{loan.status}</span>
-            </div>
-          ))}
-        </div>
+        <table className="hr-mini-table staff-tx-table">
+          <thead><tr><th>Date</th><th>Bank</th><th>Type</th><th>Details</th><th>Amount</th></tr></thead>
+          <tbody>
+            {selectedStaffTransactions.length === 0 ? <tr><td colSpan={5} className="hr-empty-cell">No transactions yet.</td></tr> : selectedStaffTransactions.map((t) => {
+              const period = transactionPeriodLabel(t);
+              const breakdown = transactionBreakdownText(t);
+              const emi = transactionLoanDeduction(t);
+              const gross = transactionGrossSalary(t);
+              const direction = staffTransactionDirection(t);
+              return (
+                <tr key={idOf(t) || `${idOf(t.bank)}-${t.paidAt}`}>
+                  <td>{t.paidAt ? new Date(t.paidAt).toLocaleDateString() : "--"}</td>
+                  <td>{t.bank?.name || "--"}</td>
+                  <td>
+                    <span className={`hr-pill ${direction === "in" ? "green" : "rose"}`}>{staffTransactionTitle(t)}</span>
+                  </td>
+                  <td>
+                    {period && <small>{period}</small>}
+                    {t.note && <small>{t.note}</small>}
+                    {breakdown && <small>{breakdown}</small>}
+                    {emi > 0 && gross > 0 && <small className="hr-emi-line">Deducted {formatMoney(emi)} from salary {formatMoney(gross)}</small>}
+                    {["loan_out", "advance_out", "loan_repayment"].includes(t.type) && <small>Remaining {t.loan?.category === "advance" || t.type === "advance_out" ? "advance" : "loan"} {formatMoney(t.loanOutstandingAfter)}</small>}
+                    {t.bankBalanceAfter > 0 && <small>Bank balance {formatMoney(t.bankBalanceAfter)}</small>}
+                  </td>
+                  <td>
+                    <strong className={`hr-amount ${direction}`}>{direction === "in" ? "+" : "-"} {formatMoney(t.amount)}</strong>
+                    {transactionNetPay(t) > 0 && <small>Net {formatMoney(transactionNetPay(t))}</small>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1998,60 +2313,117 @@ export default function HRPage() {
         <h1>Banks &amp; Loans</h1>
         <div className="hr-topbar-actions">
           <button className="hr-btn hr-btn-ghost" onClick={() => setToolsOpen("bank")}><Plus size={14} /> Add Bank</button>
-          <button className="hr-btn hr-btn-primary" onClick={() => setToolsOpen("loan")}><Plus size={14} /> Add Loan</button>
+          <button className="hr-btn hr-btn-ghost" onClick={() => setToolsOpen("view-loans")}><Wallet size={14} /> View Loans</button>
+          <button className="hr-btn hr-btn-primary" onClick={() => openBankPayment(selectedBankAccount)} disabled={banks.length === 0}><CreditCard size={14} /> Make Payment</button>
           <button className="hr-btn hr-btn-ghost" onClick={loadAll}><RefreshCcw size={14} /></button>
         </div>
       </div>
-      <div className="hr-finance-strip">
-        <div><span>Total Bank Balance</span><strong>{formatMoney(summary?.bankBalance)}</strong></div>
-        <div><span>Loan Outstanding</span><strong>{formatMoney(summary?.loanOutstanding)}</strong></div>
-        <div><span>Transactions</span><strong>{financeActivity.length}</strong></div>
-      </div>
-      <div className="hr-two-col mt12">
-        <div>
-          <h3 className="hr-sub-h">Bank Accounts</h3>
-          {banks.length === 0 ? <p className="hr-muted">No banks added yet.</p> : banks.map((bank) => (
-            <div key={idOf(bank)} className="hr-finance-card">
-              <div><strong>{bank.name}</strong><small>{[bank.accountName, bank.accountNumber].filter(Boolean).join(" | ") || "Payroll bank"}</small></div>
-              <b>{formatMoney(bank.balance)}</b>
-              <div className="hr-finance-card-actions">
-                <input type="number" min="0" placeholder="Add money" value={bankTopUps[idOf(bank)] || ""} onChange={(e) => setBankTopUps((p) => ({ ...p, [idOf(bank)]: e.target.value }))} />
-                <button className="hr-btn hr-btn-ghost compact" onClick={() => addBankMoney(bank)}>Add</button>
-                <button className="hr-btn hr-btn-primary compact" onClick={() => openBankPayment(bank)}>Pay</button>
+      <div className="hr-cash-bank-layout">
+        <aside className="hr-bank-ledger-rail">
+          <div className="hr-ledger-balance">
+            <span>Total Balance:</span>
+            <strong>{formatMoney(summary?.bankBalance)}</strong>
+          </div>
+          <div className="hr-ledger-balance subtle">
+            <span>Loan / Advance Outstanding:</span>
+            <strong>{formatMoney(summary?.loanOutstanding)}</strong>
+          </div>
+          <div className="hr-ledger-section-title">
+            <span>Bank Accounts</span>
+            <button className="hr-link-btn" onClick={() => setToolsOpen("bank")}>+ Add New Bank</button>
+          </div>
+          <div className="hr-bank-ledger-list">
+            {banks.length === 0 ? (
+              <div className="hr-empty-block compact">No banks added yet.</div>
+            ) : banks.map((bank) => {
+              const selected = idOf(bank) === idOf(selectedBankAccount);
+              return (
+                <button key={idOf(bank)} className={`hr-bank-ledger-item ${selected ? "selected" : ""}`} onClick={() => setSelectedBank(bank)}>
+                  <span className="hr-bank-icon"><Landmark size={16} /></span>
+                  <span>
+                    <strong>{bank.name}</strong>
+                    <small>{[bank.accountName, bank.accountNumber].filter(Boolean).join(" | ") || "Payroll bank"}</small>
+                  </span>
+                  <b>{formatMoney(bank.balance)}</b>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+        <div className="hr-bank-ledger-detail">
+          <div className="hr-bank-detail-tabs">
+            <button className="active">All Transactions</button>
+            <span className="hr-pill slate">{filteredBankTransactions.length} total</span>
+          </div>
+          {selectedBankAccount ? (
+            <>
+              <div className="hr-bank-account-summary">
+                <div>
+                  <span>Account Name</span>
+                  <strong>{selectedBankAccount.name}</strong>
+                  <small>{[selectedBankAccount.accountName, selectedBankAccount.accountNumber].filter(Boolean).join(" | ") || "Payroll bank"}</small>
+                </div>
+                <div>
+                  <span>Balance</span>
+                  <strong>{formatMoney(selectedBankAccount.balance)}</strong>
+                </div>
+                <div className="hr-bank-account-actions">
+                  <button className="hr-btn hr-btn-ghost" onClick={() => openAddBankMoney(selectedBankAccount)}><Plus size={14} /> Add Money</button>
+                  <button className="hr-btn hr-btn-ghost" onClick={() => openBankPayment(selectedBankAccount)}><CreditCard size={14} /> Make Payment</button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-        <div>
-          <h3 className="hr-sub-h">Loans</h3>
-          {loans.length === 0 ? <p className="hr-muted">No loans yet.</p> : loans.map((loan) => (
-            <div key={idOf(loan)} className="hr-finance-card">
-              <div><strong>{loan.staff?.name || "Staff"}</strong><small>EMI {formatMoney(loan.emi)} | Loan {formatMoney(loan.amount)}</small></div>
-              <b>{formatMoney(loan.outstanding)}</b>
-              <div className="hr-finance-card-actions">
-                <span className={`hr-pill ${loan.status === "active" ? "amber" : "green"}`}>{loan.status}</span>
-                {loan.status === "active" && <button className="hr-btn hr-btn-ghost compact" onClick={() => closeLoan(loan)}>Close</button>}
+              <div className="hr-bank-filter-bar">
+                <div className="hr-bank-filter-controls">
+                  <select value={bankTxnFilter.mode} onChange={(e) => setBankTxnFilter((p) => ({ ...p, mode: e.target.value }))}>
+                    <option value="all">All dates</option>
+                    <option value="date">Filter by date</option>
+                    <option value="month">Filter by month</option>
+                  </select>
+                  {bankTxnFilter.mode === "date" && (
+                    <input type="date" value={bankTxnFilter.date} onChange={(e) => setBankTxnFilter((p) => ({ ...p, date: e.target.value }))} />
+                  )}
+                  {bankTxnFilter.mode === "month" && (
+                    <input type="month" value={bankTxnFilter.month} onChange={(e) => setBankTxnFilter((p) => ({ ...p, month: e.target.value }))} />
+                  )}
+                </div>
+                <div className="hr-bank-filter-totals">
+                  <span className="in">In {formatMoney(bankTransactionTotals.in)}</span>
+                  <span className="out">Out {formatMoney(bankTransactionTotals.out)}</span>
+                </div>
               </div>
-            </div>
-          ))}
+              <div className="hr-att-table-wrap hr-finance-table-wrap hr-bank-ledger-table">
+                <table className="hr-att-table bank-tx-table">
+                  <thead><tr><th>Date</th><th>Party</th><th>Details</th><th>In</th><th>Out</th></tr></thead>
+                  <tbody>
+                    {filteredBankTransactions.length === 0 ? <tr><td colSpan={5} className="hr-empty-cell">No transactions for this filter.</td></tr> : filteredBankTransactions.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.date ? new Date(item.date).toLocaleDateString() : "--"}</td>
+                        <td><strong>{item.name}</strong>{item.periodLabel && <small>{item.periodLabel}</small>}</td>
+                        <td>
+                          <strong>{item.title}</strong>
+                          {item.note && <small>{item.note}</small>}
+                          {item.breakdown && <small>{item.breakdown}</small>}
+                          {item.loanDeduction > 0 && <small className="hr-emi-line">Deducted {formatMoney(item.loanDeduction)}</small>}
+                          {item.hasLoanBalance && <small>Remaining {item.loanCategory === "advance" ? "advance" : "loan"} {formatMoney(item.loanOutstandingAfter)}</small>}
+                        </td>
+                        <td>
+                          {item.direction === "in" ? <strong className="hr-amount in">{formatMoney(item.amount)}</strong> : <span className="hr-muted">--</span>}
+                          {item.direction === "in" && item.bankBalanceAfter > 0 && <small>Balance {formatMoney(item.bankBalanceAfter)}</small>}
+                        </td>
+                        <td>
+                          {item.direction === "out" ? <strong className="hr-amount out">{formatMoney(item.amount)}</strong> : <span className="hr-muted">--</span>}
+                          {item.direction === "out" && item.bankBalanceAfter > 0 && <small>Balance {formatMoney(item.bankBalanceAfter)}</small>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="hr-empty-block">Add a bank account to start recording payments.</div>
+          )}
         </div>
-      </div>
-      <h3 className="hr-sub-h mt16">All Transactions</h3>
-      <div className="hr-att-table-wrap">
-        <table className="hr-att-table">
-          <thead><tr><th>Date</th><th>Area</th><th>Details</th><th>Account</th><th>Amount</th></tr></thead>
-          <tbody>
-            {financeActivity.length === 0 ? <tr><td colSpan={5} className="hr-empty-cell">No transactions yet.</td></tr> : financeActivity.map((item) => (
-              <tr key={item.id}>
-                <td>{item.date ? new Date(item.date).toLocaleDateString() : "--"}</td>
-                <td><span className={`hr-pill ${item.category === "Bank" ? "blue" : "amber"}`}>{item.category}</span></td>
-                <td><strong>{item.title}</strong><small>{item.name}{item.note ? ` | ${item.note}` : ""}</small></td>
-                <td>{item.source}</td>
-                <td><strong>{formatMoney(item.amount)}</strong></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </section>
   );
@@ -2060,16 +2432,20 @@ export default function HRPage() {
     <section className="hr-main-section">
       <div className="hr-section-topbar">
         <h1>HR Overview</h1>
-        <button className="hr-btn hr-btn-ghost" onClick={loadAll}><RefreshCcw size={14} /> Refresh</button>
+        <div className="hr-topbar-actions">
+          <button className="hr-btn hr-btn-ghost" onClick={() => openAddBankMoney(selectedBankAccount)} disabled={banks.length === 0}><Plus size={14} /> Add Money</button>
+          <button className="hr-btn hr-btn-primary" onClick={() => openBankPayment(selectedBankAccount)} disabled={banks.length === 0}><CreditCard size={14} /> Make Payment</button>
+          <button className="hr-btn hr-btn-ghost" onClick={loadAll}><RefreshCcw size={14} /> Refresh</button>
+        </div>
       </div>
       <div className="hr-metrics-row">
         {[
           { icon: Users, label: "Active Staff", value: summary?.activeStaffCount || 0, tone: "blue" },
-          { icon: Building2, label: "Departments", value: summary?.departmentCount || 0, tone: "green" },
-          { icon: Landmark, label: "Bank Balance", value: formatMoney(summary?.bankBalance), tone: "violet" },
+          { icon: Landmark, label: "Bank Balance", value: formatMoney(summary?.bankBalance), tone: "green" },
+          { icon: ArrowDown, label: "Money In", value: formatMoney(allBankTransactionTotals.in), tone: "blue" },
+          { icon: ArrowUp, label: "Money Out", value: formatMoney(allBankTransactionTotals.out), tone: "rose" },
           { icon: DollarSign, label: "Salary Dues", value: formatMoney(summary?.dues), tone: "amber" },
-          { icon: Wallet, label: "Loan Outstanding", value: formatMoney(summary?.loanOutstanding), tone: "rose" },
-          { icon: BadgeDollarSign, label: "Pending Payrolls", value: summary?.pendingPayrolls || 0, tone: "slate" },
+          { icon: Wallet, label: "Loan / Advance", value: formatMoney(summary?.loanOutstanding), tone: "violet" },
         ].map((m) => (
           <div key={m.label} className={`hr-metric-card ${m.tone}`}>
             <m.icon size={22} />
@@ -2077,14 +2453,62 @@ export default function HRPage() {
           </div>
         ))}
       </div>
-      <div className="hr-two-col mt12">
+      <div className="hr-overview-grid mt12">
         <div className="hr-mini-card">
-          <h4>Payroll Snapshot</h4>
+          <h4>Payroll</h4>
           <InfoRow label="Cycle" value={payrollScopeLabel(payrollScope)} />
           <InfoRow label="Due date" value={payrollDueDate} />
           <InfoRow label="Gross" value={formatMoney(payrollTotals.gross)} />
-          <InfoRow label="Deduction" value={formatMoney(payrollTotals.deductions)} />
+          <InfoRow label="Attendance deduction" value={formatMoney(payrollTotals.deductions)} />
+          <InfoRow label="Loan / advance deduction" value={formatMoney(payrollTotals.loan)} />
+          <InfoRow label="Paid" value={formatMoney(payrollTotals.paid)} />
           <InfoRow label="Net dues" value={formatMoney(payrollTotals.dues)} strong />
+        </div>
+        <div className="hr-mini-card">
+          <h4>Loan / Advance</h4>
+          <InfoRow label="Active records" value={repaymentBreakdown.count} />
+          <InfoRow label="Loan outstanding" value={formatMoney(repaymentBreakdown.loan)} />
+          <InfoRow label="Advance outstanding" value={formatMoney(repaymentBreakdown.advance)} />
+          <InfoRow label="Next salary deductions" value={formatMoney(repaymentBreakdown.deduction)} strong />
+        </div>
+        <div className="hr-mini-card">
+          <h4>Bank Accounts</h4>
+          {banks.length === 0 ? <p className="hr-muted">No banks added yet.</p> : banks.slice(0, 5).map((bank) => (
+            <InfoRow key={idOf(bank)} label={bank.name} value={formatMoney(bank.balance)} strong={idOf(bank) === idOf(selectedBankAccount)} />
+          ))}
+        </div>
+        <div className="hr-mini-card">
+          <h4>Operations</h4>
+          <InfoRow label="Departments" value={summary?.departmentCount || 0} />
+          <InfoRow label="Pending payrolls" value={summary?.pendingPayrolls || 0} />
+          <InfoRow label="Transactions" value={bankTransactionRows.length} />
+          <InfoRow label="Staff payable balance" value={formatMoney(summary?.dues)} strong />
+        </div>
+        <div className="hr-mini-card hr-overview-wide">
+          <div className="hr-sub-head-row">
+            <h4>Recent Transactions</h4>
+            <span className="hr-pill slate">{bankTransactionRows.length} total</span>
+          </div>
+          <table className="hr-mini-table overview-tx-table">
+            <thead><tr><th>Date</th><th>Party</th><th>Details</th><th>Bank</th><th>In</th><th>Out</th></tr></thead>
+            <tbody>
+              {recentBankTransactions.length === 0 ? <tr><td colSpan={6} className="hr-empty-cell">No transactions yet.</td></tr> : recentBankTransactions.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.date ? new Date(item.date).toLocaleDateString() : "--"}</td>
+                  <td><strong>{item.name}</strong>{item.periodLabel && <small>{item.periodLabel}</small>}</td>
+                  <td>
+                    <strong>{item.title}</strong>
+                    {item.note && <small>{item.note}</small>}
+                    {item.breakdown && <small>{item.breakdown}</small>}
+                    {item.hasLoanBalance && <small>Remaining {item.loanCategory === "advance" ? "advance" : "loan"} {formatMoney(item.loanOutstandingAfter)}</small>}
+                  </td>
+                  <td>{item.source}</td>
+                  <td>{item.direction === "in" ? <strong className="hr-amount in">{formatMoney(item.amount)}</strong> : <span className="hr-muted">--</span>}</td>
+                  <td>{item.direction === "out" ? <strong className="hr-amount out">{formatMoney(item.amount)}</strong> : <span className="hr-muted">--</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div className="hr-mini-card">
           <h4>Departments</h4>
@@ -2100,7 +2524,7 @@ export default function HRPage() {
 
   const renderToolsModal = () => {
     if (!toolsOpen) return null;
-    const titles = { staff: editingStaffId ? "Edit Staff" : "Add Staff", "attendance-settings": "Attendance Settings", department: editingDepartmentId ? "Edit Department" : "Add Department", bank: "Add Bank", loan: "Add Loan" };
+    const titles = { staff: editingStaffId ? "Edit Staff" : "Add Staff", "attendance-settings": "Attendance Settings", department: editingDepartmentId ? "Edit Department" : "Add Department", bank: "Add Bank", loan: "Add Loan", "view-loans": "Loans" };
     const content = {
       staff: renderStaffForm(),
       "attendance-settings": renderAttendanceSettings(),
@@ -2115,6 +2539,36 @@ export default function HRPage() {
             <Field label="Opening Balance"><input type="number" min="0" value={bankForm.balance} onChange={(e) => setBankForm({ ...bankForm, balance: e.target.value })} /></Field>
             <div className="hr-span2 hr-form-actions-row"><button type="submit" className="hr-btn hr-btn-primary" disabled={saving}><Plus size={14} /> Add Bank</button></div>
           </form>
+        </div>
+      ),
+      "view-loans": (
+        <div className="hr-tools-panel">
+          <div className="hr-sub-head-row">
+            <div>
+              <h3>Loans</h3>
+              <p className="hr-muted">All staff loans and outstanding balances.</p>
+            </div>
+            <button className="hr-btn hr-btn-primary compact" onClick={() => { setToolsOpen(""); openBankPayment(selectedBankAccount); }} disabled={banks.length === 0}><CreditCard size={14} /> Make Payment</button>
+          </div>
+          <div className="hr-loans-list">
+            {loans.length === 0 ? (
+              <div className="hr-empty-block">No loans yet.</div>
+            ) : loans.map((loan) => (
+              <div key={idOf(loan)} className="hr-loan-card">
+                <div>
+                  <strong>{loan.staff?.name || "Staff"}</strong>
+                  <small>{loan.staff?.department?.name || loan.staff?.designation || "Staff loan"}</small>
+                </div>
+                <div><span>{repaymentKindLabel(loan)}</span><strong>{formatMoney(loan.amount)}</strong></div>
+                <div><span>Deduction</span><strong>{formatMoney(loan.emi)}</strong></div>
+                <div><span>Outstanding</span><strong>{formatMoney(loan.outstanding)}</strong></div>
+                <div className="hr-loan-card-actions">
+                  <span className={`hr-pill ${loan.status === "active" ? "amber" : "green"}`}>{loan.status}</span>
+                  {loan.status === "active" && <button className="hr-btn hr-btn-ghost compact" onClick={() => closeLoan(loan)}>Close</button>}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ),
       loan: (
@@ -2308,25 +2762,196 @@ export default function HRPage() {
     );
   };
 
+  const renderBankTransactionsModal = () => null;
+
+  const renderAddBankMoneyModal = () => {
+    if (!addMoneyBank) return null;
+    return (
+      <div className="hr-modal-backdrop" onClick={() => setAddMoneyBank(null)}>
+        <div className="hr-modal small-money-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="hr-modal-header">
+            <h3>Add Money</h3>
+            <button className="hr-icon-btn" onClick={() => setAddMoneyBank(null)}><X size={16} /></button>
+          </div>
+          <p className="hr-muted">{addMoneyBank.name} | Balance {formatMoney(addMoneyBank.balance)}</p>
+          <div className="hr-form-grid-2 mt12">
+            <Field label="Amount">
+              <input type="number" min="0" step="0.01" value={bankTopUpForm.amount} onChange={(e) => setBankTopUpForm((p) => ({ ...p, amount: e.target.value }))} />
+            </Field>
+            <Field label="Note">
+              <input value={bankTopUpForm.note} onChange={(e) => setBankTopUpForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional" />
+            </Field>
+          </div>
+          <div className="hr-modal-actions mt12">
+            <button className="hr-btn hr-btn-ghost" onClick={() => setAddMoneyBank(null)}>Cancel</button>
+            <button className="hr-btn hr-btn-primary" onClick={addMoneyToBank} disabled={saving}><Plus size={14} /> Add Money</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderBankPayModal = () => {
     if (!payNowBank) return null;
+    const isEmployee = bankPaymentForm.partyType === "employee";
+    const isOut = bankPaymentForm.direction === "out";
+    const isSalaryPayment = isOut && isEmployee && bankPaymentForm.purpose === "salary";
+    const isLoanPayment = isOut && isEmployee && bankPaymentForm.purpose === "loan";
+    const isAdvancePayment = isOut && isEmployee && bankPaymentForm.purpose === "advance";
+    const isDeductiblePayment = isLoanPayment || isAdvancePayment;
+    const isLoanRepayment = !isOut && isEmployee && bankPaymentForm.purpose === "loan";
+    const selectedStaffLabel = selectedPaymentStaff ? staffLabel(selectedPaymentStaff) : "Select employee";
     return (
       <div className="hr-modal-backdrop" onClick={() => setPayNowBank(null)}>
-        <div className="hr-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="hr-modal payment-modal" onClick={(e) => e.stopPropagation()}>
           <div className="hr-modal-header">
-            <h3>Pay From {payNowBank.name}</h3>
+            <h3>Make Payment</h3>
             <button className="hr-icon-btn" onClick={() => setPayNowBank(null)}><X size={16} /></button>
           </div>
-          <p className="hr-muted">Balance {formatMoney(payNowBank.balance)}</p>
+          <div className="hr-payment-mode">
+            <button className={bankPaymentForm.direction === "out" ? "active" : ""} onClick={() => setBankPaymentForm((p) => {
+              const firstPayroll = payrolls.find((payroll) => idOf(payroll.staff) === p.staff && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0);
+              return { ...p, direction: "out", purpose: "salary", payroll: firstPayroll ? idOf(firstPayroll) : "", amount: firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : p.amount, loan: "" };
+            })}><ArrowUp size={14} /> Payment Out</button>
+            <button className={bankPaymentForm.direction === "in" ? "active" : ""} onClick={() => setBankPaymentForm((p) => {
+              const firstLoan = activeLoans.find((loan) => idOf(loan.staff) === p.staff);
+              return { ...p, direction: "in", purpose: firstLoan ? "loan" : "general", loan: firstLoan ? idOf(firstLoan) : "", payroll: "", emi: "" };
+            })}><ArrowDown size={14} /> Payment In</button>
+          </div>
           <div className="hr-form-grid-2 mt12">
-            <Field label="Receiver Name"><input value={bankPaymentForm.beneficiaryName} onChange={(e) => setBankPaymentForm((p) => ({ ...p, beneficiaryName: e.target.value }))} /></Field>
-            <Field label="Receiver Account"><input value={bankPaymentForm.beneficiaryAccount} onChange={(e) => setBankPaymentForm((p) => ({ ...p, beneficiaryAccount: e.target.value }))} /></Field>
-            <Field label="Amount"><input type="number" min="0" value={bankPaymentForm.amount} onChange={(e) => setBankPaymentForm((p) => ({ ...p, amount: e.target.value }))} /></Field>
-            <Field label="Note"><input value={bankPaymentForm.note} onChange={(e) => setBankPaymentForm((p) => ({ ...p, note: e.target.value }))} /></Field>
+            <Field label="Bank Account">
+              <select value={bankPaymentForm.bankId} onChange={(e) => setBankPaymentForm((p) => ({ ...p, bankId: e.target.value }))}>
+                <option value="">Select bank</option>
+                {banks.map((bank) => <option key={idOf(bank)} value={idOf(bank)}>{bank.name} - {formatMoney(bank.balance)}</option>)}
+              </select>
+            </Field>
+            <Field label="Payee Type">
+              <select value={bankPaymentForm.partyType} onChange={(e) => setBankPaymentForm((p) => ({ ...p, partyType: e.target.value, staff: "", loan: "", beneficiaryName: "", beneficiaryAccount: "" }))}>
+                <option value="employee">Employee</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
+
+            {isEmployee ? (
+              <Field label="Employee">
+                <select value={bankPaymentForm.staff} onChange={(e) => {
+                  const nextStaff = e.target.value;
+                  const firstLoan = activeLoans.find((loan) => idOf(loan.staff) === nextStaff);
+                  const firstPayroll = payrolls.find((payroll) => idOf(payroll.staff) === nextStaff && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0);
+                  setBankPaymentForm((p) => ({
+                    ...p,
+                    staff: nextStaff,
+                    purpose: !isOut && !firstLoan ? "general" : p.purpose,
+                    loan: firstLoan ? idOf(firstLoan) : "",
+                    payroll: p.direction === "out" && p.purpose === "salary" && firstPayroll ? idOf(firstPayroll) : "",
+                    amount: p.direction === "out" && p.purpose === "salary" && firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : p.amount,
+                  }));
+                }}>
+                  <option value="">Select employee</option>
+                  {activeStaff.map((person) => <option key={idOf(person)} value={idOf(person)}>{staffLabel(person)}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <Field label={isOut ? "Receiver Name" : "Sender Name"}>
+                <input value={bankPaymentForm.beneficiaryName} onChange={(e) => setBankPaymentForm((p) => ({ ...p, beneficiaryName: e.target.value }))} />
+              </Field>
+            )}
+
+            {!isEmployee && (
+              <Field label={isOut ? "Receiver Account" : "Reference"}>
+                <input value={bankPaymentForm.beneficiaryAccount} onChange={(e) => setBankPaymentForm((p) => ({ ...p, beneficiaryAccount: e.target.value }))} placeholder="Optional" />
+              </Field>
+            )}
+
+            {isOut && isEmployee && (
+              <Field label="Payment Type">
+                <select value={bankPaymentForm.purpose} onChange={(e) => {
+                  const nextPurpose = e.target.value;
+                  const firstPayroll = selectedPaymentPayrolls[0];
+                  setBankPaymentForm((p) => ({
+                    ...p,
+                    purpose: nextPurpose,
+                    payroll: nextPurpose === "salary" && firstPayroll ? idOf(firstPayroll) : "",
+                    loan: "",
+                    emi: ["loan", "advance"].includes(nextPurpose) ? p.emi : "",
+                    amount: nextPurpose === "salary" && firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : "",
+                  }));
+                }}>
+                  <option value="salary">Salary</option>
+                  <option value="loan">Loan</option>
+                  <option value="advance">Advance</option>
+                </select>
+              </Field>
+            )}
+
+            {!isOut && isEmployee && (
+              <Field label="Payment For">
+                <select value={bankPaymentForm.purpose} onChange={(e) => setBankPaymentForm((p) => ({ ...p, purpose: e.target.value, loan: e.target.value === "loan" ? p.loan : "" }))}>
+                  <option value="loan">EMI / advance received</option>
+                  <option value="general">General received</option>
+                </select>
+              </Field>
+            )}
+
+            {isSalaryPayment && (
+              <Field label="Generated Payroll">
+                <select value={bankPaymentForm.payroll} onChange={(e) => {
+                  const payroll = selectedPaymentPayrolls.find((item) => idOf(item) === e.target.value);
+                  setBankPaymentForm((p) => ({ ...p, payroll: e.target.value, amount: payroll ? (payroll.balanceDue ?? payroll.netPay ?? "") : p.amount }));
+                }}>
+                  <option value="">Select payroll</option>
+                  {selectedPaymentPayrolls.map((payroll) => (
+                    <option key={idOf(payroll)} value={idOf(payroll)}>
+                      {payroll.periodLabel || payroll.periodEnd} | Due {formatMoney(payroll.balanceDue ?? payroll.netPay)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            {isLoanRepayment && (
+              <Field label="Employee Loan">
+                <select value={bankPaymentForm.loan} onChange={(e) => setBankPaymentForm((p) => ({ ...p, loan: e.target.value }))}>
+                  <option value="">Select loan</option>
+                  {selectedPaymentLoans.map((loan) => (
+                    <option key={idOf(loan)} value={idOf(loan)}>
+                      {repaymentKindLabel(loan)} {formatMoney(loan.outstanding)} outstanding | deduct {formatMoney(loan.emi)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+
+            <Field label={isLoanPayment ? "Loan Amount" : isSalaryPayment ? "Salary Amount" : isAdvancePayment ? "Advance Amount" : "Amount"}>
+              <input type="number" min="0" step="0.01" value={bankPaymentForm.amount} onChange={(e) => setBankPaymentForm((p) => ({ ...p, amount: e.target.value }))} />
+            </Field>
+
+            {isDeductiblePayment && (
+              <Field label="Deduct From Salary">
+                <input type="number" min="0" step="0.01" value={bankPaymentForm.emi} onChange={(e) => setBankPaymentForm((p) => ({ ...p, emi: e.target.value }))} />
+              </Field>
+            )}
+
+            {(isLoanPayment || isAdvancePayment) && (
+              <Field label={isAdvancePayment ? "Advance Date" : "Issue Date"}>
+                <input type="date" value={bankPaymentForm.issueDate} onChange={(e) => setBankPaymentForm((p) => ({ ...p, issueDate: e.target.value }))} />
+              </Field>
+            )}
+
+            <Field label="Note" className="hr-span2">
+              <input value={bankPaymentForm.note} onChange={(e) => setBankPaymentForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional" />
+            </Field>
+          </div>
+          <div className="hr-payment-preview mt12">
+            <InfoRow label="Bank balance after" value={formatMoney(bankPaymentPreview.nextBankBalance)} strong />
+            {isDeductiblePayment && <InfoRow label="Deduction duration" value={bankPaymentPreview.months ? `${bankPaymentPreview.months} payroll${bankPaymentPreview.months === 1 ? "" : "s"}` : "--"} />}
+            {isSalaryPayment && <InfoRow label="Salary due after" value={formatMoney(bankPaymentPreview.salaryRemaining)} strong />}
+            {isLoanRepayment && <InfoRow label={`Remaining ${selectedPaymentLoan?.category === "advance" ? "advance" : "loan"} for ${selectedStaffLabel}`} value={formatMoney(bankPaymentPreview.loanRemaining)} strong />}
+            {!isOut && isEmployee && !isLoanRepayment && <InfoRow label="Received from" value={selectedStaffLabel} />}
           </div>
           <div className="hr-modal-actions mt12">
             <button className="hr-btn hr-btn-ghost" onClick={() => setPayNowBank(null)}>Cancel</button>
-            <button className="hr-btn hr-btn-primary" onClick={payFromBank} disabled={saving}><CreditCard size={14} /> Pay Now</button>
+            <button className="hr-btn hr-btn-primary" onClick={payFromBank} disabled={saving}><CreditCard size={14} /> Save Payment</button>
           </div>
         </div>
       </div>
@@ -2371,6 +2996,8 @@ export default function HRPage() {
       {renderOvertimeModal()}
       {renderFineModal()}
       {renderClearDueModal()}
+      {renderBankTransactionsModal()}
+      {renderAddBankMoneyModal()}
       {renderBankPayModal()}
     </div>
   );
@@ -2785,6 +3412,12 @@ const hrStyles = `
     border-right: 1px solid var(--hr-line);
     display: flex;
     flex-direction: column;
+    position: sticky;
+    top: 12px;
+    align-self: start;
+    max-height: calc(100vh - 24px);
+    background: var(--hr-bg);
+    z-index: 2;
   }
   .hr-rail-head {
     display: flex;
@@ -2794,7 +3427,7 @@ const hrStyles = `
     border-bottom: 1px solid var(--hr-line);
   }
   .hr-rail-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .hr-rail-scroll { flex: 1; overflow-y: auto; }
+  .hr-rail-scroll { flex: 1; min-height: 0; overflow-y: auto; }
   .hr-rail-item {
     width: 100%;
     display: flex;
@@ -3051,7 +3684,14 @@ const hrStyles = `
   .hr-mini-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   .hr-mini-table th { padding: 7px 10px; background: #f8fafc; border-bottom: 1px solid var(--hr-line); font-size: 12px; font-weight: 600; color: #64748b; text-align: left; }
   .hr-mini-table td { padding: 8px 10px; border-bottom: 1px solid var(--hr-line); font-size: 13px; }
+  .hr-mini-table td strong,
+  .hr-mini-table td small { display: block; }
+  .hr-mini-table td small { color: var(--hr-muted); font-size: 12px; margin-top: 2px; }
   .hr-mini-table tbody tr:last-child td { border-bottom: none; }
+  .staff-tx-table { min-width: 820px; }
+  .staff-tx-table th:nth-child(5),
+  .staff-tx-table td:nth-child(5) { text-align: right; white-space: nowrap; }
+  .hr-emi-line { color: #9f1239 !important; font-weight: 600; }
   .hr-loan-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
   .hr-loan-row:last-child { border-bottom: none; }
   .hr-loan-row strong, .hr-loan-row small { display: block; }
@@ -3072,16 +3712,355 @@ const hrStyles = `
   .hr-row-actions { display: flex; align-items: center; gap: 6px; }
 
   /* ── Finance ── */
-  .hr-finance-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--hr-line); }
-  .hr-finance-strip div { padding: 12px; border: 1px solid var(--hr-line); border-radius: 8px; }
+  .hr-finance-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--hr-line); }
+  .hr-finance-strip div { padding: 14px 16px; border: 1px solid var(--hr-line); border-radius: 8px; background: #fbfdff; }
   .hr-finance-strip span { display: block; font-size: 12px; color: var(--hr-muted); margin-bottom: 4px; }
   .hr-finance-strip strong { font-size: 18px; font-weight: 600; }
-  .hr-finance-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--hr-line); border-radius: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .hr-banks-block { padding: 22px 24px 0; }
+  .hr-transactions-block { padding: 18px 24px 24px; }
+  .hr-sub-head-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .hr-sub-head-row .hr-sub-h,
+  .hr-sub-head-row h3,
+  .hr-sub-head-row p { margin-bottom: 0; }
+  .hr-bank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; }
+  .hr-finance-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--hr-line); border-radius: 8px; margin-bottom: 8px; flex-wrap: wrap; background: #fff; }
+  .hr-bank-card { cursor: pointer; margin-bottom: 0; }
+  .hr-bank-card:hover,
+  .hr-bank-card.selected {
+    border-color: var(--hr-primary);
+    background: rgba(79,70,229,0.05);
+  }
+  .hr-bank-card-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 1 1 260px;
+    min-width: 0;
+  }
+  .hr-bank-view-hint {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid #dbe3ef;
+    border-radius: 999px;
+    color: var(--hr-primary);
+    background: #f8fafc;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
   .hr-finance-card strong, .hr-finance-card small { display: block; }
   .hr-finance-card small { color: var(--hr-muted); font-size: 12px; margin-top: 2px; }
   .hr-finance-card b { font-size: 16px; color: var(--hr-green); margin-left: auto; white-space: nowrap; }
-  .hr-finance-card-actions { display: flex; align-items: center; gap: 8px; width: 100%; }
+  .hr-finance-card-actions { display: flex; align-items: center; gap: 8px; width: 100%; padding-top: 4px; }
   .hr-finance-card-actions input { flex: 1; min-height: 32px; border: 1.5px solid var(--hr-line); border-radius: 7px; background: var(--hr-bg); color: var(--app-text); padding: 4px 8px; font-size: 13px; }
+  .hr-finance-table-wrap {
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .bank-tx-modal {
+    width: min(980px, 96vw);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    overflow: hidden;
+  }
+  .bank-tx-modal .hr-finance-table-wrap {
+    max-height: min(520px, calc(90vh - 210px));
+    overflow: auto;
+  }
+  .bank-tx-table {
+    min-width: 820px;
+    table-layout: fixed;
+  }
+  .bank-tx-table th:nth-child(1),
+  .bank-tx-table td:nth-child(1) { width: 106px; }
+  .bank-tx-table th:nth-child(2),
+  .bank-tx-table td:nth-child(2) { width: 180px; }
+  .bank-tx-table th:nth-child(4),
+  .bank-tx-table td:nth-child(4),
+  .bank-tx-table th:nth-child(5),
+  .bank-tx-table td:nth-child(5) {
+    width: 160px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .bank-tx-table th,
+  .bank-tx-table td {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .bank-tx-table td strong,
+  .bank-tx-table td small {
+    overflow-wrap: anywhere;
+  }
+  .bank-tx-table td:nth-child(4) strong,
+  .bank-tx-table td:nth-child(4) small,
+  .bank-tx-table td:nth-child(5) strong,
+  .bank-tx-table td:nth-child(5) small {
+    overflow-wrap: normal;
+  }
+  .hr-bank-modal-summary {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 10px;
+  }
+  .hr-bank-modal-summary div {
+    padding: 12px;
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+    background: #fbfdff;
+  }
+  .hr-bank-modal-summary span,
+  .hr-bank-modal-summary small {
+    display: block;
+    color: var(--hr-muted);
+    font-size: 12px;
+  }
+  .hr-bank-modal-summary strong {
+    display: block;
+    margin: 2px 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .hr-cash-bank-layout {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    min-height: calc(100vh - 224px);
+    border-top: 1px solid var(--hr-line);
+  }
+  .hr-bank-ledger-rail {
+    border-right: 1px solid var(--hr-line);
+    background: #fff;
+  }
+  .hr-ledger-balance {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 74px;
+    padding: 18px 14px;
+    border-bottom: 1px solid var(--hr-line);
+  }
+  .hr-ledger-balance.subtle {
+    min-height: 56px;
+    background: #fbfdff;
+  }
+  .hr-ledger-balance span,
+  .hr-ledger-section-title span {
+    color: var(--hr-muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .hr-ledger-balance strong {
+    font-size: 17px;
+    font-weight: 700;
+    text-align: right;
+  }
+  .hr-ledger-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    border-bottom: 1px solid var(--hr-line);
+  }
+  .hr-link-btn {
+    border: 0;
+    background: transparent;
+    color: var(--hr-primary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
+    white-space: nowrap;
+  }
+  .hr-bank-ledger-list {
+    display: grid;
+    max-height: calc(100vh - 420px);
+    overflow-y: auto;
+  }
+  .hr-bank-ledger-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 78px;
+    padding: 12px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--hr-line);
+    background: transparent;
+    color: var(--app-text);
+    cursor: pointer;
+    text-align: left;
+  }
+  .hr-bank-ledger-item:hover,
+  .hr-bank-ledger-item.selected {
+    background: rgba(79,70,229,0.08);
+  }
+  .hr-bank-ledger-item strong,
+  .hr-bank-ledger-item small {
+    display: block;
+  }
+  .hr-bank-ledger-item strong {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .hr-bank-ledger-item small {
+    color: var(--hr-muted);
+    font-size: 12px;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+  }
+  .hr-bank-ledger-item b {
+    color: var(--app-text);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .hr-bank-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: var(--hr-primary);
+  }
+  .hr-bank-ledger-detail {
+    min-width: 0;
+    background: #fff;
+  }
+  .hr-bank-detail-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    border-bottom: 1px solid var(--hr-line);
+    background: #fff;
+  }
+  .hr-bank-detail-tabs button {
+    align-self: stretch;
+    min-width: 150px;
+    border: 0;
+    border-right: 1px solid var(--hr-line);
+    background: #f4f3ff;
+    color: var(--hr-primary);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: default;
+  }
+  .hr-bank-detail-tabs .hr-pill {
+    margin-right: 14px;
+  }
+  .hr-bank-account-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 18px;
+    min-height: 116px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--hr-line);
+  }
+  .hr-bank-account-summary span,
+  .hr-bank-account-summary small {
+    display: block;
+    color: var(--hr-muted);
+    font-size: 13px;
+  }
+  .hr-bank-account-summary strong {
+    display: block;
+    margin: 4px 0;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .hr-bank-account-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .hr-bank-ledger-table {
+    margin: 18px 20px;
+  }
+  .hr-bank-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px 0;
+    flex-wrap: wrap;
+  }
+  .hr-bank-filter-controls,
+  .hr-bank-filter-totals {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .hr-bank-filter-controls select,
+  .hr-bank-filter-controls input {
+    min-height: 36px;
+    border: 1.5px solid var(--hr-line);
+    border-radius: 7px;
+    background: var(--hr-bg);
+    color: var(--app-text);
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+  .hr-bank-filter-totals span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .hr-bank-filter-totals .in {
+    background: #dcfce7;
+    color: #166534;
+  }
+  .hr-bank-filter-totals .out {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+  .hr-amount.in {
+    color: var(--hr-green);
+  }
+  .hr-amount.out {
+    color: #dc2626;
+  }
+  .hr-loans-list { display: grid; gap: 10px; margin-top: 12px; }
+  .hr-loan-card {
+    display: grid;
+    grid-template-columns: minmax(170px, 1.4fr) repeat(3, minmax(95px, 1fr)) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+  }
+  .hr-loan-card strong,
+  .hr-loan-card small,
+  .hr-loan-card span { display: block; }
+  .hr-loan-card span,
+  .hr-loan-card small { color: var(--hr-muted); font-size: 12px; }
+  .hr-loan-card strong { font-size: 14px; font-weight: 600; }
+  .hr-loan-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
   /* ── Overview metrics ── */
   .hr-metrics-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--hr-line); }
@@ -3095,6 +4074,26 @@ const hrStyles = `
   .hr-metric-card.amber svg { background: #fef3c7; color: #b45309; }
   .hr-metric-card.rose svg { background: #ffe4e6; color: #be123c; }
   .hr-metric-card.slate svg { background: #e2e8f0; color: #475569; }
+  .hr-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    padding: 0 20px 20px;
+  }
+  .hr-overview-wide {
+    grid-column: 1 / -1;
+    overflow-x: auto;
+  }
+  .overview-tx-table {
+    min-width: 880px;
+  }
+  .overview-tx-table th:nth-child(5),
+  .overview-tx-table td:nth-child(5),
+  .overview-tx-table th:nth-child(6),
+  .overview-tx-table td:nth-child(6) {
+    text-align: right;
+    white-space: nowrap;
+  }
 
   /* ── Modal ── */
   .hr-modal-backdrop {
@@ -3124,6 +4123,41 @@ const hrStyles = `
   }
   .hr-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; }
   .hr-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .small-money-modal { width: min(520px, 96vw); }
+  .payment-modal { width: min(720px, 96vw); }
+  .hr-payment-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1.5px solid var(--hr-line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .hr-payment-mode button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    border: 0;
+    background: #fff;
+    color: var(--hr-muted);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .hr-payment-mode button + button {
+    border-left: 1px solid var(--hr-line);
+  }
+  .hr-payment-mode button.active {
+    background: var(--hr-primary);
+    color: #fff;
+  }
+  .hr-payment-preview {
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+    background: #fbfdff;
+    padding: 6px 12px;
+  }
 
   /* ── Overtime modal ── */
   .ot-modal { width: min(580px, 96vw); }
@@ -3151,6 +4185,7 @@ const hrStyles = `
   /* ── Misc ── */
   .hr-empty-cell { text-align: center; color: var(--hr-muted) !important; padding: 40px !important; }
   .hr-empty-block { padding: 40px; text-align: center; color: var(--hr-muted); }
+  .hr-empty-block.compact { padding: 24px 14px; }
   .hr-loading { padding: 12px; color: var(--hr-muted); font-size: 13px; }
   .hr-loading-screen { min-height: 300px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--hr-muted); }
   .hr-muted { color: var(--hr-muted); font-size: 13px; }
@@ -3158,6 +4193,7 @@ const hrStyles = `
   .hr-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .hr-detail-transactions { padding: 0; }
   .hr-detail-payroll, .hr-detail-transactions { display: flex; flex-direction: column; gap: 14px; }
+  .hr-detail-transactions .hr-mini-card { overflow-x: auto; }
   .mt12 { margin-top: 12px; }
   .mt16 { margin-top: 16px; }
 
@@ -3166,18 +4202,35 @@ const hrStyles = `
     .hr-detail-layout { grid-template-columns: 1fr; }
     .hr-detail-rail { display: none; }
     .hr-payroll-detail-grid, .hr-two-col { grid-template-columns: 1fr; }
+    .hr-overview-grid { grid-template-columns: 1fr; }
+    .hr-bank-modal-summary { grid-template-columns: 1fr 1fr; }
+    .hr-loan-card { grid-template-columns: 1fr 1fr; }
     .hr-metrics-row { grid-template-columns: repeat(2,1fr); }
     .hr-summary-strip { grid-template-columns: repeat(3, 1fr); }
     .hr-form-grid-3 { grid-template-columns: 1fr 1fr; }
+    .hr-cash-bank-layout { grid-template-columns: 1fr; }
+    .hr-bank-ledger-rail { border-right: 0; border-bottom: 1px solid var(--hr-line); }
+    .hr-bank-ledger-list { max-height: none; }
+    .hr-bank-account-summary { grid-template-columns: 1fr; align-items: stretch; }
   }
   @media (max-width: 640px) {
     .hr-metrics-row, .hr-summary-strip, .hr-finance-strip { grid-template-columns: 1fr; }
     .hr-section-topbar, .hr-detail-topbar { flex-direction: column; align-items: stretch; }
     .hr-form-grid-2, .hr-form-grid-3 { grid-template-columns: 1fr; }
+    .hr-bank-grid, .hr-bank-modal-summary, .hr-loan-card { grid-template-columns: 1fr; }
+    .bank-tx-modal { width: 96vw; padding: 14px; }
+    .bank-tx-modal .hr-finance-table-wrap { max-height: calc(90vh - 260px); }
+    .hr-loan-card-actions { justify-content: flex-start; }
     .hr-ot-hours-row { grid-template-columns: 1fr; }
     .hr-nav-tabs { gap: 4px; }
     .hr-nav-tab { padding: 0 10px; font-size: 12px; }
     .hr-main-section { overflow: visible; }
+    .hr-bank-ledger-item { grid-template-columns: 32px minmax(0, 1fr); }
+    .hr-bank-ledger-item b { grid-column: 2; }
+    .hr-bank-detail-tabs { align-items: stretch; flex-direction: column; }
+    .hr-bank-detail-tabs .hr-pill { align-self: flex-start; margin: 10px 14px; }
+    .hr-payment-mode { grid-template-columns: 1fr; }
+    .hr-payment-mode button + button { border-left: 0; border-top: 1px solid var(--hr-line); }
     .hr-att-table-wrap, .hr-detail-att-table-wrap { overflow-x: auto; overflow-y: visible; }
   }
 `;
