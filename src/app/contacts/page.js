@@ -60,6 +60,54 @@ function TagBadge({ label }) {
   );
 }
 
+function LoginAccessToggle({ contact, onToggle }) {
+  const hasLogin = Boolean(contact.loginUser?._id);
+  const isActive = contact.loginUser?.isActive !== false;
+
+  return (
+    <button
+      type="button"
+      onClick={() => hasLogin && onToggle(contact)}
+      disabled={!hasLogin}
+      aria-pressed={hasLogin ? isActive : undefined}
+      title={hasLogin ? "Toggle login access" : "No login account exists"}
+      style={{
+        width: 92,
+        height: 30,
+        borderRadius: 999,
+        border: "none",
+        background: !hasLogin ? "#e5e7eb" : isActive ? "#d1fae5" : "#fee2e2",
+        color: !hasLogin ? "#6b7280" : isActive ? "#065f46" : "#991b1b",
+        cursor: hasLogin ? "pointer" : "not-allowed",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: isActive && hasLogin ? "flex-end" : "flex-start",
+        padding: 3,
+        gap: 4,
+        fontSize: 11,
+        fontWeight: 800,
+        textTransform: "uppercase",
+        opacity: hasLogin ? 1 : 0.75,
+      }}
+    >
+      <span
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: "50%",
+          background: "#ffffff",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+          flexShrink: 0,
+          order: isActive && hasLogin ? 2 : 0,
+        }}
+      />
+      <span style={{ flex: 1, textAlign: "center", lineHeight: 1 }}>
+        {!hasLogin ? "No login" : isActive ? "Active" : "Inactive"}
+      </span>
+    </button>
+  );
+}
+
 function ContactsDarkStyles() {
   return (
     <style>{`
@@ -143,7 +191,6 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
     email: "",
     password: "",
     tagId: "",
-    source: "MANUAL",
     role: "user",
   });
   const [error, setError] = useState("");
@@ -170,7 +217,6 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
       email: form.email.trim() || null,
       password: form.password || undefined,
       tags: form.tagId ? [form.tagId] : [],
-      source: form.source,
       role: form.role,
     });
     onClose();
@@ -314,15 +360,6 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
           </select>
         </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Source</label>
-          <select value={form.source} onChange={handle("source")} style={inputStyle}>
-            <option value="ORGANIC">ORGANIC</option>
-            <option value="IMPORTED">IMPORTED</option>
-            <option value="MANUAL">MANUAL</option>
-          </select>
-        </div>
-
         {isSuperAdmin && (
           <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>Role</label>
@@ -355,7 +392,6 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
     email: contact.email || "",
     password: "",
     tagId: contact.tags && contact.tags.length > 0 ? contact.tags[0]._id : "",
-    source: contact.source || "MANUAL",
   });
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -378,7 +414,6 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
       email: form.email.trim() || null,
       password: form.password || undefined,
       tags: form.tagId ? [form.tagId] : [],
-      source: form.source,
     });
     onClose();
   };
@@ -518,15 +553,6 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
                 {tag.name || tag.tagName}
               </option>
             ))}
-          </select>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Source</label>
-          <select value={form.source} onChange={handle("source")} style={inputStyle}>
-            <option value="ORGANIC">ORGANIC</option>
-            <option value="IMPORTED">IMPORTED</option>
-            <option value="MANUAL">MANUAL</option>
           </select>
         </div>
 
@@ -682,6 +708,7 @@ function SkeletonContacts({ isSuperAdmin, isManager, adminView, isMobile }) {
   // Main contacts table skeleton
   const showEmail = isSuperAdmin;
   const showCreatedBy = isSuperAdmin;
+  const showLogin = isSuperAdmin;
   const showActions = isSuperAdmin || isManager;
   const showCheckbox = isSuperAdmin;
 
@@ -715,9 +742,11 @@ function SkeletonContacts({ isSuperAdmin, isManager, adminView, isMobile }) {
               <th style={{ padding: "12px 16px" }}>
                 <div className="shimmer" style={{ width: "40%", height: 12, borderRadius: 4 }} />
               </th>
-              <th style={{ padding: "12px 16px" }}>
-                <div className="shimmer" style={{ width: "40%", height: 12, borderRadius: 4 }} />
-              </th>
+              {showLogin && (
+                <th style={{ padding: "12px 16px" }}>
+                  <div className="shimmer" style={{ width: "50%", height: 12, borderRadius: 4 }} />
+                </th>
+              )}
               {showCreatedBy && (
                 <th style={{ padding: "12px 16px" }}>
                   <div className="shimmer" style={{ width: "40%", height: 12, borderRadius: 4 }} />
@@ -757,9 +786,11 @@ function SkeletonContacts({ isSuperAdmin, isManager, adminView, isMobile }) {
                 <td style={{ padding: "12px 16px" }}>
                   <div className="shimmer" style={{ width: "40%", height: 12, borderRadius: 4 }} />
                 </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <div className="shimmer" style={{ width: "30%", height: 12, borderRadius: 4 }} />
-                </td>
+                {showLogin && (
+                  <td style={{ padding: "12px 16px" }}>
+                    <div className="shimmer" style={{ width: 76, height: 20, borderRadius: 999 }} />
+                  </td>
+                )}
                 {showCreatedBy && (
                   <td style={{ padding: "12px 16px" }}>
                     <div className="shimmer" style={{ width: "50%", height: 12, borderRadius: 4 }} />
@@ -902,6 +933,20 @@ export default function ContactsPage() {
         alert("✅ Edit submitted! Waiting for admin approval.");
     } catch (err) {
       alert(err.response?.data?.error || "Failed to update contact");
+    }
+  };
+
+  const toggleLoginAccess = async (contact) => {
+    if (!contact.loginUser?._id) return;
+
+    const nextActive = contact.loginUser.isActive === false;
+    try {
+      const res = await API.patch(`/contacts/${contact._id}/login-status`, {
+        isActive: nextActive,
+      });
+      setContacts((prev) => prev.map((c) => (c._id === contact._id ? res.data : c)));
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update login access");
     }
   };
 
@@ -1389,10 +1434,8 @@ export default function ContactsPage() {
                   <th style={{ ...stickyTh, textAlign: "left" }}>Mobile</th>
                   {isSuperAdmin && <th style={{ ...stickyTh, textAlign: "left" }}>Email</th>}
                   <th style={{ ...stickyTh, textAlign: "left" }}>Tags</th>
-                  <th style={{ ...stickyTh, textAlign: "left", whiteSpace: "nowrap" }}>
-                    Source
-                  </th>
                   <th style={{ ...stickyTh, textAlign: "left" }}>Status</th>
+                  {isSuperAdmin && <th style={{ ...stickyTh, textAlign: "left" }}>Login</th>}
                   {isSuperAdmin && <th style={{ ...stickyTh, textAlign: "left" }}>Created By</th>}
                   {isManagerOrAbove && <th style={{ ...stickyTh, textAlign: "left" }}>Actions</th>}
                 </tr>
@@ -1401,7 +1444,11 @@ export default function ContactsPage() {
                 {paged.length === 0 && (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={
+                        4 +
+                        (isSuperAdmin ? 4 : 0) +
+                        (isManagerOrAbove ? 1 : 0)
+                      }
                       style={{
                         textAlign: "center",
                         padding: "48px 0",
@@ -1469,10 +1516,14 @@ export default function ContactsPage() {
                         )}
                       </div>
                     </td>
-                    <td style={td}>{c.source || "—"}</td>
                     <td style={td}>
                       <StatusBadge status={c.status || "approved"} />
                     </td>
+                    {isSuperAdmin && (
+                      <td style={td}>
+                        <LoginAccessToggle contact={c} onToggle={toggleLoginAccess} />
+                      </td>
+                    )}
                     {isSuperAdmin && (
                       <td style={{ ...td, fontSize: 12, color: "#6b7280" }}>
                         {c.createdBy?.name || "—"}
