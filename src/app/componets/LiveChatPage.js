@@ -6387,9 +6387,21 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
   const initial = displayName.charAt(0).toUpperCase();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const hasLocalVideoTrack = Boolean(
+    localStream?.getVideoTracks?.().some(track => track.readyState === "live")
+  );
 
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+    const video = localVideoRef.current;
+    if (!video) return;
+
+    video.srcObject = localStream || null;
+    video.muted = true;
+
+    if (localStream) {
+      const playPromise = video.play?.();
+      if (playPromise?.catch) playPromise.catch(() => {});
+    }
   }, [localStream]);
 
   useEffect(() => {
@@ -6684,12 +6696,16 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                     boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
                   }}
                 >
-                  {localStream ? (
+                  {hasLocalVideoTrack ? (
                     <video
                       ref={localVideoRef}
                       autoPlay
                       muted
                       playsInline
+                      onLoadedMetadata={() => {
+                        const playPromise = localVideoRef.current?.play?.();
+                        if (playPromise?.catch) playPromise.catch(() => {});
+                      }}
                       style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", display: "block" }}
                     />
                   ) : (
