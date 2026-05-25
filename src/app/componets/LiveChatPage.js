@@ -123,6 +123,7 @@ const CALL_FAILURE_GRACE_MS = 8000;
 const createIdleCallState = () => ({
   status: "idle",
   direction: null,
+  callId: null,
   chatId: null,
   peerPhone: null,
   peerName: "",
@@ -131,6 +132,22 @@ const createIdleCallState = () => ({
   error: "",
   callType: "audio",
 });
+
+const createCallId = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const isSameCallSignal = (activeCall = {}, payload = {}) => {
+  const activePeer = normalizePhoneKey(activeCall.peerPhone);
+  const payloadPeer = normalizePhoneKey(payload.from || payload.peerPhone);
+  if (!activePeer || activePeer !== payloadPeer) return false;
+
+  return !activeCall.callId || !payload.callId || activeCall.callId === payload.callId;
+};
 
 const CALL_ERROR_MESSAGES = {
   "connection-timeout": "Call could not connect. Check both networks and try again.",
@@ -1030,6 +1047,7 @@ const endCall = (reason = "ended", notifyPeer = true) => {
     getSocket().emit("call:end", {
       to: activeCall.peerPhone,
       from,
+      callId: activeCall.callId,
       chatId: activeCall.chatId,
       reason,
       initiator: activeCall.direction === "incoming" ? activeCall.peerPhone : from,
@@ -1051,14 +1069,19 @@ const failCall = (reason = "connection-failed", notifyPeer = true) => {
   if (message) alert(message);
 };
 
-const attachRemoteStream = (stream) => {
-  if (!stream) return;
+const attachRemoteStream = (stream, track) => {
+  const nextStream = stream || remoteStreamRef.current || new MediaStream();
+  if (track && !nextStream.getTracks().some(existingTrack => existingTrack.id === track.id)) {
+    nextStream.addTrack(track);
+  }
 
-  remoteStreamRef.current = stream;
-  setRemoteCallStream(stream);
+  if (!nextStream.getTracks().length) return;
+
+  remoteStreamRef.current = nextStream;
+  setRemoteCallStream(new MediaStream(nextStream.getTracks()));
 
   if ((callStateRef.current.callType || "audio") === "audio" && remoteAudioRef.current) {
-    remoteAudioRef.current.srcObject = stream;
+    remoteAudioRef.current.srcObject = nextStream;
     const playPromise = remoteAudioRef.current.play?.();
     if (playPromise?.catch) playPromise.catch(() => {});
   }
@@ -1111,7 +1134,7 @@ const scheduleConnectionFailureEnd = (reason = "connection-failed") => {
   }, CALL_FAILURE_GRACE_MS);
 };
 
-const createPeerConnection = async (peerPhone, chatId) => {
+const createPeerConnection = async (peerPhone, chatId, callId) => {
   const rtcConfig = await getRtcConfig();
   console.log("[call] RTC config", {
     iceServers: rtcConfig.iceServers.map((server) => ({
@@ -1142,6 +1165,7 @@ const createPeerConnection = async (peerPhone, chatId) => {
     getSocket().emit("call:ice-candidate", {
       to: peerPhone,
       from,
+      callId,
       chatId,
       candidate: event.candidate,
     });
@@ -1153,7 +1177,7 @@ const createPeerConnection = async (peerPhone, chatId) => {
       streams: event.streams?.length || 0,
       trackKind: event.track?.kind,
     });
-    attachRemoteStream(event.streams?.[0]);
+    attachRemoteStream(event.streams?.[0], event.track);
     markCallConnected();
   };
 
@@ -1196,7 +1220,15 @@ const createPeerConnection = async (peerPhone, chatId) => {
 };
 
 const getLocalMediaStream = async (callType = "audio") => {
-  if (localStreamRef.current) return localStreamRef.current;
+  if (
+    localStreamRef.current &&
+    (callType !== "video" || localStreamRef.current.getVideoTracks().length > 0)
+  ) {
+    return localStreamRef.current;
+  }
+
+  localStreamRef.current?.getTracks().forEach(track => track.stop());
+  localStreamRef.current = null;
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,
@@ -1215,7 +1247,14 @@ const getLocalMediaStream = async (callType = "audio") => {
 
 const addLocalMediaTracks = async (pc, callType = "audio") => {
   const stream = await getLocalMediaStream(callType);
-  stream.getTracks().forEach(track => pc.addTrack(track, stream));
+  if (callType === "video" && stream.getVideoTracks().length === 0) {
+    throw new Error("Camera track unavailable for video call.");
+  }
+
+  stream.getTracks().forEach(track => {
+    const alreadyAdded = pc.getSenders().some(sender => sender.track?.id === track.id);
+    if (!alreadyAdded) pc.addTrack(track, stream);
+  });
 };
 
 const flushPendingIceCandidates = async () => {
@@ -1254,7 +1293,8 @@ const startCall = async (callType = "audio") => {
     const socket = getSocket();
     if (!socket.connected) socket.connect();
 
-    const pc = await createPeerConnection(peerPhone, selectedChat._id);
+    const callId = createCallId();
+    const pc = await createPeerConnection(peerPhone, selectedChat._id, callId);
     await addLocalMediaTracks(pc, callType);
 
     const offer = await pc.createOffer({
@@ -1266,6 +1306,7 @@ const startCall = async (callType = "audio") => {
     const outgoingCallState = {
       status: "outgoing",
       direction: "outgoing",
+      callId,
       chatId: selectedChat._id,
       peerPhone,
       peerName: selectedChat.name || peerPhone,
@@ -1281,6 +1322,7 @@ const startCall = async (callType = "audio") => {
     socket.emit("call:offer", {
       to: peerPhone,
       from: currentUserPhone,
+      callId,
       fromName: currentUserRef.current?.name || currentUserPhone,
       chatId: selectedChat._id,
       offer,
@@ -1301,7 +1343,7 @@ const acceptIncomingCall = async () => {
 
   try {
     const callType = incomingCall.callType || "audio";
-    const pc = await createPeerConnection(incomingCall.peerPhone, incomingCall.chatId);
+    const pc = await createPeerConnection(incomingCall.peerPhone, incomingCall.chatId, incomingCall.callId);
     await addLocalMediaTracks(pc, callType);
     await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
     await flushPendingIceCandidates();
@@ -1321,6 +1363,7 @@ const acceptIncomingCall = async () => {
     getSocket().emit("call:answer", {
       to: incomingCall.peerPhone,
       from: currentUserPhone,
+      callId: incomingCall.callId,
       chatId: incomingCall.chatId,
       answer,
     });
@@ -1339,6 +1382,7 @@ const rejectIncomingCall = () => {
     getSocket().emit("call:reject", {
       to: incomingCall.peerPhone,
       from: currentUserPhone,
+      callId: incomingCall.callId,
       chatId: incomingCall.chatId,
       reason: "rejected",
       callType: incomingCall.callType || "audio",
@@ -1378,6 +1422,7 @@ const handleIncomingCall = (payload) => {
     getSocket().emit("call:busy", {
       to: payload.from,
       from: currentUserPhone,
+      callId: payload.callId,
       chatId: payload.chatId,
       callType: payload.callType || "audio",
     });
@@ -1387,6 +1432,7 @@ const handleIncomingCall = (payload) => {
   const incomingCallState = {
     status: "incoming",
     direction: "incoming",
+    callId: payload.callId || null,
     chatId: payload.chatId,
     peerPhone: payload.from,
     peerName: payload.fromName || payload.from,
@@ -1399,9 +1445,9 @@ const handleIncomingCall = (payload) => {
   setCallState(incomingCallState);
 };
 
-const handleCallAnswered = async ({ from, answer }) => {
+const handleCallAnswered = async ({ from, callId, answer }) => {
   const activeCall = callStateRef.current;
-  if (!answer || normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
+  if (!answer || !isSameCallSignal(activeCall, { from, callId })) return;
 
   try {
     const pc = peerConnectionRef.current;
@@ -1427,9 +1473,9 @@ const handleCallAnswered = async ({ from, answer }) => {
   }
 };
 
-const handleRemoteIceCandidate = async ({ from, candidate }) => {
+const handleRemoteIceCandidate = async ({ from, callId, candidate }) => {
   const activeCall = callStateRef.current;
-  if (!candidate || normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
+  if (!candidate || !isSameCallSignal(activeCall, { from, callId })) return;
 
   const pc = peerConnectionRef.current;
   if (!pc || !pc.remoteDescription) {
@@ -1444,27 +1490,35 @@ const handleRemoteIceCandidate = async ({ from, candidate }) => {
   }
 };
 
-const handleCallRejected = ({ from }) => {
+const handleCallRejected = ({ from, callId }) => {
   const activeCall = callStateRef.current;
-  if (normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
+  if (!isSameCallSignal(activeCall, { from, callId })) return;
 
   alert("Call declined.");
   endCall("rejected", false);
 };
 
-const handleCallBusy = ({ from }) => {
+const handleCallBusy = ({ from, callId }) => {
   const activeCall = callStateRef.current;
-  if (normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
+  if (!isSameCallSignal(activeCall, { from, callId }) || activeCall.status !== "outgoing") return;
 
   alert("The user is already on another call.");
   endCall("busy", false);
 };
 
-const handleRemoteCallEnded = ({ from }) => {
+const handleRemoteCallEnded = ({ from, callId }) => {
   const activeCall = callStateRef.current;
-  if (normalizePhoneKey(activeCall.peerPhone) !== normalizePhoneKey(from)) return;
+  if (!isSameCallSignal(activeCall, { from, callId })) return;
 
   endCall("remote-ended", false);
+};
+
+const handleCallHandledElsewhere = ({ peerPhone, callId }) => {
+  const activeCall = callStateRef.current;
+  if (activeCall.status !== "incoming") return;
+  if (!isSameCallSignal(activeCall, { from: peerPhone, callId })) return;
+
+  endCall("handled-elsewhere", false);
 };
 
 useEffect(() => {
@@ -1476,6 +1530,7 @@ useEffect(() => {
   s.on("call:rejected", handleCallRejected);
   s.on("call:busy", handleCallBusy);
   s.on("call:ended", handleRemoteCallEnded);
+  s.on("call:handled", handleCallHandledElsewhere);
 
   return () => {
     s.off("call:incoming", handleIncomingCall);
@@ -1484,6 +1539,7 @@ useEffect(() => {
     s.off("call:rejected", handleCallRejected);
     s.off("call:busy", handleCallBusy);
     s.off("call:ended", handleRemoteCallEnded);
+    s.off("call:handled", handleCallHandledElsewhere);
     endCall("unmounted", true);
   };
 }, []);
