@@ -422,6 +422,9 @@ export default function LiveChatPage() {
   const [selectedMessageId, setSelectedMessageId] = useState(null);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [forwardMessage, setForwardMessage] = useState(null);
+  const [forwardTargetIds, setForwardTargetIds] = useState(new Set());
+  const [forwarding, setForwarding] = useState(false);
+  const [messageInfo, setMessageInfo] = useState(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [showContactInfo, setShowContactInfo] = useState(false);
@@ -526,6 +529,10 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
     }),
     delivered,
     seen: msg.status === "seen",
+    deliveredAt: msg.deliveredAt || null,
+    seenAt: msg.seenAt || null,
+    readBy: Array.isArray(msg.readBy) ? msg.readBy : [],
+    status: msg.status || null,
     fileName: msg.fileName,
     fileSize: typeof msg.fileSize === "number" ? formatFileSize(msg.fileSize) : msg.fileSize,
     url: msg.fileUrl,
@@ -944,15 +951,26 @@ useEffect(() => {
   };
 
   // ✅ BLUE DOUBLE TICK — handled by global listener
-const handleMessagesSeen = ({ chatId: seenChatId }) => {
+const handleMessagesSeen = ({ chatId: seenChatId, user, seenAt }) => {
   if (String(seenChatId) !== String(chatId)) return;
+  const readAt = seenAt || new Date().toISOString();
   setMessages(prev => {
     const msgs = prev[chatId];
     if (!msgs) return prev;
     return {
       ...prev,
       [chatId]: msgs.map(m =>
-        m.type === "sent" ? { ...m, seen: true, delivered: true } : m
+        m.type === "sent"
+          ? {
+              ...m,
+              seen: true,
+              delivered: true,
+              seenAt: m.seenAt || readAt,
+              readBy: user && !m.readBy?.some((entry) => entry.user === user)
+                ? [...(m.readBy || []), { user, readAt }]
+                : m.readBy || [],
+            }
+          : m
       ),
     };
   });
@@ -1681,28 +1699,55 @@ const openDeleteConfirm = (chat, isGroup) => {
 
   const handleForwardMessage = (msg) => {
     setForwardMessage(msg);
+    setForwardTargetIds(new Set());
     setShowForwardModal(true);
   };
 
-  const sendForward = async (targetChat) => {
-    const user = JSON.parse(localStorage.getItem("user"));
-    if (!forwardMessage || !targetChat) return;
+  const buildForwardPayload = (targetChat, user) => ({
+    chatId: targetChat._id,
+    sender: user.phone,
+    messageType: forwardMessage.messageType,
+    text: forwardMessage.text || "",
+    fileUrl: forwardMessage.url || null,
+    fileName: forwardMessage.fileName || null,
+    templateMeta: forwardMessage.templateMeta || null,
+    contactName: forwardMessage.contactName || null,
+    contactPhone: forwardMessage.contactPhone || null,
+    contactEmail: forwardMessage.contactEmail || null,
+  });
 
-    const payload = {
-      chatId: targetChat._id,
-      sender: user.phone,
-      messageType: forwardMessage.messageType,
-      text: forwardMessage.text || "",
-      fileUrl: forwardMessage.url || null,
-      fileName: forwardMessage.fileName || null,
-      templateMeta: forwardMessage.templateMeta || null,
-    };
+  const toggleForwardTarget = (chatId) => {
+    setForwardTargetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) next.delete(chatId);
+      else next.add(chatId);
+      return next;
+    });
+  };
 
-    await API.post("/messages", payload).catch(console.error);
-
+  const closeForwardModal = () => {
     setShowForwardModal(false);
     setForwardMessage(null);
-    setSelectedChat(targetChat);
+    setForwardTargetIds(new Set());
+    setForwarding(false);
+  };
+
+  const sendForward = async () => {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!forwardMessage || forwardTargetIds.size === 0 || forwarding) return;
+
+    const targets = chatList.filter((chat) => forwardTargetIds.has(chat._id));
+    if (!targets.length) return;
+
+    setForwarding(true);
+    try {
+      await Promise.all(targets.map((chat) => API.post("/messages", buildForwardPayload(chat, user))));
+      closeForwardModal();
+    } catch (err) {
+      console.error("Forward failed:", err);
+      alert("Failed to forward message");
+      setForwarding(false);
+    }
   };
 
   // ----- Message deletion handlers -----
@@ -3292,6 +3337,7 @@ onClick={() => {
           }
           onDeleteClick={openDeleteModal}
           onForward={handleForwardMessage}
+          onInfo={setMessageInfo}
           isGroup={selectedChat?.isGroup}
           contacts={contacts}
            onStartChat={(phone, name) => {        // ✅ ADD THIS
@@ -3787,7 +3833,7 @@ onClick={() => {
       {/* Forward Message Modal */}
       {showForwardModal && (
         <div
-          onClick={() => setShowForwardModal(false)}
+          onClick={closeForwardModal}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
         >
           <div
@@ -3796,8 +3842,10 @@ onClick={() => {
           >
             {/* Header */}
             <div style={{ padding: "14px 16px", borderBottom: "1px solid #e9edef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontWeight: 600, fontSize: "1rem", color: "#111b21" }}>Forward message to</span>
-              <button onClick={() => setShowForwardModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#54656f" }}><FiX size={20} /></button>
+              <span style={{ fontWeight: 600, fontSize: "1rem", color: "#111b21" }}>
+                Forward message to {forwardTargetIds.size > 0 ? `(${forwardTargetIds.size})` : ""}
+              </span>
+              <button onClick={closeForwardModal} style={{ background: "none", border: "none", cursor: "pointer", color: "#54656f" }}><FiX size={20} /></button>
             </div>
 
             {/* Preview of message being forwarded */}
@@ -3815,27 +3863,62 @@ onClick={() => {
               {chatList.length === 0 ? (
                 <div style={{ padding: 20, textAlign: "center", color: "#667781" }}>No chats available</div>
               ) : (
-                chatList.map(chat => (
-                  <div
-                    key={chat._id}
-                    onClick={() => sendForward(chat)}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid #f0f2f5" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "#f5f6f6"}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  >
-                    <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#dfe5e7", color: "#54656f", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>
-                      {chat.name?.charAt(0) || "U"}
+                chatList.map(chat => {
+                  const selected = forwardTargetIds.has(chat._id);
+                  return (
+                    <div
+                      key={chat._id}
+                      onClick={() => toggleForwardTarget(chat._id)}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid #f0f2f5", background: selected ? "#e7fef5" : "transparent" }}
+                    >
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", border: selected ? "none" : "2px solid #d1d7db", background: selected ? "#00a884" : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {selected && <FiCheck size={14} />}
+                      </div>
+                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#dfe5e7", color: "#54656f", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>
+                        {chat.name?.charAt(0) || "U"}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: "0.95rem", color: "#111b21", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{chat.name || chat.phone}</div>
+                        <div style={{ fontSize: "0.8rem", color: "#667781" }}>{chat.phone}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 500, fontSize: "0.95rem", color: "#111b21" }}>{chat.name || chat.phone}</div>
-                      <div style={{ fontSize: "0.8rem", color: "#667781" }}>{chat.phone}</div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
+            </div>
+
+            <div style={{ padding: "12px 16px", borderTop: "1px solid #e9edef", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: "0.82rem", color: "#667781" }}>
+                {forwardTargetIds.size === 0 ? "Select one or more chats" : `${forwardTargetIds.size} selected`}
+              </span>
+              <button
+                type="button"
+                disabled={forwardTargetIds.size === 0 || forwarding}
+                onClick={sendForward}
+                style={{
+                  border: "none",
+                  borderRadius: 999,
+                  background: forwardTargetIds.size === 0 || forwarding ? "#d1d7db" : "#00a884",
+                  color: "#fff",
+                  fontWeight: 700,
+                  padding: "9px 18px",
+                  cursor: forwardTargetIds.size === 0 || forwarding ? "not-allowed" : "pointer",
+                }}
+              >
+                {forwarding ? "Sending..." : "Send"}
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {messageInfo && (
+        <MessageInfoModal
+          message={messageInfo}
+          chat={selectedChat}
+          contacts={contacts}
+          onClose={() => setMessageInfo(null)}
+        />
       )}
 
       {/* Delete Message Modal */}
@@ -4191,6 +4274,7 @@ function MessageBubble({
   chatLastMessage,
   onDeleteClick,
   onForward,
+  onInfo,
   onSelect,
   isSelected,
   multiSelectMode,
@@ -4267,7 +4351,8 @@ useEffect(() => {
     setShowMenu(false);
   };
   const handleInfo = () => {
-    alert(`Message sent at ${getFormattedTime()}`);
+    if (onInfo) onInfo(msg);
+    else alert(`Message sent at ${getFormattedTime()}`);
     setShowMenu(false);
   };
   const handleSelectToggle = () => {
@@ -5167,6 +5252,99 @@ const senderName = getSenderName();
 /* ─────────────────────────────────────────────
   CameraModal — Responsive (Full screen mobile / Centered modal desktop)
 ───────────────────────────────────────────── */
+function formatMessageInfoTime(value) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return `${date.toLocaleDateString([], {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })}, ${date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function MessageInfoModal({ message, chat, contacts = [], onClose }) {
+  const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+  const isSent = message.type === "sent";
+  const seenTime = message.seenAt || readBy[readBy.length - 1]?.readAt || null;
+  const deliveredTime = message.deliveredAt || message.createdAt;
+  const contactName = (phone) => {
+    const contact = contacts.find((item) => String(item.mobile) === String(phone) || String(item.phone) === String(phone));
+    return contact?.name || phone || "Unknown";
+  };
+  const infoRows = isSent
+    ? [
+        { label: "Sent", value: formatMessageInfoTime(message.createdAt) },
+        { label: "Delivered", value: message.delivered || message.seen ? formatMessageInfoTime(deliveredTime) : "Not delivered yet" },
+        { label: "Read", value: message.seen ? formatMessageInfoTime(seenTime) : "Not read yet" },
+      ]
+    : [
+        { label: "Received", value: formatMessageInfoTime(message.createdAt) },
+        { label: "Read by you", value: formatMessageInfoTime(seenTime || message.createdAt) },
+      ];
+
+  const preview =
+    message.messageType === "image" ? "Photo" :
+    message.messageType === "video" ? "Video" :
+    message.messageType === "audio" ? "Audio" :
+    message.messageType === "file" ? message.fileName || "File" :
+    message.messageType === "contact" ? message.contactName || "Contact" :
+    message.messageType === "template" ? message.templateMeta?.header || "Template" :
+    message.text || "Message";
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,0.46)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: "100%", maxWidth: 390, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 18px 48px rgba(0,0,0,0.24)" }}
+      >
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid #e9edef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700, color: "#111b21" }}>Message info</div>
+          <button type="button" onClick={onClose} style={{ border: "none", background: "transparent", color: "#54656f", cursor: "pointer", display: "flex" }}>
+            <FiX size={20} />
+          </button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          <div style={{ padding: "10px 12px", background: "#f0f2f5", borderRadius: 8, color: "#3b4a54", fontSize: "0.88rem", marginBottom: 14, maxHeight: 90, overflow: "hidden" }}>
+            {preview}
+          </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {infoRows.map((row) => (
+              <div key={row.label} style={{ display: "flex", justifyContent: "space-between", gap: 16, borderBottom: "1px solid #f0f2f5", paddingBottom: 10 }}>
+                <span style={{ color: "#667781", fontSize: "0.86rem" }}>{row.label}</span>
+                <span style={{ color: "#111b21", fontSize: "0.86rem", textAlign: "right", fontWeight: 600 }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
+
+          {isSent && chat?.isGroup && readBy.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ color: "#667781", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", marginBottom: 8 }}>Read by</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {readBy.map((entry, index) => (
+                  <div key={`${entry.user}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: "0.85rem" }}>
+                    <span style={{ color: "#111b21", fontWeight: 600 }}>{contactName(entry.user)}</span>
+                    <span style={{ color: "#667781" }}>{formatMessageInfoTime(entry.readAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export function CameraModal({ isMobile, videoPreviewRef, onCapture, onClose, selectedChat, uploadFile, API }) {
   const [mode, setMode] = useState("photo"); // "photo" | "video"
   const [isRecordingVideo, setIsRecordingVideo] = useState(false);
