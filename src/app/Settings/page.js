@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  ExternalLink,
   Clock3,
   LifeBuoy,
   Lock,
@@ -22,6 +23,7 @@ import {
   ShieldCheck,
   Sun,
   Ticket,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -143,6 +145,7 @@ export default function SettingsPage() {
   const [chat, setChat] = useState([]);
   const [supportOpen, setSupportOpen] = useState(false);
   const [ticketsModalOpen, setTicketsModalOpen] = useState(false);
+  const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [supportInput, setSupportInput] = useState("");
   const [creatingTicket, setCreatingTicket] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
@@ -211,6 +214,10 @@ export default function SettingsPage() {
   const activeTickets = tickets.filter((ticket) => ticket.status !== "ended");
   const endedTickets = tickets.filter((ticket) => ticket.status === "ended");
   const visibleSupportTickets = supportStaff ? tickets : activeMyTickets;
+  const selectedTicket = useMemo(
+    () => tickets.find((ticket) => ticket._id === selectedTicketId) || null,
+    [tickets, selectedTicketId]
+  );
 
   const latestStaffReplyTime = useMemo(() => {
     if (supportStaff) return 0;
@@ -617,6 +624,39 @@ export default function SettingsPage() {
       setNotice({ type: "success", text: "Chat ended. It is hidden from the user and kept for staff history." });
     } catch (error) {
       setNotice({ type: "error", text: error.response?.data?.error || "Could not end chat." });
+    }
+  };
+
+  const deleteEndedTicket = async (ticketId) => {
+    const ticket = tickets.find((item) => item._id === ticketId);
+    if (ticket?.status !== "ended") {
+      setNotice({ type: "error", text: "Only ended tickets can be deleted." });
+      return;
+    }
+    if (!window.confirm("Delete this ended ticket permanently?")) return;
+
+    try {
+      await API.delete(`/users/support-tickets/${ticketId}`);
+      setTickets((prev) => prev.filter((item) => item._id !== ticketId));
+      setSelectedTicketId(null);
+      setReplyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[ticketId];
+        return next;
+      });
+      setReplyStatusDrafts((prev) => {
+        const next = { ...prev };
+        delete next[ticketId];
+        return next;
+      });
+      setResetDrafts((prev) => {
+        const next = { ...prev };
+        delete next[ticketId];
+        return next;
+      });
+      setNotice({ type: "success", text: "Ended ticket deleted." });
+    } catch (error) {
+      setNotice({ type: "error", text: error.response?.data?.error || "Could not delete ticket." });
     }
   };
 
@@ -1146,7 +1186,99 @@ export default function SettingsPage() {
     </>
   );
 
+  const getTicketIssueLabel = (ticket) =>
+    ISSUE_CATEGORIES.find((item) => item.id === ticket.category)?.label || ticket.category || "Support";
+
+  const getTicketTone = (ticket) =>
+    ticket.status === "ended" ? "neutral" : ticket.status === "resolved" ? "approved" : ticket.status === "open" ? "pending" : "neutral";
+
+  const renderTicketSummary = (ticket) => {
+    const issueLabel = getTicketIssueLabel(ticket);
+    const isEnded = ticket.status === "ended";
+    const isSelected = selectedTicketId === ticket._id;
+
+    return (
+      <div
+        key={ticket._id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedTicketId(ticket._id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedTicketId(ticket._id);
+          }
+        }}
+        style={{
+          ...rowCardStyle(colors, true),
+          width: "100%",
+          textAlign: "left",
+          alignItems: "flex-start",
+          background: isSelected ? colors.accentSoft : colors.panel,
+          borderColor: isSelected ? colors.accent : colors.border,
+          cursor: "pointer",
+        }}
+      >
+        <Ticket size={17} color={isEnded ? colors.muted : colors.accent} style={{ marginTop: 2, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+            <div style={{ color: colors.text, fontWeight: 850, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {ticket.user?.name || ticket.user?.phone || "User"}
+            </div>
+            <Pill tone={getTicketTone(ticket)}>{ticket.status?.replace("_", " ")}</Pill>
+          </div>
+          <div style={{ color: colors.text, fontSize: 13, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {ticket.subject || issueLabel}
+          </div>
+          <div style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+            {issueLabel} - {new Date(ticket.createdAt).toLocaleString()}
+          </div>
+        </div>
+        {isEnded && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteEndedTicket(ticket._id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                deleteEndedTicket(ticket._id);
+              }
+            }}
+            title="Delete ended ticket"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#fee2e2",
+              color: "#b91c1c",
+              flexShrink: 0,
+            }}
+          >
+            <Trash2 size={15} />
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const renderStaffTicketCard = (ticket) => {
+    if (!ticket) {
+      return (
+        <div style={{ ...emptyStateStyle(colors), minHeight: 340 }}>
+          <Ticket size={28} />
+          Select a ticket to view details and reply.
+        </div>
+      );
+    }
+
     const issueLabel = ISSUE_CATEGORIES.find((item) => item.id === ticket.category)?.label || ticket.category || "Support";
     const statusValue = replyStatusDrafts[ticket._id] || (ticket.status === "open" ? "in_progress" : ticket.status || "in_progress");
     const isEnded = ticket.status === "ended";
@@ -1169,6 +1301,11 @@ export default function SettingsPage() {
           <Pill tone={isEnded ? "neutral" : ticket.status === "resolved" ? "approved" : ticket.status === "open" ? "pending" : "neutral"}>
             {ticket.status?.replace("_", " ")}
           </Pill>
+          {isEnded && (
+            <button type="button" onClick={() => deleteEndedTicket(ticket._id)} style={{ ...buttonBase, background: "#fee2e2", color: "#b91c1c", minHeight: 34 }}>
+              <Trash2 size={15} /> Delete
+            </button>
+          )}
         </div>
 
         <div style={{ color: colors.text, fontSize: 13, marginTop: 10, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
@@ -1245,13 +1382,16 @@ export default function SettingsPage() {
   const renderTicketsModal = () => (
     ticketsModalOpen && (
       <div onClick={() => setTicketsModalOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.48)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(980px, 100%)", maxHeight: "88vh", background: colors.panel, border: `1px solid ${colors.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 28px 80px rgba(0,0,0,0.32)" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1100px, 100%)", maxHeight: "88vh", background: colors.panel, border: `1px solid ${colors.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 28px 80px rgba(0,0,0,0.32)" }}>
           <div style={{ padding: "16px 18px", borderBottom: `1px solid ${colors.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
               <div style={{ color: colors.text, fontSize: 18, fontWeight: 900 }}>Raised Tickets</div>
-              <div style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>{activeTickets.length} active - {endedTickets.length} ended</div>
+              <div style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>Compact list: user, issue, status. Open a ticket to reply, solve, end, or delete ended tickets.</div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => router.push("/Settings/support-tickets")} style={{ ...buttonBase, background: colors.accent, color: "#fff" }}>
+                <ExternalLink size={15} /> Full Page
+              </button>
               <button type="button" onClick={refreshSupportTickets} style={{ ...buttonBase, background: colors.panel2, color: colors.text, border: `1px solid ${colors.border}` }}>
                 <RefreshCcw size={15} /> Refresh
               </button>
@@ -1260,19 +1400,29 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-          <div style={{ overflowY: "auto", padding: 16, display: "grid", gap: 12 }}>
+          <div className="support-ticket-desk" style={{ flex: "1 1 auto", minHeight: 0, height: "calc(88vh - 73px)", overflow: "hidden", display: "grid", gridTemplateColumns: "minmax(280px, 0.42fr) minmax(0, 0.58fr)", alignItems: "stretch" }}>
             {tickets.length === 0 ? (
-              <div style={emptyStateStyle(colors)}>
+              <div style={{ ...emptyStateStyle(colors), gridColumn: "1 / -1", margin: 16 }}>
                 <Ticket size={28} />
                 No raised tickets yet.
               </div>
             ) : (
               <>
-                {activeTickets.map(renderStaffTicketCard)}
-                {endedTickets.length > 0 && (
-                  <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>Ended Tickets</div>
-                )}
-                {endedTickets.map(renderStaffTicketCard)}
+                <div style={{ borderRight: `1px solid ${colors.border}`, minHeight: 0, height: "100%", overflowY: "auto", overscrollBehavior: "contain", padding: 16, display: "grid", alignContent: "start", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                    <div style={{ color: colors.text, fontWeight: 900 }}>All tickets</div>
+                    <Pill tone="pending">{activeTickets.length} active</Pill>
+                    <Pill>{endedTickets.length} ended</Pill>
+                  </div>
+                  {activeTickets.map(renderTicketSummary)}
+                  {endedTickets.length > 0 && (
+                    <div style={{ color: colors.muted, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 8 }}>Ended Tickets</div>
+                  )}
+                  {endedTickets.map(renderTicketSummary)}
+                </div>
+                <div className="support-ticket-detail-pane" style={{ minHeight: 0, height: "100%", overflowY: "auto", overscrollBehavior: "contain", padding: 16, alignSelf: "stretch" }}>
+                  {renderStaffTicketCard(selectedTicket)}
+                </div>
               </>
             )}
           </div>
@@ -1295,9 +1445,14 @@ export default function SettingsPage() {
             <MessageSquare size={16} /> Open Chat
           </button>
           {supportStaff && (
-            <button type="button" onClick={() => setTicketsModalOpen(true)} style={{ ...buttonBase, background: colors.panel2, color: colors.text, border: `1px solid ${colors.border}` }}>
-              <Ticket size={16} /> View Raised Tickets
-            </button>
+            <>
+              <button type="button" onClick={() => setTicketsModalOpen(true)} style={{ ...buttonBase, background: colors.panel2, color: colors.text, border: `1px solid ${colors.border}` }}>
+                <Ticket size={16} /> View Raised Tickets
+              </button>
+              <button type="button" onClick={() => router.push("/Settings/support-tickets")} style={{ ...buttonBase, background: colors.accent, color: "#fff" }}>
+                <ExternalLink size={16} /> Open Full Page
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1342,9 +1497,14 @@ export default function SettingsPage() {
               <div style={{ color: colors.muted, fontSize: 13, marginTop: 5 }}>
                 {activeTickets.length} active ticket{activeTickets.length === 1 ? "" : "s"} and {endedTickets.length} ended ticket{endedTickets.length === 1 ? "" : "s"}.
               </div>
-              <button type="button" onClick={() => setTicketsModalOpen(true)} style={{ ...buttonBase, background: colors.accent, color: "#fff", marginTop: 12 }}>
-                <Ticket size={16} /> View Raised Tickets
-              </button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                <button type="button" onClick={() => setTicketsModalOpen(true)} style={{ ...buttonBase, background: colors.accent, color: "#fff" }}>
+                  <Ticket size={16} /> View Modal
+                </button>
+                <button type="button" onClick={() => router.push("/Settings/support-tickets")} style={{ ...buttonBase, background: colors.panel2, color: colors.text, border: `1px solid ${colors.border}` }}>
+                  <ExternalLink size={16} /> Open Full Page
+                </button>
+              </div>
             </div>
           ) : (
             <div style={{ ...rowCardStyle(colors, true), display: "block" }}>
@@ -1555,6 +1715,9 @@ export default function SettingsPage() {
           .settings-shell { grid-template-columns: 1fr; }
           .settings-menu { border-right: none !important; border-bottom: 1px solid ${colors.border}; }
           .settings-grid, .support-layout { grid-template-columns: 1fr; }
+          .support-ticket-desk { grid-template-columns: 1fr !important; overflow-y: auto !important; height: calc(88vh - 73px) !important; }
+          .support-ticket-desk > div:first-child { border-right: none !important; border-bottom: 1px solid ${colors.border}; }
+          .support-ticket-detail-pane { height: auto !important; overflow: visible !important; }
           .support-chat-panel { right: 12px !important; bottom: 12px !important; width: calc(100vw - 24px) !important; max-height: calc(100vh - 24px) !important; }
           .support-chat-launcher { right: 18px !important; bottom: 18px !important; }
         }
