@@ -6552,6 +6552,14 @@ function formatCallDuration(seconds = 0) {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+const getLiveVideoTracks = (stream) =>
+  stream?.getVideoTracks?.().filter(track => track.readyState === "live") || [];
+
+const playCallVideo = (video) => {
+  const playPromise = video?.play?.();
+  if (playPromise?.catch) playPromise.catch(() => {});
+};
+
 function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute }) {
   const callStatus = callState.status;
   const isIncoming = callStatus === "incoming";
@@ -6566,31 +6574,72 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
   const initial = displayName.charAt(0).toUpperCase();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const hasLocalVideoTrack = isVideoCall && Boolean(
-    localStream?.getVideoTracks?.().some(track => track.readyState === "live")
-  );
+  const localVideoStream = useMemo(() => {
+    if (!isVideoCall) return null;
+    const tracks = getLiveVideoTracks(localStream);
+    return tracks.length ? new MediaStream(tracks) : null;
+  }, [localStream, isVideoCall]);
+  const remoteVideoStream = useMemo(() => {
+    if (!isVideoCall) return null;
+    const tracks = getLiveVideoTracks(remoteStream);
+    return tracks.length ? new MediaStream(tracks) : null;
+  }, [remoteStream, isVideoCall]);
+  const localVideoTrackKey = localVideoStream?.getVideoTracks().map(track => track.id).join("-") || "no-local-video";
+  const remoteVideoTrackKey = remoteVideoStream?.getVideoTracks().map(track => track.id).join("-") || "no-remote-video";
+  const hasLocalVideoTrack = Boolean(localVideoStream);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const video = localVideoRef.current;
     if (!isVideoCall || !video) return;
 
-    video.srcObject = localStream || null;
+    video.srcObject = localVideoStream;
     video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
 
-    if (localStream) {
-      const playPromise = video.play?.();
-      if (playPromise?.catch) playPromise.catch(() => {});
-    }
-  }, [localStream, isVideoCall, callStatus]);
+    if (localVideoStream) playCallVideo(video);
 
-  useEffect(() => {
+    const replayLocalVideo = () => playCallVideo(video);
+    const tracks = localVideoStream?.getVideoTracks() || [];
+    tracks.forEach(track => {
+      track.addEventListener?.("unmute", replayLocalVideo);
+      track.addEventListener?.("mute", replayLocalVideo);
+    });
+
+    return () => {
+      tracks.forEach(track => {
+        track.removeEventListener?.("unmute", replayLocalVideo);
+        track.removeEventListener?.("mute", replayLocalVideo);
+      });
+      if (video.srcObject === localVideoStream) video.srcObject = null;
+    };
+  }, [localVideoStream, isVideoCall, callStatus]);
+
+  useLayoutEffect(() => {
     const video = remoteVideoRef.current;
     if (!isVideoCall || !video) return;
 
-    video.srcObject = remoteStream || null;
-    const playPromise = video.play?.();
-    if (playPromise?.catch) playPromise.catch(() => {});
-  }, [remoteStream, isVideoCall, callStatus]);
+    video.srcObject = remoteVideoStream;
+    video.autoplay = true;
+    video.playsInline = true;
+
+    if (remoteVideoStream) playCallVideo(video);
+
+    const replayRemoteVideo = () => playCallVideo(video);
+    const tracks = remoteVideoStream?.getVideoTracks() || [];
+    tracks.forEach(track => {
+      track.addEventListener?.("unmute", replayRemoteVideo);
+      track.addEventListener?.("mute", replayRemoteVideo);
+    });
+
+    return () => {
+      tracks.forEach(track => {
+        track.removeEventListener?.("unmute", replayRemoteVideo);
+        track.removeEventListener?.("mute", replayRemoteVideo);
+      });
+      if (video.srcObject === remoteVideoStream) video.srcObject = null;
+    };
+  }, [remoteVideoStream, isVideoCall, callStatus]);
 
   const statusText =
     callState.status === "incoming"
@@ -6846,8 +6895,9 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                   boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
                 }}
               >
-                {remoteStream ? (
+                {remoteVideoStream ? (
                   <video
+                    key={`remote-${remoteVideoTrackKey}-${callStatus}`}
                     ref={remoteVideoRef}
                     autoPlay
                     playsInline
@@ -6878,6 +6928,7 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                 >
                   {hasLocalVideoTrack ? (
                     <video
+                      key={`local-${localVideoTrackKey}-${callStatus}`}
                       ref={localVideoRef}
                       autoPlay
                       muted
