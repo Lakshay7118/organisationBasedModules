@@ -6553,10 +6553,11 @@ function formatCallDuration(seconds = 0) {
 }
 
 function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute }) {
-  const isIncoming = callState.status === "incoming";
-  const isConnected = callState.status === "connected";
-  const isConnecting = callState.status === "connecting";
-  const isOutgoing = callState.status === "outgoing";
+  const callStatus = callState.status;
+  const isIncoming = callStatus === "incoming";
+  const isConnected = callStatus === "connected";
+  const isConnecting = callStatus === "connecting";
+  const isOutgoing = callStatus === "outgoing";
   const callType = callState.callType || "audio";
   const isVideoCall = callType === "video";
   const callLabel = isVideoCall ? "Video call" : "Voice call";
@@ -6565,13 +6566,13 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
   const initial = displayName.charAt(0).toUpperCase();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const hasLocalVideoTrack = Boolean(
+  const hasLocalVideoTrack = isVideoCall && Boolean(
     localStream?.getVideoTracks?.().some(track => track.readyState === "live")
   );
 
   useEffect(() => {
     const video = localVideoRef.current;
-    if (!video) return;
+    if (!isVideoCall || !video) return;
 
     video.srcObject = localStream || null;
     video.muted = true;
@@ -6580,15 +6581,16 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
       const playPromise = video.play?.();
       if (playPromise?.catch) playPromise.catch(() => {});
     }
-  }, [localStream]);
+  }, [localStream, isVideoCall, callStatus]);
 
   useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream || null;
-      const playPromise = remoteVideoRef.current.play?.();
-      if (playPromise?.catch) playPromise.catch(() => {});
-    }
-  }, [remoteStream]);
+    const video = remoteVideoRef.current;
+    if (!isVideoCall || !video) return;
+
+    video.srcObject = remoteStream || null;
+    const playPromise = video.play?.();
+    if (playPromise?.catch) playPromise.catch(() => {});
+  }, [remoteStream, isVideoCall, callStatus]);
 
   const statusText =
     callState.status === "incoming"
