@@ -409,6 +409,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
 
   const [searchValue,     setSearchValue]     = useState("");
   const [userName,        setUserName]        = useState("");
+  const [userPhone,       setUserPhone]       = useState("");
   const [userRole,        setUserRole]        = useState("");
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
   const [showDropdown,    setShowDropdown]    = useState(false);
@@ -431,6 +432,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
       try {
         const u = JSON.parse(localStorage.getItem("user") || "{}");
         setUserName(u.name || u.phone || "");
+        setUserPhone(u.phone || "");
         setUserRole(u.role || "");
       } catch {}
     };
@@ -488,13 +490,13 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
      so a network drop doesn't silently kill real-time updates.
   ─────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!userName) return;
+    if (!userPhone) return;
 
     const socket = getSocket();
 
     const joinRoom = () => {
-      console.log("📡 Joining room:", userName, "| socket:", socket.id);
-      socket.emit("joinUserRoom", userName);
+      console.log("📡 Joining room:", userPhone, "| socket:", socket.id);
+      socket.emit("joinUserRoom", userPhone);
     };
 
     // Join immediately if connected, else wait for the connect event
@@ -502,6 +504,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
       joinRoom();
     } else {
       socket.once("connect", joinRoom);
+      socket.connect();
     }
 
     // Re-join on every future reconnect (network drop recovery)
@@ -545,7 +548,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
       socket.off("newNotification", handleNew);
       socket.off("connect", joinRoom);
     };
-  }, [userName]);
+  }, [userPhone]);
 
   /* ── 5. Close dropdown on outside click ── */
   useEffect(() => {

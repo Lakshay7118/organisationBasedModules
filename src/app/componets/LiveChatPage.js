@@ -667,17 +667,26 @@ useEffect(() => {
 
   // ================== ONLINE / OFFLINE FIX ==================
 
-const handleOnlineUsers = ({ users, lastSeen }) => {
-  setUserPresence(() => {
-    const next = {};
-    users.forEach(phone => {
-      next[phone] = { online: true, lastSeen: null };
+const handleOnlineUsers = ({ users = [], lastSeen = {} }) => {
+  setUserPresence((prev) => {
+    const next = Object.fromEntries(
+      Object.entries(prev).map(([phone, presence]) => [
+        phone,
+        { online: false, lastSeen: presence.lastSeen || null },
+      ])
+    );
+    users.forEach((phone) => {
+      const key = normalizePhoneKey(phone);
+      if (!key) return;
+      next[key] = { online: true, lastSeen: null };
+      next[phone] = next[key];
     });
-    Object.entries(lastSeen || {}).forEach(([phone, ts]) => {
+    Object.entries(lastSeen).forEach(([phone, ts]) => {
       // ✅ don't overwrite users who are currently online
-      if (!next[phone]?.online) {
-        next[phone] = { online: false, lastSeen: ts };
-      }
+      const key = normalizePhoneKey(phone);
+      if (!key || next[key]?.online) return;
+      next[key] = { online: false, lastSeen: ts };
+      next[phone] = next[key];
     });
     return next;
   });
@@ -727,7 +736,6 @@ const handleOnlineUsers = ({ users, lastSeen }) => {
 
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("beforeunload", handleBeforeUnload);
-     s.disconnect();
   };
 }, []);
 
@@ -2513,10 +2521,13 @@ const lastMessageTime = (chatId) => {
   });
 };
 
+const getPresenceForPhone = (phone) =>
+  userPresence[phone] || userPresence[normalizePhoneKey(phone)];
+
 const getChatStatus = (chat) => {
   if (chat?.isGroup) return "";        // ← add this
   if (!chat?.phone) return "";
-  const presence = userPresence[chat.phone];
+  const presence = getPresenceForPhone(chat.phone);
   if (!presence) return "Offline";
   if (presence.online) return "Online";
 
@@ -3244,9 +3255,9 @@ onClick={() => {
                               <div className="text-truncate" style={{ fontSize: "0.96rem", fontWeight: 500, color: "#111b21" }}>{selectedChat?.name}</div>
 <div style={{
   fontSize: "0.78rem",
-  color: (!selectedChat?.isGroup && userPresence[selectedChat?.phone]?.online)
+  color: (!selectedChat?.isGroup && getPresenceForPhone(selectedChat?.phone)?.online)
     ? "#00a884" : "#667781",
-  fontWeight: (!selectedChat?.isGroup && userPresence[selectedChat?.phone]?.online)
+  fontWeight: (!selectedChat?.isGroup && getPresenceForPhone(selectedChat?.phone)?.online)
     ? 500 : 400,
 }}>
   {isUserTyping ? "typing..." : getChatStatus(selectedChat)}
@@ -3677,7 +3688,7 @@ onClick={() => {
                   {selectedChat?.name?.charAt(0) || "U"}
                 </div>
                 {/* Online dot — only for 1-on-1 chats */}
-                {!selectedChat?.isGroup && userPresence[selectedChat?.phone]?.online && (
+                {!selectedChat?.isGroup && getPresenceForPhone(selectedChat?.phone)?.online && (
                   <span style={{
                     position: "absolute",
                     bottom: 4,
@@ -3703,10 +3714,9 @@ onClick={() => {
 
               {/* ── LIVE STATUS BADGE ── */}
               {!selectedChat?.isGroup && (() => {
-                const presence = userPresence[selectedChat?.phone];
-                if (!presence) return null;
+                const presence = getPresenceForPhone(selectedChat?.phone);
 
-                const isOnline = presence.online;
+                const isOnline = Boolean(presence?.online);
                 const statusText = isOnline ? "Online" : getChatStatus(selectedChat);
 
                 return (
@@ -3740,7 +3750,7 @@ onClick={() => {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {selectedChat.participants?.map((phone, i) => {
                       const contact = contacts.find(c => c.mobile === phone);
-                      const presence = userPresence[phone];
+                      const presence = getPresenceForPhone(phone);
                       const isOnline = presence?.online;
                       return (
                         <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
