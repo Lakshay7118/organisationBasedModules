@@ -502,28 +502,64 @@ const getTemplateBody = (msg = {}) =>
   msg.text ||
   "";
 
-const getCampaignTemplateKey = (msg = {}) => {
-  if (msg.messageType !== "template" || !msg.campaignRunKey || !msg.recipientPhone) {
-    return null;
-  }
+const getTemplateActionSignature = (msg = {}) => {
+  const actions = msg.templateMeta?.actions || {};
+  return ["ctaButtons", "quickReplies", "copyCodeButtons", "dropdownButtons", "inputFields"]
+    .map((key) => `${key}:${JSON.stringify(actions[key] || [])}`)
+    .join("|");
+};
+
+const getTemplateTimeBucket = (msg = {}, bucketMs = 2 * 60 * 1000) => {
+  const time = new Date(msg.createdAt || msg.deliveredAt || 0).getTime();
+  if (!Number.isFinite(time) || time <= 0) return "";
+  return String(Math.floor(time / bucketMs));
+};
+
+const getTemplateDedupeKeys = (msg = {}) => {
+  if (msg.messageType !== "template") return [];
 
   const templateId = msg.templateMeta?.templateId
     ? String(msg.templateMeta.templateId)
     : "";
+  const body = normalizeMessageText(getTemplateBody(msg));
+  const footer = normalizeMessageText(msg.templateMeta?.footer || "");
+  const keys = [];
 
-  return [
-    "campaign-template",
-    String(msg.chatId || ""),
-    String(msg.sender || ""),
-    String(msg.campaignRunKey || ""),
-    String(msg.recipientPhone || ""),
-    templateId,
-    normalizeMessageText(getTemplateBody(msg)),
-  ].join(":");
+  if (msg.campaignRunKey || msg.recipientPhone || msg.campaignDeliveryKey) {
+    keys.push([
+      "campaign-template",
+      String(msg.chatId || ""),
+      String(msg.sender || ""),
+      String(msg.campaignRunKey || ""),
+      String(msg.recipientPhone || ""),
+      templateId,
+      body,
+    ].join(":"));
+  }
+
+  const bucket = getTemplateTimeBucket(msg);
+  if (body && bucket) {
+    keys.push([
+      "visual-template",
+      String(msg.chatId || ""),
+      String(msg.sender || ""),
+      templateId,
+      body,
+      footer,
+      getTemplateActionSignature(msg),
+      bucket,
+    ].join(":"));
+  }
+
+  return keys;
 };
 
-const getMessageDedupeKey = (msg = {}) =>
-  getCampaignTemplateKey(msg) || getMessageKey(msg);
+const getMessageDedupeKeys = (msg = {}) => {
+  const keys = getTemplateDedupeKeys(msg);
+  const messageKey = getMessageKey(msg);
+  if (messageKey) keys.push(messageKey);
+  return keys;
+};
 
 const getMessageRichness = (msg = {}) => {
   const template = msg.templateMeta || {};
@@ -544,28 +580,29 @@ const getMessageRichness = (msg = {}) => {
 };
 
 const dedupeMessages = (list = []) => {
-  const seen = new Set();
   const result = [];
   const indexByKey = new Map();
 
   list.forEach((msg) => {
-    const key = getMessageDedupeKey(msg);
-    if (!key) {
+    const keys = getMessageDedupeKeys(msg);
+    const duplicateKey = keys.find((key) => indexByKey.has(key));
+
+    if (!keys.length) {
       result.push(msg);
       return;
     }
 
-    if (seen.has(key)) {
-      const existingIndex = indexByKey.get(key);
+    if (duplicateKey) {
+      const existingIndex = indexByKey.get(duplicateKey);
       const existing = result[existingIndex];
       if (getMessageRichness(msg) > getMessageRichness(existing)) {
         result[existingIndex] = msg;
+        keys.forEach((key) => indexByKey.set(key, existingIndex));
       }
       return;
     }
 
-    seen.add(key);
-    indexByKey.set(key, result.length);
+    keys.forEach((key) => indexByKey.set(key, result.length));
     result.push(msg);
   });
 
@@ -862,9 +899,14 @@ useEffect(() => {
     setMessages(prev => {
       const currentMsgs = prev[currentChatId] || [];
       const newMsg = mapServerMessageToUi(msg);
-      const incomingKey = getMessageDedupeKey(newMsg);
+      const incomingKeys = getMessageDedupeKeys(newMsg);
 
-      if (incomingKey && currentMsgs.some(m => getMessageDedupeKey(m) === incomingKey)) {
+      if (
+        incomingKeys.length &&
+        currentMsgs.some((m) =>
+          getMessageDedupeKeys(m).some((key) => incomingKeys.includes(key))
+        )
+      ) {
         return { ...prev, [currentChatId]: dedupeMessages([...currentMsgs, newMsg]) };
       }
 
