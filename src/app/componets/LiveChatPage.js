@@ -493,15 +493,83 @@ const getMessageKey = (msg = {}) =>
   msg.clientTempId ||
   null;
 
+const normalizeMessageText = (value = "") =>
+  String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+const getTemplateBody = (msg = {}) =>
+  msg.templateMeta?.resolvedText ||
+  msg.templateMeta?.body ||
+  msg.text ||
+  "";
+
+const getCampaignTemplateKey = (msg = {}) => {
+  if (msg.messageType !== "template" || !msg.campaignRunKey || !msg.recipientPhone) {
+    return null;
+  }
+
+  const templateId = msg.templateMeta?.templateId
+    ? String(msg.templateMeta.templateId)
+    : "";
+
+  return [
+    "campaign-template",
+    String(msg.chatId || ""),
+    String(msg.sender || ""),
+    String(msg.campaignRunKey || ""),
+    String(msg.recipientPhone || ""),
+    templateId,
+    normalizeMessageText(getTemplateBody(msg)),
+  ].join(":");
+};
+
+const getMessageDedupeKey = (msg = {}) =>
+  getCampaignTemplateKey(msg) || getMessageKey(msg);
+
+const getMessageRichness = (msg = {}) => {
+  const template = msg.templateMeta || {};
+  const actions = template.actions || {};
+  let score = 0;
+
+  if (template.mediaUrl) score += 100;
+  if (template.mediaType && template.mediaType !== "None") score += 20;
+  if (template.header) score += 5;
+  if (template.footer) score += 5;
+  if (getTemplateBody(msg)) score += 5;
+  if (Array.isArray(template.carouselItems) && template.carouselItems.length) score += 20;
+  ["ctaButtons", "quickReplies", "copyCodeButtons", "dropdownButtons", "inputFields"].forEach((key) => {
+    if (Array.isArray(actions[key])) score += actions[key].length;
+  });
+
+  return score;
+};
+
 const dedupeMessages = (list = []) => {
   const seen = new Set();
-  return list.filter((msg) => {
-    const key = getMessageKey(msg);
-    if (!key) return true;
-    if (seen.has(key)) return false;
+  const result = [];
+  const indexByKey = new Map();
+
+  list.forEach((msg) => {
+    const key = getMessageDedupeKey(msg);
+    if (!key) {
+      result.push(msg);
+      return;
+    }
+
+    if (seen.has(key)) {
+      const existingIndex = indexByKey.get(key);
+      const existing = result[existingIndex];
+      if (getMessageRichness(msg) > getMessageRichness(existing)) {
+        result[existingIndex] = msg;
+      }
+      return;
+    }
+
     seen.add(key);
-    return true;
+    indexByKey.set(key, result.length);
+    result.push(msg);
   });
+
+  return result;
 };
 
 const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) => {
@@ -516,6 +584,10 @@ const mapServerMessageToUi = (msg, userPhone = currentUserRef.current?.phone) =>
   return {
     id,
     campaignDeliveryKey: msg.campaignDeliveryKey || null,
+    campaignId: msg.campaignId || null,
+    campaignRunKey: msg.campaignRunKey || null,
+    recipientPhone: msg.recipientPhone || null,
+    chatId: msg.chatId || null,
     clientTempId: msg.clientTempId || null,
     sender: msg.sender,
     type: isSentByMe ? "sent" : "received",
@@ -789,10 +861,12 @@ useEffect(() => {
 
     setMessages(prev => {
       const currentMsgs = prev[currentChatId] || [];
-      const incomingKey = getMessageKey(msg);
+      const newMsg = mapServerMessageToUi(msg);
+      const incomingKey = getMessageDedupeKey(newMsg);
 
-      // Avoid duplicates
-      if (incomingKey && currentMsgs.some(m => getMessageKey(m) === incomingKey)) return prev;
+      if (incomingKey && currentMsgs.some(m => getMessageDedupeKey(m) === incomingKey)) {
+        return { ...prev, [currentChatId]: dedupeMessages([...currentMsgs, newMsg]) };
+      }
 
       // Replace optimistic temp message if exists
       const tempIndex = currentMsgs.findIndex((m) => {
@@ -804,8 +878,6 @@ useEffect(() => {
           Math.abs(new Date(m.createdAt) - new Date(msg.createdAt)) < 30000
         );
       });
-
-      const newMsg = mapServerMessageToUi(msg);
 
       if (tempIndex !== -1) {
         const updated = [...currentMsgs];
