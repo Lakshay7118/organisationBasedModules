@@ -3676,7 +3676,10 @@ onClick={() => {
     onClick={() => setShowMobileContactInfo(false)}
     style={{
       position: "fixed", inset: 0,
-      background: "rgba(0,0,0,0.45)",
+      background: "rgba(15,23,42,0.5)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      animation: "appModalBackdropIn 0.32s ease-out both",
       zIndex: 2000,
       display: "flex",
       alignItems: "flex-end",
@@ -3691,6 +3694,7 @@ onClick={() => {
         maxHeight: "85vh",
         overflowY: "auto",
         paddingBottom: 24,
+        animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
       }}
     >
       {/* Handle bar */}
@@ -3944,6 +3948,7 @@ onClick={() => {
   <GroupModal
     contacts={contacts}
     tags={tags}
+    currentUser={currentUser}
     onClose={() => { setShowGroupModal(false); setGroupName(""); setSelectedContactsForGroup([]); }}
     onCreate={createGroup}
     groupName={groupName}
@@ -3958,11 +3963,11 @@ onClick={() => {
       {showForwardModal && (
         <div
           onClick={closeForwardModal}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: "#fff", borderRadius: 12, width: 360, maxHeight: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+            style={{ background: "#fff", borderRadius: 12, width: 360, maxHeight: "70vh", display: "flex", flexDirection: "column", overflow: "hidden", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}
           >
             {/* Header */}
             <div style={{ padding: "14px 16px", borderBottom: "1px solid #e9edef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -4056,7 +4061,10 @@ onClick={() => {
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(0,0,0,0.5)",
+            background: "rgba(15,23,42,0.5)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            animation: "appModalBackdropIn 0.32s ease-out both",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -4072,6 +4080,7 @@ onClick={() => {
               borderRadius: "12px",
               width: "300px",
               textAlign: "center",
+              animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
             }}
           >
             <h4>Delete message</h4>
@@ -4130,7 +4139,10 @@ onClick={() => {
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(0,0,0,0.5)",
+            background: "rgba(15,23,42,0.5)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            animation: "appModalBackdropIn 0.32s ease-out both",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -4146,6 +4158,7 @@ onClick={() => {
     maxHeight: "70vh",
     overflowY: "auto",
     padding: 16,
+    animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
   }}
   onClick={(e) => e.stopPropagation()}
 >
@@ -4275,7 +4288,10 @@ onClick={() => {
   <div
     onClick={() => setShowDeleteConfirmModal(false)}
     style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      animation: "appModalBackdropIn 0.32s ease-out both",
       display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000,
     }}
   >
@@ -4284,6 +4300,7 @@ onClick={() => {
       style={{
         background: "#fff", borderRadius: 14, width: 320, padding: "24px 20px",
         boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+        animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
       }}
     >
       <div style={{ fontWeight: 600, fontSize: "1rem", color: "#111b21", marginBottom: 6 }}>
@@ -4334,7 +4351,10 @@ onClick={() => {
     onClick={() => setShowClearConfirmModal(false)}
     style={{
       position: "fixed", inset: 0,
-      background: "rgba(0,0,0,0.5)",
+      background: "rgba(15,23,42,0.5)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      animation: "appModalBackdropIn 0.32s ease-out both",
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 10000,
     }}
@@ -4345,6 +4365,7 @@ onClick={() => {
         background: "#fff", borderRadius: 14, width: 320,
         padding: "24px 20px",
         boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+        animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
       }}
     >
       <div style={{ fontWeight: 600, fontSize: "1rem", color: "#111b21", marginBottom: 6 }}>
@@ -5312,7 +5333,9 @@ const senderName = getSenderName();
               left: 0,
               width: "100vw",
               height: "100vh",
-              background: "rgba(0,0,0,0.95)",
+              background: "rgba(15,23,42,0.86)",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -5422,11 +5445,11 @@ function MessageInfoModal({ message, chat, contacts = [], onClose }) {
   return createPortal(
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,0.46)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", maxWidth: 390, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 18px 48px rgba(0,0,0,0.24)" }}
+        style={{ width: "100%", maxWidth: 390, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 18px 48px rgba(0,0,0,0.24)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}
       >
         <div style={{ padding: "14px 16px", borderBottom: "1px solid #e9edef", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontWeight: 700, color: "#111b21" }}>Message info</div>
@@ -5547,6 +5570,8 @@ export function CameraModal({ isMobile, videoPreviewRef, onCapture, onClose, sel
         position: "fixed", inset: 0,
         background: "rgba(0,0,0,0.85)",
         backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        animation: "appModalBackdropIn 0.32s ease-out both",
         display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 10001,
       }}
@@ -5563,6 +5588,7 @@ export function CameraModal({ isMobile, videoPreviewRef, onCapture, onClose, sel
           background: "#000", position: "relative",
           boxShadow: isMobile ? "none" : "0 24px 48px rgba(0,0,0,0.5)",
           border: isMobile ? "none" : "1px solid rgba(255,255,255,0.1)",
+          animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
         }}
       >
         {/* Flash overlay */}
@@ -5738,12 +5764,14 @@ export function AudioRecorderModal({ isMobile, isRecording, recordingSeconds, au
       onClick={() => { if (!isRecording && !audioBlob) onClose(); }}
       style={{
         position: "fixed", inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: "rgba(15,23,42,0.5)",
         display: "flex", 
         alignItems: isMobile ? "flex-end" : "center",
         justifyContent: "center",
         zIndex: 10001,
-        backdropFilter: "blur(4px)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        animation: "appModalBackdropIn 0.32s ease-out both",
       }}
     >
       <div
@@ -5755,6 +5783,7 @@ export function AudioRecorderModal({ isMobile, isRecording, recordingSeconds, au
           padding: isMobile ? "8px 0 40px" : "32px 0 40px",
           display: "flex", flexDirection: "column", alignItems: "center",
           boxShadow: isMobile ? "0 -8px 40px rgba(0,0,0,0.2)" : "0 20px 48px rgba(0,0,0,0.15)",
+          animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
         }}
       >
         {/* Handle for mobile only */}
@@ -5913,12 +5942,14 @@ export function ContactPickerModal({ contacts, isMobile, onSelect, onClose }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: "rgba(15,23,42,0.5)",
         display: "flex",
         alignItems: isMobile ? "flex-end" : "center",
         justifyContent: "center",
         zIndex: 10001,
-        backdropFilter: "blur(4px)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        animation: "appModalBackdropIn 0.32s ease-out both",
       }}
     >
       <div
@@ -5935,6 +5966,7 @@ export function ContactPickerModal({ contacts, isMobile, onSelect, onClose }) {
           boxShadow: isMobile
             ? "0 -8px 40px rgba(0,0,0,0.18)"
             : "0 20px 48px rgba(0,0,0,0.15)",
+          animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
         }}
       >
         {/* Handle */}
@@ -6607,8 +6639,10 @@ function CallTypePicker({ chat, onClose, onSelect }) {
         position: "fixed",
         inset: 0,
         zIndex: 10040,
-        background: "rgba(11, 20, 26, 0.38)",
-        backdropFilter: "blur(3px)",
+        background: "rgba(15,23,42,0.5)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        animation: "appModalBackdropIn 0.32s ease-out both",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -6625,6 +6659,7 @@ function CallTypePicker({ chat, onClose, onSelect }) {
           borderRadius: 8,
           boxShadow: "0 16px 42px rgba(0,0,0,0.2)",
           padding: 18,
+          animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
@@ -6963,7 +6998,9 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
           inset: 0,
           zIndex: 10050,
           background: "rgba(7, 20, 24, 0.72)",
-          backdropFilter: "blur(5px)",
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
+          animation: "appModalBackdropIn 0.32s ease-out both",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -7171,7 +7208,7 @@ function DetailCard({ icon, title, items = [], customContent }) {
   );
 }
 
-function GroupModal({ contacts, tags, onClose, onCreate, groupName, setGroupName, selectedContacts, setSelectedContacts }) {
+function GroupModal({ contacts, tags, currentUser, onClose, onCreate, groupName, setGroupName, selectedContacts, setSelectedContacts }) {
   const [filter, setFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -7184,7 +7221,12 @@ function GroupModal({ contacts, tags, onClose, onCreate, groupName, setGroupName
 
   const filteredContacts = useMemo(() => {
   const q = search.toLowerCase();
+  const currentUserId = currentUser?._id?.toString() || currentUser?.id?.toString();
+  const currentUserPhone = currentUser?.phone?.replace(/\D/g, "");
   return contacts.filter((c) => {
+    const contactId = c._id?.toString() || c.id?.toString() || c.userId?.toString();
+    const contactPhone = c.mobile?.replace(/\D/g, "") || c.phone?.replace(/\D/g, "");
+    if ((currentUserId && contactId === currentUserId) || (currentUserPhone && contactPhone === currentUserPhone)) return false;
     if (filter === "users" && c.role !== "user") return false;
     if (filter === "managers" && c.role !== "manager") return false;
     if (filter === "tag" && tagFilter) {
@@ -7196,7 +7238,7 @@ function GroupModal({ contacts, tags, onClose, onCreate, groupName, setGroupName
     return true;
   });
   
-}, [contacts, filter, tagFilter, search]);
+}, [contacts, filter, tagFilter, search, currentUser]);
 
   const toggle = (contact) => {
     const exists = selectedContacts.some((c) => c.mobile === contact.mobile);
@@ -7222,8 +7264,10 @@ function GroupModal({ contacts, tags, onClose, onCreate, groupName, setGroupName
       onClick={onClose}
       style={{
         position: "fixed", inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        backdropFilter: "blur(4px)",
+        background: "rgba(15,23,42,0.5)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        animation: "appModalBackdropIn 0.32s ease-out both",
         display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 1000, padding: 20,
       }}
@@ -7236,6 +7280,7 @@ function GroupModal({ contacts, tags, onClose, onCreate, groupName, setGroupName
           width: "100%", maxWidth: 460,
           maxHeight: "90vh", display: "flex", flexDirection: "column",
           overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+          animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
         }}
       >
         {/* ── HEADER ── */}

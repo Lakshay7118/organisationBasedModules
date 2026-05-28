@@ -197,8 +197,8 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
   const completionRate = userTasks.length ? Math.round((byStatus.completed / userTasks.length) * 100) : 0;
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(100%, 440px)", margin: 16, maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(100%, 440px)", margin: 16, maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
         <div style={{ background: `linear-gradient(135deg, ${u.color}18, ${u.color}08)`, padding: "24px 20px 16px", borderBottom: "1px solid #f0f2f5" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
@@ -461,6 +461,17 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
   const removeArr = (key, id) => set(key, form[key].filter(x => x.id !== id));
   const parseOptions = (raw) => { if (Array.isArray(raw)) return raw.map(s => String(s).trim()).filter(Boolean); if (typeof raw === "string") return raw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean); return []; };
   const needsApproval = _isManager && !form.isPersonal && form.assignedTo.length > 0;
+  const currentUserId = currentUser?.id || currentUser?._id?.toString();
+  const currentUserPhone = currentUser?.phone?.replace(/\D/g, "");
+  const isCurrentAssignableUser = useCallback((user, contact) => {
+    const userId = user?.id || user?._id?.toString();
+    const userPhone = user?.phone?.replace(/\D/g, "");
+    const contactPhone = contact?.mobile?.replace(/\D/g, "");
+    return Boolean(
+      (currentUserId && userId === currentUserId) ||
+      (currentUserPhone && (userPhone === currentUserPhone || contactPhone === currentUserPhone))
+    );
+  }, [currentUserId, currentUserPhone]);
 
   useEffect(() => {
     API.get("/contacts/managers").then(res => setAllManagers(Array.isArray(res.data) ? res.data : [])).catch(() => { });
@@ -491,13 +502,13 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
     API.get(`/contacts?managerId=${selectedMgr}`).then(res => setMgrContacts(Array.isArray(res.data) ? res.data : [])).catch(() => { }).finally(() => setLoadingContacts(false));
   }, [assignFilter, selectedMgr]);
 
-  const contactsWithUsers = useCallback((contactList) => contactList.map(c => ({ contact: c, user: users.find(u => u.phone && c.mobile && (u.phone === c.mobile || u.phone.replace(/\D/g, "") === c.mobile.replace(/\D/g, ""))) })), [users]);
+  const contactsWithUsers = useCallback((contactList) => contactList.map(c => ({ contact: c, user: users.find(u => u.phone && c.mobile && (u.phone === c.mobile || u.phone.replace(/\D/g, "") === c.mobile.replace(/\D/g, ""))) })).filter(({ contact, user }) => !isCurrentAssignableUser(user, contact)), [users, isCurrentAssignableUser]);
 
   const assignableList = useMemo(() => {
     if (assignFilter === "tag") return contactsWithUsers(tagContacts).filter(({ contact }) => !assignSearch || contact.name?.toLowerCase().includes(assignSearch.toLowerCase()));
     if (assignFilter === "manager_contacts") return contactsWithUsers(mgrContacts).filter(({ contact }) => !assignSearch || contact.name?.toLowerCase().includes(assignSearch.toLowerCase()));
-    return users.filter(u => { if (u.role === "super_admin") return false; if (assignFilter === "user" && u.role !== "user") return false; if (assignFilter === "manager" && u.role !== "manager") return false; if (assignSearch && !u.name?.toLowerCase().includes(assignSearch.toLowerCase())) return false; return true; }).map(u => ({ contact: null, user: u }));
-  }, [assignFilter, users, tagContacts, mgrContacts, assignSearch, contactsWithUsers]);
+    return users.filter(u => { if (isCurrentAssignableUser(u)) return false; if (u.role === "super_admin") return false; if (assignFilter === "user" && u.role !== "user") return false; if (assignFilter === "manager" && u.role !== "manager") return false; if (assignSearch && !u.name?.toLowerCase().includes(assignSearch.toLowerCase())) return false; return true; }).map(u => ({ contact: null, user: u }));
+  }, [assignFilter, users, tagContacts, mgrContacts, assignSearch, contactsWithUsers, isCurrentAssignableUser]);
 
   const handleSubmit = () => {
     if (!form.title.trim()) { alert("Task Title is required"); return; }
@@ -516,8 +527,8 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
   const lbl = { fontSize: "0.69rem", fontWeight: 700, color: "#6b7280", marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: "0.04em" };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, backdropFilter: "blur(4px)" }}>
-      <div className="task-create-modal" onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 480px)", maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both" }}>
+      <div className="task-create-modal" onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 480px)", maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.22)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
         <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontWeight: 800, fontSize: "0.96rem", color: "#1a2233" }}>{isEditing ? "Edit Task" : "✨ Create New Task"}</span>
           <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}><FiX size={14} /></button>
@@ -638,8 +649,8 @@ function ApprovalPanel({ tasks, users, onApprove, onReject, onClose }) {
   const pending = tasks.filter(t => t.approvalStatus === "pending");
   const getUserName = (id) => { if (id?.name) return id.name; const uid = id?._id || id?.id || id; const u = users.find(u => u.id === uid?.toString()); return u?.name || "Unknown"; };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
-      <div className="task-approval-panel" onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 460px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", overflow: "hidden" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both" }}>
+      <div className="task-approval-panel" onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(95%, 460px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", overflow: "hidden", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
         <div style={{ padding: "16px 18px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: "0.96rem", color: "#1a2233" }}>🛡 Approval Requests</div>
@@ -689,6 +700,7 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
   const scrollRef = useRef(null);
   const [viewingUser, setViewingUser] = useState(null);
   const [activeTab, setActiveTab] = useState("chat");
+  const [taskAssigneeFilterState, setTaskAssigneeFilterState] = useState({ taskId: null, value: "all" });
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [task?.responses]);
   if (!task) return null;
 
@@ -698,12 +710,27 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
   const pCfg = PRIORITY[task.priority] || PRIORITY.medium;
   const assignees = (task.assignedTo || []).map(enrichUser).filter(Boolean);
   const taskId = task._id || task.id;
+  const taskAssigneeFilter = taskAssigneeFilterState.taskId === taskId ? taskAssigneeFilterState.value : "all";
   const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser?.id && uts.taskId.toString() === taskId.toString());
   const effectiveStatus = myStatusRec ? myStatusRec.status : task.status;
+  const getAssigneeTaskStatus = (userId) => {
+    const rec = userTaskStatuses.find(uts => uts.userId?.toString() === userId?.toString() && uts.taskId?.toString() === taskId?.toString());
+    return rec ? rec.status : task.status;
+  };
+  const assigneeStatusCounts = assignees.reduce((acc, u) => {
+    const status = getAssigneeTaskStatus(u.id);
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, { pending: 0, in_progress: 0, completed: 0, cancelled: 0 });
+  const selectedTaskDone = assigneeStatusCounts.completed || 0;
+  const selectedTaskRate = assignees.length ? Math.round((selectedTaskDone / assignees.length) * 100) : 0;
+  const visibleAssignees = taskAssigneeFilter === "all"
+    ? assignees
+    : assignees.filter(u => getAssigneeTaskStatus(u.id) === taskAssigneeFilter);
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.3)", zIndex: 800, backdropFilter: "blur(2px)" }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 800, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both" }} />
       <div className="task-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(100%, 500px)", background: "#fff", zIndex: 900, display: "flex", flexDirection: "column", boxShadow: "-12px 0 48px rgba(0,0,0,.12)", animation: "slideInRight .25s ease", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
 
         {/* ── Drawer Header ── */}
@@ -801,12 +828,43 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ background: "#f9fafb", borderRadius: 11, padding: 14, border: "1px solid #e5e7eb" }}>
               <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", marginBottom: 10 }}>👥 Assigned To</div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -6, marginBottom: 8 }}>
+                <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0d9488", whiteSpace: "nowrap" }}>{selectedTaskDone}/{assignees.length} completed</div>
+              </div>
+              <div style={{ padding: "10px 12px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#374151" }}>This task progress</span>
+                  <span style={{ fontSize: "0.76rem", fontWeight: 800, color: selectedTaskRate >= 70 ? "#10b981" : selectedTaskRate >= 40 ? "#f59e0b" : "#ef4444" }}>{selectedTaskRate}%</span>
+                </div>
+                <div style={{ height: 7, background: "#e5e7eb", borderRadius: 999, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${selectedTaskRate}%`, background: selectedTaskRate >= 70 ? "#10b981" : selectedTaskRate >= 40 ? "#f59e0b" : "#ef4444", borderRadius: 999 }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 2 }}>
+                {[
+                  ["all", "All", assignees.length],
+                  ["completed", "Completed", assigneeStatusCounts.completed || 0],
+                  ["pending", "Pending", assigneeStatusCounts.pending || 0],
+                  ["in_progress", "In Progress", assigneeStatusCounts.in_progress || 0],
+                  ["cancelled", "Cancelled", assigneeStatusCounts.cancelled || 0],
+                ].map(([id, label, count]) => {
+                  const active = taskAssigneeFilter === id;
+                  const cfg = STATUS[id] || { color: "#0d9488", bg: "#ccfbf1" };
+                  return (
+                    <button key={id} onClick={() => setTaskAssigneeFilterState({ taskId, value: id })}
+                      style={{ border: `1.5px solid ${active ? cfg.color : "#e5e7eb"}`, background: active ? cfg.bg : "#fff", color: active ? cfg.color : "#6b7280", borderRadius: 999, padding: "5px 10px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
               {assignees.length === 0 ? <div style={{ fontSize: "0.83rem", color: "#9ca3af" }}>No users assigned</div> : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {assignees.map(u => {
-                    const uTasks = allTasks.filter(t => t.assignedTo?.some(a => (a._id || a.id || a)?.toString() === u.id));
-                    const done = uTasks.filter(t => { const rec = userTaskStatuses.find(uts => uts.userId.toString() === u.id && uts.taskId.toString() === (t._id || t.id).toString()); return rec ? rec.status === "completed" : t.status === "completed"; }).length;
-                    const rate = uTasks.length ? Math.round(done / uTasks.length * 100) : 0;
+                  {visibleAssignees.length === 0 ? <div style={{ fontSize: "0.83rem", color: "#9ca3af", textAlign: "center", padding: "18px 8px" }}>No assignees in this status</div> : visibleAssignees.map(u => {
+                    const userTaskStatus = getAssigneeTaskStatus(u.id);
+                    const statusCfg = STATUS[userTaskStatus] || STATUS.pending;
+                    const taskDone = userTaskStatus === "completed";
+                    const taskRate = taskDone ? 100 : 0;
                     return (
                       <div key={u.id} onClick={() => setViewingUser(u)}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1.5px solid #e5e7eb", cursor: "pointer", background: "#fff" }}
@@ -814,13 +872,16 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
                         onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e5e7eb"; }}>
                         <Avatar user={u} size={34} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "0.86rem", fontWeight: 700, color: "#1a2233" }}>{u.name}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "space-between" }}>
+                            <div style={{ fontSize: "0.86rem", fontWeight: 700, color: "#1a2233", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                            <span style={{ fontSize: "0.64rem", fontWeight: 800, color: statusCfg.color, background: statusCfg.bg, padding: "2px 7px", borderRadius: 999, flexShrink: 0 }}>{statusCfg.label}</span>
+                          </div>
                           <div style={{ fontSize: "0.7rem", color: "#9ca3af", textTransform: "capitalize" }}>{u.role}</div>
                           <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 7 }}>
                             <div style={{ flex: 1, height: 4, background: "#e5e7eb", borderRadius: 999, overflow: "hidden" }}>
-                              <div style={{ height: "100%", width: `${rate}%`, background: rate >= 70 ? "#10b981" : rate >= 40 ? "#f59e0b" : "#ef4444", borderRadius: 999 }} />
+                              <div style={{ height: "100%", width: `${taskRate}%`, background: "#10b981", borderRadius: 999 }} />
                             </div>
-                            <span style={{ fontSize: "0.67rem", fontWeight: 700, color: "#6b7280" }}>{done}/{uTasks.length}</span>
+                            <span style={{ fontSize: "0.67rem", fontWeight: 700, color: taskDone ? "#10b981" : "#6b7280" }}>{taskDone ? "1/1" : "0/1"}</span>
                           </div>
                         </div>
                         <FiChevronRight size={15} color="#9ca3af" />

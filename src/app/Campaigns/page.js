@@ -549,8 +549,8 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
 
   if (loading) {
     return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ background: "#fff", borderRadius: 20, padding: "48px 40px", textAlign: "center", boxShadow: "0 24px 60px rgba(15,23,42,0.18)" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#fff", borderRadius: 20, padding: "48px 40px", textAlign: "center", boxShadow: "0 24px 60px rgba(15,23,42,0.18)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
           <div style={{ fontWeight: 700, color: "#0f172a" }}>Loading campaign...</div>
         </div>
@@ -559,8 +559,8 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 24, width: 680, maxWidth: "95vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(15,23,42,0.22)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 24, width: 680, maxWidth: "95vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(15,23,42,0.22)", overflow: "hidden", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }} onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
         <div style={{ padding: "20px 24px 0", borderBottom: "1px solid #f1f5f9", background: "linear-gradient(180deg, #f8fafc 0%, #fff 100%)" }}>

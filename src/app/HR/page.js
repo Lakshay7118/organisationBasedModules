@@ -4101,6 +4101,9 @@ const hrStyles = `
     inset: 0;
     z-index: 2000;
     background: rgba(15,23,42,0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    animation: appModalBackdropIn 0.32s ease-out both;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4114,6 +4117,7 @@ const hrStyles = `
     background: var(--hr-bg);
     box-shadow: 0 24px 60px rgba(15,23,42,0.25);
     padding: 20px;
+    animation: appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .hr-modal-header {
     display: flex;

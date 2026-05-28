@@ -2,16 +2,44 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { FiTrash2, FiEdit2 } from "react-icons/fi";
+import {
+  ArrowLeft,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Edit,
+  Eye,
+  EyeOff,
+  Globe2,
+  Plus,
+  Search,
+  Tag,
+  Trash2,
+  Users,
+  X,
+  XCircle,
+} from "lucide-react";
 import API from "../utils/api";
+
+const ROLE_FILTERS = [
+  { value: "", label: "All roles" },
+  { value: "user", label: "Users" },
+  { value: "manager", label: "Managers" },
+  { value: "super_admin", label: "Super Admin" },
+];
+
+const getContactRole = (contact) =>
+  contact.loginUser?.role || contact.role || contact.createdBy?.role || "";
 
 /* ---------- Utility: pageWrapper style ---------- */
 const pageWrapStyle = (mobile) => ({
   width: "100%",
   height: "100%",
   minHeight: 0,
-  background: "#f3f4f6",
-  padding: mobile ? "16px 12px" : "28px 32px 20px",
+  background:
+    "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+  padding: mobile ? "14px 10px" : "24px 28px 20px",
   fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
   overflow: "hidden",
   boxSizing: "border-box",
@@ -19,25 +47,42 @@ const pageWrapStyle = (mobile) => ({
 
 /* ---------- StatusBadge ---------- */
 function StatusBadge({ status }) {
+  const normalized = (status || "pending").toLowerCase();
   const colors = {
-    approved: { bg: "#d1fae5", color: "#065f46" },
-    pending: { bg: "#fef3c7", color: "#92400e" },
-    rejected: { bg: "#fee2e2", color: "#991b1b" },
+    approved: { bg: "#dcfce7", color: "#166534", dot: "#22c55e" },
+    pending: { bg: "#fef3c7", color: "#92400e", dot: "#f59e0b" },
+    rejected: { bg: "#fee2e2", color: "#991b1b", dot: "#ef4444" },
   };
-  const s = colors[status] || colors.pending;
+  const s = colors[normalized] || colors.pending;
+  const label = normalized
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
   return (
     <span
       style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
         background: s.bg,
         color: s.color,
-        borderRadius: 6,
-        padding: "2px 10px",
-        fontSize: 11,
+        borderRadius: 8,
+        padding: "5px 10px",
+        fontSize: 12,
         fontWeight: 700,
-        textTransform: "uppercase",
+        whiteSpace: "nowrap",
       }}
     >
-      {status}
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: s.dot,
+          flexShrink: 0,
+        }}
+      />
+      {label}
     </span>
   );
 }
@@ -47,16 +92,35 @@ function TagBadge({ label }) {
   return (
     <span
       style={{
-        background: "#fde8e8",
-        color: "#c0392b",
-        borderRadius: 6,
-        padding: "2px 10px",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        background: "#ede9fe",
+        color: "#7c3aed",
+        borderRadius: 8,
+        padding: "5px 10px",
         fontSize: 12,
-        fontWeight: 600,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
       }}
     >
+      <Tag size={12} />
       {label}
     </span>
+  );
+}
+
+function ActionIconButton({ label, tone = "default", children, ...props }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      style={actionIconBtn(tone)}
+      {...props}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -111,9 +175,18 @@ function LoginAccessToggle({ contact, onToggle }) {
 function ContactsDarkStyles() {
   return (
     <style>{`
+      .contacts-page .contacts-table-row {
+        transition: background 0.15s ease;
+      }
+      .contacts-page .contacts-table-row:hover {
+        background: #fafbff !important;
+      }
       body[data-theme="dark"] .contacts-page {
         background: #0b141a !important;
         color: #e9edef !important;
+      }
+      body[data-theme="dark"] .contacts-page .contacts-table-row:hover {
+        background: #18242b !important;
       }
       body[data-theme="dark"] .contacts-page [style*="background: #fff"],
       body[data-theme="dark"] .contacts-page [style*="background:#fff"],
@@ -236,7 +309,8 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>
             Add Contact
           </h2>
-          <button onClick={onClose} style={closeBtn}>
+          <button onClick={onClose} style={closeBtn} aria-label="Close">
+            <X size={17} />
             ✕
           </button>
         </div>
@@ -268,7 +342,8 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
               color: "#92400e",
             }}
           >
-            ⏳ Your contact will be sent for <strong>admin approval</strong> before being visible.
+            <Clock3 size={15} style={{ marginRight: 6, verticalAlign: "text-bottom" }} />
+            Your contact will be sent for <strong>admin approval</strong> before being visible.
           </div>
         )}
 
@@ -329,6 +404,7 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
               <button
                 type="button"
                 onClick={() => setShowPassword((p) => !p)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
                 style={{
                   position: "absolute",
                   right: 10,
@@ -338,11 +414,13 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
                   border: "none",
                   cursor: "pointer",
                   color: "#9ca3af",
-                  fontSize: 16,
+                  fontSize: 0,
                   padding: 0,
+                  display: "flex",
+                  alignItems: "center",
                 }}
               >
-                {showPassword ? "🙈" : "👁"}
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
           </div>
@@ -432,7 +510,8 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>
             Edit Contact
           </h2>
-          <button onClick={onClose} style={closeBtn}>
+          <button onClick={onClose} style={closeBtn} aria-label="Close">
+            <X size={17} />
             ✕
           </button>
         </div>
@@ -464,7 +543,8 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
               color: "#92400e",
             }}
           >
-            ⏳ Edits will be sent for <strong>admin approval</strong>.
+            <Clock3 size={15} style={{ marginRight: 6, verticalAlign: "text-bottom" }} />
+            Edits will be sent for <strong>admin approval</strong>.
           </div>
         )}
 
@@ -525,6 +605,7 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
               <button
                 type="button"
                 onClick={() => setShowPassword((p) => !p)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
                 style={{
                   position: "absolute",
                   right: 10,
@@ -534,11 +615,13 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
                   border: "none",
                   cursor: "pointer",
                   color: "#9ca3af",
-                  fontSize: 16,
+                  fontSize: 0,
                   padding: 0,
+                  display: "flex",
+                  alignItems: "center",
                 }}
               >
-                {showPassword ? "🙈" : "👁"}
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
           </div>
@@ -829,6 +912,7 @@ export default function ContactsPage() {
   const [selected, setSelected] = useState(new Set());
   const [page, setPage] = useState(1);
   const [filterTagId, setFilterTagId] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [adminView, setAdminView] = useState("all");
@@ -915,9 +999,9 @@ export default function ContactsPage() {
     try {
       const res = await API.post("/contacts", contact);
       if (res.data.status === "pending") {
-        alert("✅ Contact submitted! Waiting for admin approval.");
+        alert("Contact submitted. Waiting for admin approval.");
       } else {
-        alert("✅ Contact added successfully!");
+        alert("Contact added successfully.");
       }
       setContacts((prev) => [res.data, ...prev]);
     } catch (err) {
@@ -930,7 +1014,7 @@ export default function ContactsPage() {
       const res = await API.put(`/contacts/${id}`, updatedData);
       setContacts((prev) => prev.map((c) => (c._id === id ? res.data : c)));
       if (res.data.status === "pending")
-        alert("✅ Edit submitted! Waiting for admin approval.");
+        alert("Edit submitted. Waiting for admin approval.");
     } catch (err) {
       alert(err.response?.data?.error || "Failed to update contact");
     }
@@ -954,7 +1038,7 @@ export default function ContactsPage() {
     try {
       await API.put(`/contacts/${id}/approve`);
       setPendingContacts((prev) => prev.filter((c) => c._id !== id));
-      alert("✅ Contact approved!");
+      alert("Contact approved.");
     } catch (err) {
       alert("Failed to approve");
     }
@@ -1001,12 +1085,13 @@ export default function ContactsPage() {
 
   const filtered = contacts.filter((c) => {
     const tagNames = (c.tags || []).map(getTagName).join(" ");
-    return (
+    const matchesSearch =
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
       c.mobile?.includes(search) ||
       c.email?.toLowerCase().includes(search.toLowerCase()) ||
-      tagNames.toLowerCase().includes(search.toLowerCase())
-    );
+      tagNames.toLowerCase().includes(search.toLowerCase());
+    const matchesRole = !roleFilter || getContactRole(c) === roleFilter;
+    return matchesSearch && matchesRole;
   });
 
   const total = filtered.length;
@@ -1029,10 +1114,15 @@ export default function ContactsPage() {
     display: "flex",
     flexDirection: mobile ? "column" : "row",
     alignItems: mobile ? "stretch" : "center",
-    gap: 10,
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 20,
     flexWrap: mobile ? "nowrap" : "wrap",
     flexShrink: 0,
+    background: "rgba(255,255,255,0.96)",
+    border: "1px solid rgba(15,23,42,0.05)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.06)",
+    borderRadius: 22,
+    padding: 16,
   });
 
   // ===== SKELETON LOADING =====
@@ -1064,9 +1154,6 @@ export default function ContactsPage() {
               flexWrap: "wrap",
             }}
           >
-            <button style={{ ...tabBtn, background: "#0d9488", color: "#fff" }}>
-              👥 Managers
-            </button>
             <button
               onClick={() => {
                 setAdminView("all");
@@ -1074,7 +1161,12 @@ export default function ContactsPage() {
               }}
               style={tabBtn}
             >
-              🌐 All Contacts
+              <Globe2 size={15} />
+              All Contacts
+            </button>
+            <button style={{ ...tabBtn, ...activeTabBtn }}>
+              <Users size={15} />
+              Managers
             </button>
             <button
               onClick={() => {
@@ -1083,7 +1175,8 @@ export default function ContactsPage() {
               }}
               style={tabBtn}
             >
-              ⏳ Pending Approvals
+              <Clock3 size={15} />
+              Pending Approvals
               {pendingContacts.length > 0 && (
                 <span
                   style={{
@@ -1148,9 +1241,6 @@ export default function ContactsPage() {
               flexWrap: "wrap",
             }}
           >
-            <button onClick={() => setAdminView("managers")} style={tabBtn}>
-              👥 Managers
-            </button>
             <button
               onClick={() => {
                 setAdminView("all");
@@ -1158,10 +1248,16 @@ export default function ContactsPage() {
               }}
               style={tabBtn}
             >
-              🌐 All Contacts
+              <Globe2 size={15} />
+              All Contacts
             </button>
-            <button style={{ ...tabBtn, background: "#0d9488", color: "#fff" }}>
-              ⏳ Pending Approvals
+            <button onClick={() => setAdminView("managers")} style={tabBtn}>
+              <Users size={15} />
+              Managers
+            </button>
+            <button style={{ ...tabBtn, ...activeTabBtn }}>
+              <Clock3 size={15} />
+              Pending Approvals
             </button>
           </div>
           <h2 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: "#1a2233" }}>
@@ -1170,18 +1266,9 @@ export default function ContactsPage() {
               ({pendingContacts.length})
             </span>
           </h2>
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: 12,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-              flex: 1,
-              minHeight: 0,
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ height: "100%", overflowY: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <div style={tableCard}>
+            <div style={tableScroll}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 780 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
                     <th style={stickyTh}>Name</th>
@@ -1208,9 +1295,13 @@ export default function ContactsPage() {
                     </tr>
                   )}
                   {pendingContacts.map((c) => (
-                    <tr key={c._id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={td}>{c.name}</td>
-                      <td style={td}>{c.mobile}</td>
+                    <tr
+                      key={c._id}
+                      className="contacts-table-row"
+                      style={{ borderBottom: "1px solid #f3f4f6", background: "#fff" }}
+                    >
+                      <td style={{ ...td, color: "#0f172a", fontWeight: 750 }}>{c.name}</td>
+                      <td style={{ ...td, color: "#475569", fontWeight: 600 }}>{c.mobile}</td>
                       <td style={td}>
                         {c.email ? (
                           <a
@@ -1220,8 +1311,8 @@ export default function ContactsPage() {
                             {c.email}
                           </a>
                         ) : (
-                          <span style={{ color: "#e74c3c", fontSize: 12, fontWeight: 600 }}>
-                            ⚠ No email
+                          <span style={{ color: "#dc2626", fontSize: 12, fontWeight: 700 }}>
+                            No email
                           </span>
                         )}
                       </td>
@@ -1242,14 +1333,18 @@ export default function ContactsPage() {
                               background: "#d1fae5",
                               color: "#065f46",
                               border: "none",
-                              borderRadius: 6,
-                              padding: "6px 12px",
+                              borderRadius: 8,
+                              padding: "7px 12px",
                               cursor: "pointer",
-                              fontWeight: 600,
-                              fontSize: 13,
+                              fontWeight: 700,
+                              fontSize: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
                             }}
                           >
-                            ✅ Approve
+                            <CheckCircle size={14} />
+                            <span style={{ fontSize: 13 }}>Approve</span>
                           </button>
                           <button
                             onClick={() => rejectContact(c._id)}
@@ -1257,14 +1352,18 @@ export default function ContactsPage() {
                               background: "#fee2e2",
                               color: "#991b1b",
                               border: "none",
-                              borderRadius: 6,
-                              padding: "6px 12px",
+                              borderRadius: 8,
+                              padding: "7px 12px",
                               cursor: "pointer",
-                              fontWeight: 600,
-                              fontSize: 13,
+                              fontWeight: 700,
+                              fontSize: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
                             }}
                           >
-                            ❌ Reject
+                            <XCircle size={14} />
+                            <span style={{ fontSize: 13 }}>Reject</span>
                           </button>
                         </div>
                       </td>
@@ -1298,13 +1397,23 @@ export default function ContactsPage() {
               flexWrap: "wrap",
             }}
           >
-            <button onClick={() => setAdminView("managers")} style={tabBtn}>
-              👥 Managers
+            <button style={{ ...tabBtn, ...activeTabBtn }}>
+              {adminView === "manager" ? (
+                <>
+                  <Users size={15} />
+                  {selectedManager?.name}
+                  {"'s Contacts"}
+                </>
+              ) : (
+                <>
+                  <Globe2 size={15} />
+                  All Contacts
+                </>
+              )}
             </button>
-            <button style={{ ...tabBtn, background: "#0d9488", color: "#fff" }}>
-              {adminView === "manager"
-                ? `📋 ${selectedManager?.name}'s Contacts`
-                : "🌐 All Contacts"}
+            <button onClick={() => setAdminView("managers")} style={tabBtn}>
+              <Users size={15} />
+              Managers
             </button>
             <button
               onClick={() => {
@@ -1313,7 +1422,8 @@ export default function ContactsPage() {
               }}
               style={tabBtn}
             >
-              ⏳ Pending
+              <Clock3 size={15} />
+              Pending
             </button>
             {adminView === "manager" && (
               <button
@@ -1326,7 +1436,8 @@ export default function ContactsPage() {
                   marginLeft: isMobile ? 0 : "auto",
                 }}
               >
-                ← Back to Managers
+                <ArrowLeft size={15} />
+                Back to Managers
               </button>
             )}
           </div>
@@ -1334,7 +1445,14 @@ export default function ContactsPage() {
 
         {/* Toolbar */}
         <div style={toolbarWrapStyle(isMobile)}>
-          <div style={{ position: "relative", width: isMobile ? "100%" : "auto" }}>
+          <div
+            style={{
+              position: "relative",
+              flex: isMobile ? "1 1 100%" : "1 1 340px",
+              minWidth: isMobile ? "100%" : 260,
+              maxWidth: isMobile ? "100%" : 520,
+            }}
+          >
             <input
               value={search}
               onChange={(e) => {
@@ -1344,28 +1462,33 @@ export default function ContactsPage() {
               placeholder="Search name, mobile, email or tag"
               style={{
                 ...inputStyle,
-                width: isMobile ? "100%" : 280,
-                paddingLeft: 36,
+                width: "100%",
+                paddingLeft: 42,
               }}
             />
             <span
               style={{
                 position: "absolute",
-                left: 10,
+                left: 14,
                 top: "50%",
                 transform: "translateY(-50%)",
-                color: "#9ca3af",
-                fontSize: 15,
+                color: "#64748b",
+                fontSize: 0,
+                display: "flex",
+                alignItems: "center",
               }}
             >
-              🔍
+              <Search size={17} />
             </span>
           </div>
 
           <select
             value={filterTagId}
-            onChange={(e) => setFilterTagId(e.target.value)}
-            style={{ ...inputStyle, width: isMobile ? "100%" : 150 }}
+            onChange={(e) => {
+              setFilterTagId(e.target.value);
+              setPage(1);
+            }}
+            style={filterSelectStyle(isMobile, 188)}
           >
             <option value="">All tags</option>
             {tags.map((tag) => (
@@ -1375,13 +1498,31 @@ export default function ContactsPage() {
             ))}
           </select>
 
+          {isSuperAdmin && (
+            <select
+              value={roleFilter}
+              onChange={(e) => {
+                setRoleFilter(e.target.value);
+                setPage(1);
+              }}
+              style={filterSelectStyle(isMobile, 178)}
+            >
+              {ROLE_FILTERS.map((role) => (
+                <option key={role.value || "all"} value={role.value}>
+                  {role.label}
+                </option>
+              ))}
+            </select>
+          )}
+
           <div style={{ flex: isMobile ? "0" : 1 }} />
 
           {isSuperAdmin && selected.size > 0 && (
             <button
               onClick={deleteSelected}
-              style={{ ...secondaryBtn, color: "#e74c3c", borderColor: "#e74c3c" }}
+              style={{ ...secondaryBtn, color: "#dc2626", borderColor: "#fecaca" }}
             >
+              <Trash2 size={15} />
               Delete ({selected.size})
             </button>
           )}
@@ -1396,13 +1537,15 @@ export default function ContactsPage() {
               width: isMobile ? "100%" : "auto",
             }}
           >
-            🏷 Add Tag
+            <Tag size={15} />
+            Add Tag
           </button>
           <button
             onClick={() => setShowAddModal(true)}
             style={{ ...primaryBtn, width: isMobile ? "100%" : "auto" }}
           >
-            + Add Contact
+            <Plus size={15} />
+            Add Contact
           </button>
         </div>
 
@@ -1414,7 +1557,7 @@ export default function ContactsPage() {
                 width: "100%",
                 borderCollapse: "collapse",
                 fontSize: 14,
-                minWidth: isMobile ? 700 : 0,
+                minWidth: isSuperAdmin ? 1040 : 760,
               }}
             >
               <thead>
@@ -1460,16 +1603,13 @@ export default function ContactsPage() {
                     </td>
                   </tr>
                 )}
-                {paged.map((c, i) => (
+                {paged.map((c) => (
                   <tr
                     key={c._id}
+                    className="contacts-table-row"
                     style={{
                       borderBottom: "1px solid #f3f4f6",
-                      background: selected.has(c._id)
-                        ? "#f0fdf4"
-                        : i % 2 === 0
-                        ? "#fff"
-                        : "#fafafa",
+                      background: selected.has(c._id) ? "#f0fdf4" : "#fff",
                     }}
                   >
                     {isSuperAdmin && (
@@ -1481,8 +1621,10 @@ export default function ContactsPage() {
                         />
                       </td>
                     )}
-                    <td style={td}>{c.name}</td>
-                    <td style={td}>{c.mobile}</td>
+                    <td style={{ ...td, color: "#0f172a", fontWeight: 750 }}>
+                      {c.name || "Unknown"}
+                    </td>
+                    <td style={{ ...td, color: "#475569", fontWeight: 600 }}>{c.mobile}</td>
                     {isSuperAdmin && (
                       <td style={td}>
                         {c.email ? (
@@ -1498,9 +1640,9 @@ export default function ContactsPage() {
                           </a>
                         ) : (
                           <span
-                            style={{ color: "#e74c3c", fontSize: 12, fontWeight: 600 }}
+                            style={{ color: "#dc2626", fontSize: 12, fontWeight: 700 }}
                           >
-                            ⚠ No email
+                            No email
                           </span>
                         )}
                       </td>
@@ -1533,32 +1675,22 @@ export default function ContactsPage() {
                     )}
                     {isManagerOrAbove && (
                       <td style={td}>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <ActionIconButton
                             onClick={() => setEditingContact(c)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              color: "#3b82f6",
-                            }}
-                            title="Edit"
+                            label="Edit"
+                            tone="edit"
                           >
-                            <FiEdit2 size={16} />
-                          </button>
+                            <Edit size={13} />
+                          </ActionIconButton>
                           {isSuperAdmin && (
-                            <button
+                            <ActionIconButton
                               onClick={() => deleteSingleContact(c._id, c.name)}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#dc3545",
-                              }}
-                              title="Delete"
+                              label="Delete"
+                              tone="delete"
                             >
-                              <FiTrash2 size={16} />
-                            </button>
+                              <Trash2 size={13} />
+                            </ActionIconButton>
                           )}
                         </div>
                       </td>
@@ -1567,6 +1699,25 @@ export default function ContactsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={tableFooter}>
+            <span>
+              Showing {paged.length} of {total} contacts
+            </span>
+            {(search || filterTagId || roleFilter) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setFilterTagId("");
+                  setRoleFilter("");
+                  setPage(1);
+                }}
+                style={clearFilterBtn}
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         </div>
 
@@ -1577,6 +1728,7 @@ export default function ContactsPage() {
             disabled={currentPage === 1}
             style={pageBtn(currentPage === 1)}
           >
+            <ChevronLeft size={16} />
             ‹
           </button>
           <span style={{ fontSize: 13, color: "#374151" }}>
@@ -1592,6 +1744,7 @@ export default function ContactsPage() {
             disabled={currentPage === totalPages}
             style={pageBtn(currentPage === totalPages)}
           >
+            <ChevronRight size={16} />
             ›
           </button>
         </div>
@@ -1621,14 +1774,17 @@ export default function ContactsPage() {
 // ── Shared Styles ────────────────────────────────────────────────────────
 const inputStyle = {
   width: "100%",
-  padding: "9px 12px",
-  border: "1.5px solid #e5e7eb",
-  borderRadius: 8,
-  fontSize: 14,
+  height: 44,
+  padding: "0 12px",
+  border: "1px solid #dbe3eb",
+  borderRadius: 14,
+  fontSize: 13,
+  fontWeight: 500,
   outline: "none",
   boxSizing: "border-box",
-  color: "#1a2233",
+  color: "#0f172a",
   background: "#fff",
+  boxShadow: "0 2px 8px rgba(15,23,42,0.04)",
 };
 
 const labelStyle = {
@@ -1640,53 +1796,80 @@ const labelStyle = {
 };
 
 const primaryBtn = {
-  background: "#0d9488",
+  background: "linear-gradient(135deg, #0f5f64 0%, #14808a 65%, #22c55e 100%)",
   color: "#fff",
   border: "none",
-  borderRadius: 8,
-  padding: "9px 16px",
+  borderRadius: 999,
+  minHeight: 42,
+  padding: "0 16px",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
   whiteSpace: "nowrap",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  boxShadow: "0 10px 20px rgba(15,95,100,0.16)",
 };
 
 const secondaryBtn = {
   background: "#fff",
-  color: "#374151",
-  border: "1.5px solid #d1d5db",
-  borderRadius: 8,
-  padding: "9px 16px",
+  color: "#334155",
+  border: "1px solid #dbe3eb",
+  borderRadius: 999,
+  minHeight: 42,
+  padding: "0 16px",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
+  whiteSpace: "nowrap",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
 };
 
 const tabBtn = {
   background: "#fff",
-  border: "1.5px solid #e5e7eb",
-  borderRadius: 8,
-  padding: "8px 16px",
+  border: "1px solid #dbe3eb",
+  borderRadius: 999,
+  minHeight: 40,
+  padding: "0 15px",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
-  color: "#374151",
+  color: "#334155",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  whiteSpace: "nowrap",
+};
+
+const activeTabBtn = {
+  background: "linear-gradient(135deg, #0f5f64 0%, #14808a 65%, #22c55e 100%)",
+  border: "none",
+  color: "#fff",
+  boxShadow: "0 10px 20px rgba(15,95,100,0.16)",
 };
 
 const stickyTh = {
-  padding: "12px 16px",
-  fontWeight: 600,
-  fontSize: 13,
-  color: "#0d9488",
+  padding: "12px 20px",
+  fontWeight: 800,
+  fontSize: 11,
+  color: "#64748b",
   whiteSpace: "nowrap",
-  background: "#f9fafb",
+  background: "#f8fafc",
   position: "sticky",
   top: 0,
   zIndex: 2,
   textAlign: "left",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
 };
 
-const td = { padding: "12px 16px", color: "#374151", fontSize: 14 };
+const td = { padding: "14px 20px", color: "#334155", fontSize: 13 };
 
 const paginationRow = {
   display: "flex",
@@ -1699,12 +1882,17 @@ const paginationRow = {
 
 const pageBtn = (disabled) => ({
   background: "#fff",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
-  padding: "4px 12px",
+  border: "1px solid #dbe3eb",
+  borderRadius: 8,
+  width: 34,
+  height: 34,
   cursor: disabled ? "not-allowed" : "pointer",
   opacity: disabled ? 0.4 : 1,
-  fontSize: 16,
+  fontSize: 0,
+  color: "#334155",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
 });
 
 const contentShell = {
@@ -1718,15 +1906,18 @@ const contentShell = {
 
 const tableCard = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+  border: "1px solid #e5e7eb",
+  borderRadius: 20,
   flex: 1,
   minHeight: 0,
   overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
 };
 
 const tableScroll = {
-  height: "100%",
+  flex: 1,
+  minHeight: 0,
   overflowY: "auto",
   overflowX: "auto",
   msOverflowStyle: "none",
@@ -1734,14 +1925,64 @@ const tableScroll = {
   WebkitOverflowScrolling: "touch",
 };
 
+const tableFooter = {
+  padding: "11px 20px",
+  borderTop: "1px solid #f1f5f9",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  color: "#94a3b8",
+  fontSize: 12,
+  fontWeight: 700,
+  flexShrink: 0,
+};
+
+const clearFilterBtn = {
+  background: "none",
+  border: "none",
+  color: "#0f5f64",
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+  padding: 0,
+};
+
+const filterSelectStyle = (mobile, width = 180) => ({
+  ...inputStyle,
+  width: mobile ? "100%" : width,
+  maxWidth: "100%",
+  flex: mobile ? "1 1 100%" : `0 1 ${width}px`,
+  minWidth: mobile ? "100%" : 150,
+  paddingRight: 36,
+});
+
+const actionIconBtn = (tone) => ({
+  width: 32,
+  height: 32,
+  borderRadius: 8,
+  border: tone === "delete" ? "1px solid #fee2e2" : "1px solid #e5e7eb",
+  background: "#fff",
+  color: tone === "delete" ? "#dc2626" : tone === "edit" ? "#3b82f6" : "#475569",
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+});
+
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.35)",
+  background: "rgba(15,23,42,0.5)",
+  backdropFilter: "blur(6px)",
+  WebkitBackdropFilter: "blur(6px)",
+  animation: "appModalBackdropIn 0.32s ease-out both",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   zIndex: 1000,
+  padding: 16,
 };
 
 const modalBox = {
@@ -1751,13 +1992,17 @@ const modalBox = {
   width: 440,
   maxWidth: "95vw",
   boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+  animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both",
 };
 
 const closeBtn = {
   background: "none",
   border: "none",
-  fontSize: 18,
+  fontSize: 0,
   cursor: "pointer",
   color: "#6b7280",
-  padding: "0 4px",
+  padding: "4px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
 };

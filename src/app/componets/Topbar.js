@@ -327,7 +327,7 @@ function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNa
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 99998,
-        background: "rgba(15,23,42,0.45)", backdropFilter: "blur(6px)",
+        background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
         display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
       }}
     >
@@ -335,7 +335,7 @@ function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNa
         initial={{ opacity: 0, scale: 0.93, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 8 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         onClick={e => e.stopPropagation()}
         style={{
           background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440,
@@ -754,13 +754,13 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={cancelLogout}
-            style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.88, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 8 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
               onClick={e => e.stopPropagation()}
               style={{ background: "#fff", borderRadius: 24, padding: "36px 28px 28px", width: "100%", maxWidth: 360, boxShadow: "0 32px 64px rgba(15,23,42,0.2)", textAlign: "center" }}
             >

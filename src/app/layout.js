@@ -188,6 +188,35 @@ useEffect(() => {
         }}
       >
         <style>{`
+          @keyframes appModalBackdropIn {
+            from {
+              opacity: 0;
+              backdrop-filter: blur(0);
+              -webkit-backdrop-filter: blur(0);
+            }
+            to {
+              opacity: 1;
+              backdrop-filter: blur(6px);
+              -webkit-backdrop-filter: blur(6px);
+            }
+          }
+          @keyframes appModalCardIn {
+            from {
+              opacity: 0;
+              transform: translateY(14px) scale(0.96);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            * {
+              animation-duration: 0.01ms !important;
+              animation-iteration-count: 1 !important;
+              transition-duration: 0.01ms !important;
+            }
+          }
           @media (min-width: 768px) {
             .main-content {
               margin-left: 108px !important;

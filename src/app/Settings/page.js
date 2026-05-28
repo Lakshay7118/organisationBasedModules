@@ -1381,8 +1381,8 @@ export default function SettingsPage() {
 
   const renderTicketsModal = () => (
     ticketsModalOpen && (
-      <div onClick={() => setTicketsModalOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.48)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1100px, 100%)", maxHeight: "88vh", background: colors.panel, border: `1px solid ${colors.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 28px 80px rgba(0,0,0,0.32)" }}>
+      <div onClick={() => setTicketsModalOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "min(1100px, 100%)", maxHeight: "88vh", background: colors.panel, border: `1px solid ${colors.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 28px 80px rgba(0,0,0,0.32)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
           <div style={{ padding: "16px 18px", borderBottom: `1px solid ${colors.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
               <div style={{ color: colors.text, fontSize: 18, fontWeight: 900 }}>Raised Tickets</div>
