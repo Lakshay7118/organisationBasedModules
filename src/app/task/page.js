@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   FiSearch, FiSend, FiPlus, FiX, FiBell,
   FiTrash2, FiLink, FiPhone, FiChevronRight, FiMinus,
   FiCalendar, FiShield, FiUsers, FiUser, FiEdit2,
+  FiPaperclip, FiMic, FiFile, FiImage, FiVideo, FiDownload,
+  FiAlertTriangle, FiClock, FiMessageSquare, FiList,
+  FiPlay, FiPause,
 } from "react-icons/fi";
 import API from "../utils/api";
+import { getSocket } from "../lib/socket";
 
 /* ---------- helpers ---------- */
 const PALETTE = ["#6366f1", "#f43f5e", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4"];
@@ -18,6 +23,77 @@ const enrichUser = (u) => {
   return { ...u, id, initial: userInitial(u.name), color: userColor(id) };
 };
 const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const formatFileSize = (bytes) => {
+  const size = Number(bytes) || 0;
+  if (!size) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+const formatDuration = (seconds = 0) => {
+  const total = Math.max(0, Number(seconds) || 0);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+};
+const attachmentUrl = (file = {}) => file.fileUrl || file.url || "";
+const attachmentName = (file = {}) => file.fileName || file.filename || "Attachment";
+const attachmentType = (file = {}) => {
+  if (file.messageType) return file.messageType;
+  const mime = file.mimetype || file.mimeType || "";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "file";
+};
+const isPdfAttachment = (file = {}) => {
+  const name = attachmentName(file).toLowerCase();
+  return (file.mimetype || file.mimeType) === "application/pdf" || name.endsWith(".pdf");
+};
+const downloadAttachment = async (file) => {
+  const url = attachmentUrl(file);
+  const name = attachmentName(file);
+  if (!url) return;
+
+  try {
+    const res = await API.post("/upload/download", { url, fileName: name }, { responseType: "blob" });
+    const blob = res.data;
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+};
+const uploadTaskFile = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await API.post("/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  const data = res.data || {};
+  const messageType = data.messageType ||
+    (file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file");
+  return {
+    url: data.fileUrl,
+    fileUrl: data.fileUrl,
+    filename: data.fileName || file.name,
+    fileName: data.fileName || file.name,
+    fileSize: data.fileSize || file.size,
+    mimetype: file.type,
+    messageType,
+  };
+};
 
 const PRIORITY = {
   low: { label: "Low", color: "#10b981", bg: "#d1fae5" },
@@ -162,6 +238,93 @@ function StatusPill({ status, onChange, readonly }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function UserStatusTrail({ status }) {
+  const steps = [
+    { id: "pending",     label: "Pending" },
+    { id: "in_progress", label: "In Progress" },
+    { id: "completed",   label: "Completed" },
+    { id: "cancelled",   label: "Cancelled" },
+  ];
+
+  const activeIndex = steps.findIndex(s => s.id === status);
+  const isCancelled = status === "cancelled";
+  const trackColor  = isCancelled ? "#9ca3af" : "#0d9488";
+
+  return (
+    <div style={{ width: 260, flexShrink: 0, position: "relative", padding: "6px 0 22px" }}>
+      {/* base track */}
+      <div style={{
+        position: "absolute", left: 9, right: 9, top: 15,
+        height: 2, background: "#e5e7eb", borderRadius: 999,
+      }} />
+      {/* filled track */}
+      <div style={{
+        position: "absolute", left: 9, top: 15,
+        height: 2, borderRadius: 999,
+        background: trackColor,
+        width: activeIndex === 0 ? 0
+          : `calc(${(activeIndex / (steps.length - 1)) * 100}% - ${
+              activeIndex === steps.length - 1 ? 18 : 6
+            }px)`,
+      }} />
+      {/* dots */}
+      <div style={{
+        display: "flex", justifyContent: "space-between",
+        position: "relative", zIndex: 2,
+      }}>
+        {steps.map(({ id, label }, index) => {
+          const isDone      = !isCancelled && index < activeIndex;
+          const isActive    = id === status;
+          const isCancelDot = isCancelled && id === "cancelled";
+
+          let bg     = "#f3f4f6";
+          let border = "1.5px solid #d1d5db";
+          let color  = "transparent";
+
+          if (isDone || isCancelDot) {
+            bg     = isCancelDot ? "#9ca3af" : trackColor;
+            border = `2px solid ${isCancelDot ? "#9ca3af" : trackColor}`;
+            color  = "#fff";
+          } else if (isActive && !isCancelled) {
+            bg     = "#fff";
+            border = `2px solid ${trackColor}`;
+          }
+
+          return (
+            <div key={id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{
+                width: 20, height: 20, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: bg, border, boxSizing: "border-box",
+                fontSize: 10, color,
+              }}>
+                {isDone && "✓"}
+                {isCancelDot && "✕"}
+                {isActive && !isCancelled && (
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: trackColor }} />
+                )}
+              </div>
+              <span style={{
+                fontSize: 10, whiteSpace: "nowrap",
+                color: isActive
+                  ? trackColor
+                  : isDone
+                  ? "#6b7280"
+                  : isCancelled
+                  ? "#9ca3af"
+                  : "#9ca3af",
+                fontWeight: isActive ? 600 : 400,
+              }}>
+                {label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -327,6 +490,132 @@ function FormDataSummary({ formData, task }) {
   );
 }
 
+function TaskAttachmentBubble({ file, isMine = false }) {
+  const url = attachmentUrl(file);
+  if (!url) return null;
+  const type = attachmentType(file);
+  const name = attachmentName(file);
+  const size = typeof file.fileSize === "number" ? formatFileSize(file.fileSize) : file.fileSize;
+  const icon = type === "image" ? <FiImage size={14} /> : type === "video" ? <FiVideo size={14} /> : type === "audio" ? <FiMic size={14} /> : <FiFile size={14} />;
+  const isPdf = isPdfAttachment(file);
+
+  if (type === "image") {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 7, color: "inherit", textDecoration: "none" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={name} style={{ width: "100%", maxWidth: 260, maxHeight: 190, objectFit: "cover", borderRadius: 8, border: "1px solid #d1d5db" }} />
+      </a>
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <div style={{ marginTop: 7 }}>
+        <video src={url} controls style={{ width: "100%", maxWidth: 270, maxHeight: 190, borderRadius: 8, background: "#111827" }} />
+        
+      </div>
+    );
+  }
+
+  if (type === "audio") {
+   return <AudioPlayer src={url} isMine={isMine} />;
+  }
+
+  return (
+    <div style={{ marginTop: 7, padding: 10, borderRadius: 10, border: `1px solid ${isMine ? "#5eead4" : "#e5e7eb"}`, background: isMine ? "#ecfdf5" : "#fff", display: "flex", alignItems: "center", gap: 10, color: "#1f2937", maxWidth: 310, boxShadow: "0 1px 4px rgba(15,23,42,.06)" }}>
+      <div style={{ width: 40, height: 44, borderRadius: 8, background: isPdf ? "#fee2e2" : "#e0f2fe", color: isPdf ? "#dc2626" : "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
+        {icon}
+        {isPdf && <span style={{ position: "absolute", bottom: 5, fontSize: 8, fontWeight: 900, lineHeight: 1 }}>PDF</span>}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+        <div style={{ marginTop: 2, fontSize: "0.67rem", color: "#6b7280" }}>{isPdf ? "PDF document" : "File"}{size ? ` · ${size}` : ""}</div>
+        <button type="button" onClick={() => downloadAttachment(file)} style={{ marginTop: 8, padding: "5px 10px", borderRadius: 999, border: "none", color: "#fff", background: "#0d9488", cursor: "pointer", fontSize: "0.68rem", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <FiDownload size={11} /> Download
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TaskAttachmentList({ files = [], isMine = false }) {
+  const list = Array.isArray(files) ? files : [];
+  if (!list.length) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {list.map((file, index) => <TaskAttachmentBubble key={`${attachmentUrl(file)}-${index}`} file={file} isMine={isMine} />)}
+    </div>
+  );
+}
+function AudioPlayer({ src, isMine = false, variant = "bubble" }) {
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef(null);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (playing) { audioRef.current.pause(); setPlaying(false); }
+    else { audioRef.current.play(); setPlaying(true); }
+  };
+  const onTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setCurrentTime(audioRef.current.currentTime);
+    setProgress(audioRef.current.duration ? (audioRef.current.currentTime / audioRef.current.duration) * 100 : 0);
+  };
+  const onLoadedMetadata = () => { if (audioRef.current) setDuration(audioRef.current.duration); };
+  const onEnded = () => { setPlaying(false); setProgress(0); setCurrentTime(0); };
+  const onSeek = (e) => {
+    if (!audioRef.current || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audioRef.current.currentTime = pct * duration;
+    setProgress(pct * 100);
+  };
+
+const teal = "#0d9488";
+  const isCard = variant === "card";
+  const bg = isCard ? "rgba(255,255,255,0.45)" : isMine ? "#ccfbf1" : "#f3f4f6";
+  const trackBg = isCard ? "#9FE1CB" : isMine ? "#a7f3d0" : "#d1d5db";
+  const border = isCard ? "1px solid #9FE1CB" : isMine ? "1px solid #9FE1CB" : "1px solid #e5e7eb";
+  const subColor = isCard ? "#0F6E56" : isMine ? "#0F6E56" : "#6b7280";
+  const borderRadius = isCard ? 10 : isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px";
+
+  return (
+    <div style={{
+      background: bg, border, borderRadius,
+      padding: "10px 12px", minWidth: 220, maxWidth: 280,
+    }}>
+      <audio
+        ref={audioRef} src={src}
+        onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata}
+        onEnded={onEnded} preload="metadata"
+        style={{ display: "none" }}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={togglePlay} style={{
+          width: 34, height: 34, borderRadius: "50%",
+          background: teal, border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", flexShrink: 0,
+        }}>
+          {playing ? <FiPause size={14} /> : <FiPlay size={14} style={{ marginLeft: 1 }} />}
+        </button>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div onClick={onSeek} style={{ height: 4, background: trackBg, borderRadius: 999, cursor: "pointer", position: "relative", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: teal, borderRadius: 999, transition: "width 0.1s linear" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: "0.67rem", color: subColor, fontWeight: 500 }}>{formatDuration(Math.floor(currentTime))}</span>
+            <span style={{ fontSize: "0.67rem", color: subColor }}>{duration ? formatDuration(Math.floor(duration)) : "0:00"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- TaskFormElements ---------- */
 function TaskFormElements({ task, values, onChange, onSubmit, readonly = false }) {
   const { quickReplies = [], inputFields = [], dropdownButtons = [], ctaButtons = [], checkboxes = [] } = task;
@@ -394,7 +683,7 @@ function TaskFormElements({ task, values, onChange, onSubmit, readonly = false }
             </div>
           )}
           {!readonly && (
-            <button onClick={onSubmit} style={{ marginTop: 12, padding: "8px 14px", background: "#0d9488", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: "0.83rem", cursor: "pointer", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <button type="button" onClick={() => onSubmit()} style={{ marginTop: 12, padding: "8px 14px", background: "#0d9488", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: "0.83rem", cursor: "pointer", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
               <FiSend size={13} /> Submit Response
             </button>
           )}
@@ -431,6 +720,7 @@ const taskToForm = (task, currentUser) => ({
   quickReplies: task?.quickReplies || [],
   ctaButtons: task?.ctaButtons || [],
   checkboxes: task?.checkboxes || [],
+  attachments: task?.attachments || [],
 });
 
 function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task }) {
@@ -448,8 +738,15 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
   const [tagContacts, setTagContacts] = useState([]);
   const [mgrContacts, setMgrContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [uploadingTaskFile, setUploadingTaskFile] = useState(false);
+  const [isRecordingTaskAudio, setIsRecordingTaskAudio] = useState(false);
+  const [taskRecordingSeconds, setTaskRecordingSeconds] = useState(0);
   const [form, setForm] = useState(() => taskToForm(task, currentUser));
   const [tab, setTab] = useState("basic");
+  const taskMediaRecorderRef = useRef(null);
+  const taskAudioChunksRef = useRef([]);
+  const taskAudioStreamRef = useRef(null);
+  const taskRecordingTimerRef = useRef(null);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleAssign = (id) => set("assignedTo", form.assignedTo.includes(id) ? form.assignedTo.filter(x => x !== id) : [...form.assignedTo, id]);
   const addInputField = () => set("inputFields", [...form.inputFields, { id: genId(), label: "", placeholder: "", required: false }]);
@@ -484,7 +781,6 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
 
   useEffect(() => {
     if (assignFilter !== "tag" || !selectedTag) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTagContacts([]);
       return;
     }
@@ -494,7 +790,6 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
 
   useEffect(() => {
     if (assignFilter !== "manager_contacts" || !selectedMgr) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMgrContacts([]);
       return;
     }
@@ -509,6 +804,67 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
     if (assignFilter === "manager_contacts") return contactsWithUsers(mgrContacts).filter(({ contact }) => !assignSearch || contact.name?.toLowerCase().includes(assignSearch.toLowerCase()));
     return users.filter(u => { if (isCurrentAssignableUser(u)) return false; if (u.role === "super_admin") return false; if (assignFilter === "user" && u.role !== "user") return false; if (assignFilter === "manager" && u.role !== "manager") return false; if (assignSearch && !u.name?.toLowerCase().includes(assignSearch.toLowerCase())) return false; return true; }).map(u => ({ contact: null, user: u }));
   }, [assignFilter, users, tagContacts, mgrContacts, assignSearch, contactsWithUsers, isCurrentAssignableUser]);
+  const assignableIds = useMemo(() => [...new Set(assignableList.map(({ user }) => user?.id || user?._id?.toString()).filter(Boolean))], [assignableList]);
+  const allFilteredSelected = assignableIds.length > 0 && assignableIds.every(id => form.assignedTo.includes(id));
+  const toggleFilteredAssignments = () => {
+    if (!assignableIds.length) return;
+    set("assignedTo", allFilteredSelected
+      ? form.assignedTo.filter(id => !assignableIds.includes(id))
+      : [...new Set([...form.assignedTo, ...assignableIds])]
+    );
+  };
+  const uploadTaskVoiceBlob = async (blob) => {
+    const file = new File([blob], `task_voice_${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+    setUploadingTaskFile(true);
+    try {
+      const uploaded = await uploadTaskFile(file);
+      setForm(p => ({ ...p, attachments: [...(p.attachments || []), uploaded] }));
+    } catch {
+      alert("Failed to upload voice note");
+    } finally {
+      setUploadingTaskFile(false);
+    }
+  };
+  const stopTaskAudioTracks = () => {
+    taskAudioStreamRef.current?.getTracks?.().forEach(track => track.stop());
+    taskAudioStreamRef.current = null;
+  };
+  const startTaskAudioRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      taskAudioStreamRef.current = stream;
+      taskAudioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      taskMediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size > 0) taskAudioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(taskAudioChunksRef.current, { type: "audio/webm" });
+        taskAudioChunksRef.current = [];
+        stopTaskAudioTracks();
+        if (blob.size > 0) uploadTaskVoiceBlob(blob);
+      };
+      recorder.start();
+      setIsRecordingTaskAudio(true);
+      setTaskRecordingSeconds(0);
+      taskRecordingTimerRef.current = setInterval(() => setTaskRecordingSeconds(sec => sec + 1), 1000);
+    } catch {
+      alert("Microphone access is required to record a voice note");
+    }
+  };
+  const stopTaskAudioRecording = () => {
+    taskMediaRecorderRef.current?.stop();
+    taskMediaRecorderRef.current = null;
+    clearInterval(taskRecordingTimerRef.current);
+    taskRecordingTimerRef.current = null;
+    setIsRecordingTaskAudio(false);
+  };
+  useEffect(() => () => {
+    clearInterval(taskRecordingTimerRef.current);
+    stopTaskAudioTracks();
+  }, []);
+  const removeTaskAttachment = (index) => set("attachments", form.attachments.filter((_, i) => i !== index));
 
   const handleSubmit = () => {
     if (!form.title.trim()) { alert("Task Title is required"); return; }
@@ -552,6 +908,22 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
             <>
               <div><label style={lbl}>Task Title *</label><input value={form.title} onChange={e => set("title", e.target.value)} placeholder="Enter task title…" style={inp} /></div>
               <div><label style={lbl}>Description</label><textarea value={form.description} onChange={e => set("description", e.target.value)} placeholder="Add details…" rows={3} style={{ ...inp, resize: "none", fontFamily: "inherit" }} /></div>
+              <div>
+                <label style={lbl}>Voice Note</label>
+                <button onClick={isRecordingTaskAudio ? stopTaskAudioRecording : startTaskAudioRecording} disabled={uploadingTaskFile} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px dashed #0d9488", background: isRecordingTaskAudio ? "#fee2e2" : "#ecfdf5", color: isRecordingTaskAudio ? "#dc2626" : "#0d9488", cursor: uploadingTaskFile ? "not-allowed" : "pointer", fontSize: "0.82rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+                  <FiMic size={14} /> {uploadingTaskFile ? "Uploading..." : isRecordingTaskAudio ? `Stop recording ${formatDuration(taskRecordingSeconds)}` : "Record voice note"}
+                </button>
+                {form.attachments?.length > 0 && (
+                  <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {form.attachments.map((file, index) => (
+                      <div key={`${attachmentUrl(file)}-${index}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 8, background: "#f9fafb", border: "1px solid #e5e7eb" }}>
+                        <audio src={attachmentUrl(file)} controls style={{ flex: 1, minWidth: 0, height: 34 }} />
+                        <button onClick={() => removeTaskAttachment(index)} style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", display: "flex", padding: 2 }}><FiX size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
                 <div><label style={lbl}>Priority</label><select value={form.priority} onChange={e => set("priority", e.target.value)} style={inp}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
                 <div><label style={lbl}>Due Date *</label><input type="date" value={form.dueDate} onChange={e => set("dueDate", e.target.value)} style={inp} /></div>
@@ -588,6 +960,12 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
                     <FiSearch size={12} color="#9ca3af" />
                     <input value={assignSearch} onChange={e => setAssignSearch(e.target.value)} placeholder="Search people…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: "0.81rem", color: "#1a2233" }} />
                     {assignSearch && <button onClick={() => setAssignSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", padding: 0 }}><FiX size={11} /></button>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                    <span style={{ fontSize: "0.72rem", color: "#6b7280", fontWeight: 700 }}>{assignableIds.length} filtered</span>
+                    <button onClick={toggleFilteredAssignments} disabled={!assignableIds.length || loadingContacts} style={{ border: "1.5px solid #0d9488", background: allFilteredSelected ? "#fff" : "#0d9488", color: allFilteredSelected ? "#0d9488" : "#fff", borderRadius: 999, padding: "4px 11px", fontSize: "0.72rem", fontWeight: 800, cursor: !assignableIds.length || loadingContacts ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                      <FiUsers size={12} /> {allFilteredSelected ? "Deselect filtered" : "Select all filtered"}
+                    </button>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, border: "1.5px solid #e5e7eb", borderRadius: 9, padding: 7, maxHeight: 190, overflowY: "auto" }}>
                     {loadingContacts ? <div style={{ padding: "11px 0", textAlign: "center", fontSize: "0.79rem", color: "#667781" }}>Loading…</div> : assignableList.length === 0 ? <div style={{ padding: "11px 0", textAlign: "center", fontSize: "0.79rem", color: "#667781" }}>{assignFilter === "tag" && !selectedTag ? "Select a tag first" : assignFilter === "manager_contacts" && !selectedMgr ? "Select a manager first" : "No people found"}</div> : assignableList.map(({ contact, user }) => {
@@ -696,12 +1074,28 @@ function ApprovalPanel({ tasks, users, onApprove, onReject, onClose }) {
 }
 
 /* ---------- Chat Drawer ---------- */
-function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusChange, onDelete, saving, responseInput, setResponseInput, formValues, onFormChange, onSubmit, userTaskStatuses }) {
+function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDeleteResponse, saving, responseInput, setResponseInput, formValues, onFormChange, onSubmit, userTaskStatuses }) {
   const scrollRef = useRef(null);
-  const [viewingUser, setViewingUser] = useState(null);
+  const responseFileInputRef = useRef(null);
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("chat");
   const [taskAssigneeFilterState, setTaskAssigneeFilterState] = useState({ taskId: null, value: "all" });
+  const [hoveredResponseId, setHoveredResponseId] = useState(null);
+  const [deletingResponseId, setDeletingResponseId] = useState(null);
+  const [uploadingResponseFile, setUploadingResponseFile] = useState(false);
+  const [isRecordingResponseAudio, setIsRecordingResponseAudio] = useState(false);
+  const [responseRecordingSeconds, setResponseRecordingSeconds] = useState(0);
+  const responseMediaRecorderRef = useRef(null);
+  const responseAudioChunksRef = useRef([]);
+  const responseAudioStreamRef = useRef(null);
+  const responseRecordingTimerRef = useRef(null);
+
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [task?.responses]);
+  useEffect(() => () => {
+    clearInterval(responseRecordingTimerRef.current);
+    responseAudioStreamRef.current?.getTracks?.().forEach(t => t.stop());
+  }, []);
+
   if (!task) return null;
 
   const _isAdmin = isAdmin(currentUser);
@@ -713,6 +1107,7 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
   const taskAssigneeFilter = taskAssigneeFilterState.taskId === taskId ? taskAssigneeFilterState.value : "all";
   const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser?.id && uts.taskId.toString() === taskId.toString());
   const effectiveStatus = myStatusRec ? myStatusRec.status : task.status;
+
   const getAssigneeTaskStatus = (userId) => {
     const rec = userTaskStatuses.find(uts => uts.userId?.toString() === userId?.toString() && uts.taskId?.toString() === taskId?.toString());
     return rec ? rec.status : task.status;
@@ -724,55 +1119,136 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
   }, { pending: 0, in_progress: 0, completed: 0, cancelled: 0 });
   const selectedTaskDone = assigneeStatusCounts.completed || 0;
   const selectedTaskRate = assignees.length ? Math.round((selectedTaskDone / assignees.length) * 100) : 0;
-  const visibleAssignees = taskAssigneeFilter === "all"
-    ? assignees
-    : assignees.filter(u => getAssigneeTaskStatus(u.id) === taskAssigneeFilter);
+  const visibleAssignees = taskAssigneeFilter === "all" ? assignees : assignees.filter(u => getAssigneeTaskStatus(u.id) === taskAssigneeFilter);
+
+  const openUserDetailPage = (userId) => {
+    if (!userId) return;
+    router.push(`/task/user/${encodeURIComponent(userId)}?taskId=${encodeURIComponent(taskId)}`);
+  };
+  const handleDeleteResponse = async (responseId) => {
+    if (!responseId || deletingResponseId) return;
+    if (!window.confirm("Delete this message?")) return;
+    setDeletingResponseId(responseId);
+    try {
+      await onDeleteResponse(taskId, responseId);
+    } finally {
+      setDeletingResponseId(null);
+    }
+  };
+
+  const handleResponseFilePick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingResponseFile(true);
+    try { const uploaded = await uploadTaskFile(file); await onSubmit([uploaded]); }
+    catch { alert("Failed to upload attachment"); }
+    finally { setUploadingResponseFile(false); }
+  };
+
+  const stopResponseAudioTracks = () => {
+    responseAudioStreamRef.current?.getTracks?.().forEach(t => t.stop());
+    responseAudioStreamRef.current = null;
+  };
+  const uploadResponseVoiceBlob = async (blob) => {
+    const file = new File([blob], `task_response_${Date.now()}.webm`, { type: blob.type || "audio/webm" });
+    setUploadingResponseFile(true);
+    try { const uploaded = await uploadTaskFile(file); await onSubmit([uploaded]); }
+    catch { alert("Failed to send voice response"); }
+    finally { setUploadingResponseFile(false); }
+  };
+  const startResponseAudioRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      responseAudioStreamRef.current = stream;
+      responseAudioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      responseMediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (e) => { if (e.data?.size > 0) responseAudioChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(responseAudioChunksRef.current, { type: "audio/webm" });
+        responseAudioChunksRef.current = [];
+        stopResponseAudioTracks();
+        if (blob.size > 0) uploadResponseVoiceBlob(blob);
+      };
+      recorder.start();
+      setIsRecordingResponseAudio(true);
+      setResponseRecordingSeconds(0);
+      responseRecordingTimerRef.current = setInterval(() => setResponseRecordingSeconds(s => s + 1), 1000);
+    } catch { alert("Microphone access is required to record audio"); }
+  };
+  const stopResponseAudioRecording = () => {
+    responseMediaRecorderRef.current?.stop();
+    responseMediaRecorderRef.current = null;
+    clearInterval(responseRecordingTimerRef.current);
+    responseRecordingTimerRef.current = null;
+    setIsRecordingResponseAudio(false);
+  };
+
+  const isLocked = isPending && !_isAdmin;
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 800, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both" }} />
-      <div className="task-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(100%, 500px)", background: "#fff", zIndex: 900, display: "flex", flexDirection: "column", boxShadow: "-12px 0 48px rgba(0,0,0,.12)", animation: "slideInRight .25s ease", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
+      {/* backdrop */}
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 800, backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", animation: "appModalBackdropIn 0.28s ease-out both" }} />
 
-        {/* ── Drawer Header ── */}
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f2f5", background: "#fff", flexShrink: 0 }}>
-          {/* Row 1: close + title + badges */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", flexShrink: 0 }}><FiX size={15} /></button>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "0.95rem", fontWeight: 800, color: "#1a2233", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{task.isPersonal ? "🔒 " : ""}{task.title}</span>
-                <span style={{ fontSize: "0.67rem", fontWeight: 700, background: pCfg.bg, color: pCfg.color, padding: "2px 8px", borderRadius: 20, flexShrink: 0 }}>{pCfg.label}</span>
-                {overdue && <span style={{ fontSize: "0.67rem", fontWeight: 700, background: "#fee2e2", color: "#ef4444", padding: "2px 8px", borderRadius: 20, flexShrink: 0 }}>⚠ Overdue</span>}
-                {isPending && <ApprovalBadge compact />}
-              </div>
-            </div>
+      {/* drawer */}
+      <div className="task-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(100%, 480px)", background: "#f8fafc", zIndex: 900, display: "flex", flexDirection: "column", boxShadow: "-8px 0 32px rgba(0,0,0,.10)", animation: "slideInRight .25s ease", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
+
+        {/* ── Header ── */}
+        <div style={{ background: "#fff", borderBottom: "1px solid #f0f2f5", flexShrink: 0 }}>
+
+          {/* row 1: close + title + badges */}
+          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "14px 16px 10px" }}>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "#f3f4f6", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280", flexShrink: 0 }}>
+              <FiX size={14} />
+            </button>
+            <span style={{ flex: 1, fontSize: "0.94rem", fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {task.isPersonal ? "🔒 " : ""}{task.title}
+            </span>
+            {/* priority badge */}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: pCfg.bg, color: pCfg.color, fontSize: "0.7rem", fontWeight: 700, flexShrink: 0 }}>
+              {task.priority === "high" ? <FiAlertTriangle size={10} /> : task.priority === "medium" ? <FiCalendar size={10} /> : null}
+              {pCfg.label}
+            </span>
+            {/* overdue badge */}
+            {overdue && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: "#fef3c7", color: "#92400e", fontSize: "0.7rem", fontWeight: 700, flexShrink: 0 }}>
+                <FiClock size={10} /> Overdue
+              </span>
+            )}
+            {isPending && <ApprovalBadge compact />}
           </div>
 
-          {/* Row 2: status pill + due date + delete — all on ONE line */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", paddingLeft: 42 }}>
-            <StatusPill status={effectiveStatus} onChange={s => onStatusChange(taskId, s)} readonly={isPending && !_isAdmin} />
+          {/* row 2: status pill + due + delete */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px", flexWrap: "nowrap" }}>
+            <div style={{ pointerEvents: isLocked ? "none" : "auto" }}>
+              <StatusPill status={effectiveStatus} onChange={s => onStatusChange(taskId, s)} readonly={isLocked} />
+            </div>
             {task.dueDate && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.72rem", color: overdue ? "#ef4444" : "#6b7280", whiteSpace: "nowrap", flexShrink: 0 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "0.72rem", color: overdue ? "#ef4444" : "#6b7280", whiteSpace: "nowrap" }}>
                 <FiCalendar size={11} /> {fmtDate(task.dueDate)}
               </span>
             )}
             {_isAdmin && (
-              <button onClick={() => onDelete(taskId)} style={{ marginLeft: "auto", background: "#fee2e2", border: "none", borderRadius: 7, cursor: "pointer", padding: "4px 10px", color: "#ef4444", display: "flex", alignItems: "center", gap: 4, fontSize: "0.72rem", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
+              <button onClick={() => onDelete(taskId)} style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 11px", borderRadius: 8, border: "1px solid #fecaca", background: "#fee2e2", color: "#dc2626", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
                 <FiTrash2 size={11} /> Delete
               </button>
             )}
           </div>
 
-          {isPending && !_isAdmin && (
-            <div style={{ marginTop: 8, marginLeft: 42, padding: "5px 10px", background: "#fef3c7", borderRadius: 7, border: "1px solid #fcd34d33", fontSize: "0.71rem", color: "#92400e", fontWeight: 600 }}>
+          {isLocked && (
+            <div style={{ margin: "0 16px 10px", padding: "7px 11px", background: "#fef9ec", border: "1px solid #fcd34d55", borderRadius: 8, fontSize: "0.71rem", color: "#92400e", fontWeight: 600 }}>
               🔒 Awaiting admin approval — read only.
             </div>
           )}
 
-          {/* Tab switcher */}
-          <div style={{ display: "flex", gap: 4, marginTop: 10, background: "#f3f4f6", borderRadius: 9, padding: 3 }}>
-            {[["chat", "💬 Chat"], ["details", "📋 Details"]].map(([id, label]) => (
-              <button key={id} onClick={() => setActiveTab(id)} style={{ flex: 1, padding: "5px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.77rem", fontWeight: 700, background: activeTab === id ? "#fff" : "transparent", color: activeTab === id ? "#0d9488" : "#9ca3af", boxShadow: activeTab === id ? "0 1px 4px rgba(0,0,0,.08)" : "none" }}>{label}</button>
+          {/* tabs */}
+          <div style={{ display: "flex", borderTop: "1px solid #f0f2f5" }}>
+            {[["chat", FiMessageSquare, "Chat"], ["details", FiList, "Details"]].map(([id, Icon, label]) => (
+              <button key={id} onClick={() => setActiveTab(id)} style={{ flex: 1, padding: "10px 0", border: "none", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "transparent", color: activeTab === id ? "#0d9488" : "#9ca3af", borderBottom: activeTab === id ? "2px solid #0d9488" : "2px solid transparent", transition: "all .15s" }}>
+                <Icon size={13} /> {label}
+              </button>
             ))}
           </div>
         </div>
@@ -780,43 +1256,186 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
         {/* ── Chat Tab ── */}
         {activeTab === "chat" && (
           <>
-            {task.description && (
-              <div style={{ margin: "8px 12px 0", padding: "8px 12px", background: "#ccfbf1", borderRadius: 9, borderLeft: "3px solid #0d9488", flexShrink: 0 }}>
-                <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase", marginBottom: 2, letterSpacing: "0.04em" }}>Description</div>
-                <div style={{ fontSize: "0.83rem", color: "#374151", lineHeight: 1.55 }}>{task.description}</div>
+            {/* description card */}
+            {(task.description || task.attachments?.length > 0) && (
+              <div style={{ margin: "14px 12px 0", padding: "14px 16px", background: "linear-gradient(135deg, #ecfdf5 0%, #dff7f0 100%)", border: "1px solid #6ee7b7", borderRadius: 14, flexShrink: 0, boxShadow: "0 8px 22px rgba(13,148,136,.08)" }}>
+                {task.description && (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#0d9488", boxShadow: "0 0 0 4px rgba(13,148,136,.12)" }} />
+                      <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#0F6E56", textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</div>
+                    </div>
+                    <div style={{ fontSize: "0.87rem", color: "#064e3b", lineHeight: 1.6, marginBottom: task.attachments?.length ? 12 : 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{task.description}</div>
+                  </>
+                )}
+                {task.attachments?.length > 0 && (
+                  <div style={{ marginTop: task.description ? 2 : 0 }}>
+                    {!task.description && <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#0F6E56", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Voice Note</div>}
+                    {task.attachments.map((file, i) => {
+                      const type = attachmentType(file);
+                      const url = attachmentUrl(file);
+                      const name = attachmentName(file);
+                      if (type === "audio") return <AudioPlayer key={i} src={url} variant="card" />;
+                      return <TaskAttachmentBubble key={i} file={file} />;
+                    })}
+                  </div>
+                )}
               </div>
             )}
-            <TaskFormElements task={task} values={formValues} onSubmit={onSubmit} onChange={onFormChange} readonly={isPending && !_isAdmin} />
-            <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7, background: "#f9fafb" }}>
+
+            <TaskFormElements task={task} values={formValues} onSubmit={onSubmit} onChange={onFormChange} readonly={isLocked} />
+
+            {/* messages */}
+            <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
               {(!task.responses || task.responses.length === 0) ? (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#9ca3af", padding: 28 }}>
-                  <div><div style={{ fontSize: "2rem", marginBottom: 7 }}>💬</div><div style={{ fontSize: "0.83rem" }}>No responses yet</div></div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, color: "#9ca3af", padding: 36 }}>
+                  <FiMessageSquare size={28} strokeWidth={1.5} />
+                  <span style={{ fontSize: "0.84rem" }}>No responses yet</span>
                 </div>
               ) : task.responses.map(resp => {
                 const sender = enrichUser(resp.userId);
                 const isMine = sender?.id === currentUser?.id;
+                const hasText = !!resp.message;
+                const hasAttachments = resp.attachments?.length > 0;
+                const responseId = resp._id || resp.id;
+                const showDelete = isMine && hoveredResponseId === responseId;
+                const isDeleting = deletingResponseId === responseId;
+
                 return (
-                  <div key={resp._id || resp.id} style={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start", gap: 7 }}>
-                    {!isMine && <Avatar user={sender} size={28} />}
-                    <div style={{ maxWidth: "72%" }}>
-                      {!isMine && <div style={{ fontSize: "0.69rem", color: sender?.color || "#6b7280", fontWeight: 700, marginBottom: 2 }}>{sender?.name || "Unknown"}</div>}
-                      <div style={{ padding: "7px 11px", borderRadius: isMine ? "13px 13px 2px 13px" : "13px 13px 13px 2px", background: isMine ? "#ccfbf1" : "#fff", border: isMine ? "1px solid #5eead4" : "1px solid #e5e7eb", fontSize: "0.85rem", color: "#1a2233", lineHeight: 1.5, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
-                        {resp.message && <div>{resp.message}</div>}
-                        <FormDataSummary formData={resp.formData} task={task} />
-                      </div>
-                      <div style={{ fontSize: "0.63rem", color: "#9ca3af", textAlign: isMine ? "right" : "left", marginTop: 2 }}>{fmt(resp.createdAt || resp.timestamp)}{isMine && " ✓✓"}</div>
+                  <div
+                    key={responseId}
+                    onMouseEnter={() => setHoveredResponseId(responseId)}
+                    onMouseLeave={() => setHoveredResponseId(null)}
+                    style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", gap: 2 }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 7, flexDirection: isMine ? "row-reverse" : "row" }}>
+                      <Avatar user={sender} size={27} />
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 6, flexDirection: isMine ? "row-reverse" : "row", maxWidth: "82%" }}>
+                        {!isMine && (
+                          <span style={{
+                            marginTop: 5,
+                            maxWidth: 96,
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            background: sender?.color ? `${sender.color}18` : "#eef2ff",
+                            color: sender?.color || "#4f46e5",
+                            fontSize: "0.64rem",
+                            fontWeight: 800,
+                            lineHeight: 1.2,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            flexShrink: 0,
+                          }}>{sender?.name || "Unknown"}</span>
+                        )}
+                        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 4, maxWidth: "100%", alignItems: isMine ? "flex-end" : "flex-start", paddingTop: isMine ? 4 : 0 }}>
+                        {hasText && (
+                          <div style={{
+                            padding: "8px 13px",
+                            borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                            background: isMine ? "#ccfbf1" : "#fff",
+                            border: isMine ? "1px solid #9FE1CB" : "1px solid #e5e7eb",
+                            fontSize: "0.86rem", color: isMine ? "#085041" : "#1a2233",
+                            lineHeight: 1.45,
+                          }}>
+                            {resp.message}
+                          </div>
+                        )}
+                        {hasAttachments && resp.attachments.map((file, idx) => {
+                          const type = attachmentType(file);
+                          const url = attachmentUrl(file);
+                          const name = attachmentName(file);
+                          if (type === "audio") return <AudioPlayer key={idx} src={url} isMine={isMine} />;
+                          return <TaskAttachmentBubble key={idx} file={file} isMine={isMine} />;
+                        })}
+                        {resp.formData && <FormDataSummary formData={resp.formData} task={task} />}
+                        <div style={{ fontSize: "0.63rem", color: "#9ca3af", display: "flex", alignItems: "center", gap: 3, paddingLeft: isMine ? 0 : 2, paddingRight: isMine ? 2 : 0 }}>
+                          {fmt(resp.createdAt || resp.timestamp)}
+                          {isMine && <span style={{ color: "#0d9488", fontSize: "0.72rem" }}>✓✓</span>}
+                        </div>
+                          {isMine && (
+                            <button
+                              type="button"
+                              title="Delete message"
+                              onClick={() => handleDeleteResponse(responseId)}
+                              disabled={isDeleting}
+                              style={{
+                                position: "absolute",
+                                top: -7,
+                                right: -9,
+                                width: 26,
+                                height: 26,
+                                borderRadius: "50%",
+                                border: "1px solid #fecaca",
+                                background: "#fff",
+                                color: "#ef4444",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: isDeleting ? "not-allowed" : "pointer",
+                                opacity: showDelete || isDeleting ? 1 : 0,
+                                transform: showDelete || isDeleting ? "scale(1)" : "scale(.92)",
+                                transition: "opacity .16s ease, transform .16s ease, background .16s ease",
+                                boxShadow: "0 4px 12px rgba(239,68,68,.16)",
+                                zIndex: 2,
+                                pointerEvents: showDelete || isDeleting ? "auto" : "none",
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "#fff"; }}
+                            >
+                              <FiTrash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                     </div>
-                    {isMine && <Avatar user={currentUser} size={28} />}
+                  </div>
                   </div>
                 );
               })}
             </div>
-            <div style={{ padding: "9px 11px", borderTop: "1px solid #e5e7eb", background: "#fff", display: "flex", gap: 7, alignItems: "center", flexShrink: 0 }}>
-              <input value={responseInput} onChange={e => setResponseInput(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.shiftKey && !isPending && onSubmit()}
-                placeholder={isPending && !_isAdmin ? "Task pending approval — chat locked" : "Write a response…"}
-                disabled={isPending && !_isAdmin}
-                style={{ flex: 1, height: 38, borderRadius: 20, border: "1.5px solid #e5e7eb", padding: "0 13px", fontSize: "0.87rem", outline: "none", color: "#1a2233", background: isPending && !_isAdmin ? "#f9fafb" : "#fff" }} />
-              <button onClick={onSubmit} disabled={saving || (isPending && !_isAdmin)} style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: saving || (isPending && !_isAdmin) ? "#a7f3d0" : "#0d9488", color: "#fff", cursor: saving || (isPending && !_isAdmin) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+
+            {/* input bar */}
+            <div style={{ padding: "10px 12px", borderTop: "1px solid #f0f2f5", background: "#fff", display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+              <input ref={responseFileInputRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip" hidden onChange={handleResponseFilePick} />
+
+              {/* attach */}
+              <button onClick={() => responseFileInputRef.current?.click()} disabled={saving || uploadingResponseFile || isLocked} title="Attach file"
+                style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid #e5e7eb", background: "#f8fafc", color: "#6b7280", cursor: saving || uploadingResponseFile || isLocked ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <FiPaperclip size={15} />
+              </button>
+
+              {/* mic / recording */}
+              <button
+                onClick={isRecordingResponseAudio ? stopResponseAudioRecording : startResponseAudioRecording}
+                disabled={saving || uploadingResponseFile || isLocked}
+                title={isRecordingResponseAudio ? "Stop recording" : "Record audio"}
+                style={{
+                  minWidth: isRecordingResponseAudio ? 78 : 36, height: 36,
+                  borderRadius: 999,
+                  border: isRecordingResponseAudio ? "1px solid #fecaca" : "1px solid #e5e7eb",
+                  background: isRecordingResponseAudio ? "#fee2e2" : "#f8fafc",
+                  color: isRecordingResponseAudio ? "#dc2626" : "#6b7280",
+                  cursor: saving || uploadingResponseFile || isLocked ? "not-allowed" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                  flexShrink: 0, fontSize: "0.72rem", fontWeight: 700,
+                }}>
+                <FiMic size={15} />
+                {isRecordingResponseAudio && formatDuration(responseRecordingSeconds)}
+              </button>
+
+              {/* text input */}
+              <input
+                value={responseInput}
+                onChange={e => setResponseInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && !isLocked && onSubmit()}
+                placeholder={isLocked ? "Awaiting approval…" : "Write a response…"}
+                disabled={isLocked || isRecordingResponseAudio}
+                style={{ flex: 1, height: 38, borderRadius: 999, border: "1px solid #e5e7eb", padding: "0 14px", fontSize: "0.86rem", outline: "none", color: "#1a2233", background: isLocked ? "#f9fafb" : "#fff" }}
+              />
+
+              {/* send */}
+              <button onClick={() => onSubmit()} disabled={saving || uploadingResponseFile || isRecordingResponseAudio || isLocked}
+                style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: saving || uploadingResponseFile || isRecordingResponseAudio || isLocked ? "#a7f3d0" : "#0d9488", color: "#fff", cursor: saving || uploadingResponseFile || isRecordingResponseAudio || isLocked ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <FiSend size={14} />
               </button>
             </div>
@@ -825,90 +1444,81 @@ function ChatDrawer({ task, currentUser, allTasks, allUsers, onClose, onStatusCh
 
         {/* ── Details Tab ── */}
         {activeTab === "details" && (
-          <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ background: "#f9fafb", borderRadius: 11, padding: 14, border: "1px solid #e5e7eb" }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", marginBottom: 10 }}>👥 Assigned To</div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -6, marginBottom: 8 }}>
-                <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0d9488", whiteSpace: "nowrap" }}>{selectedTaskDone}/{assignees.length} completed</div>
-              </div>
-              <div style={{ padding: "10px 12px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 9, marginBottom: 10 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* assignees card */}
+            <div style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid #f0f2f5" }}>
+              <div style={{ fontSize: "0.67rem", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>Assigned To</div>
+              {/* progress */}
+              <div style={{ padding: "10px 12px", background: "#f9fafb", border: "1px solid #f0f2f5", borderRadius: 9, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#374151" }}>This task progress</span>
-                  <span style={{ fontSize: "0.76rem", fontWeight: 800, color: selectedTaskRate >= 70 ? "#10b981" : selectedTaskRate >= 40 ? "#f59e0b" : "#ef4444" }}>{selectedTaskRate}%</span>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#374151" }}>Task progress</span>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: selectedTaskRate >= 70 ? "#10b981" : selectedTaskRate >= 40 ? "#f59e0b" : "#ef4444" }}>{selectedTaskDone}/{assignees.length} · {selectedTaskRate}%</span>
                 </div>
-                <div style={{ height: 7, background: "#e5e7eb", borderRadius: 999, overflow: "hidden" }}>
+                <div style={{ height: 6, background: "#e5e7eb", borderRadius: 999, overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${selectedTaskRate}%`, background: selectedTaskRate >= 70 ? "#10b981" : selectedTaskRate >= 40 ? "#f59e0b" : "#ef4444", borderRadius: 999 }} />
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 2 }}>
-                {[
-                  ["all", "All", assignees.length],
-                  ["completed", "Completed", assigneeStatusCounts.completed || 0],
-                  ["pending", "Pending", assigneeStatusCounts.pending || 0],
-                  ["in_progress", "In Progress", assigneeStatusCounts.in_progress || 0],
-                  ["cancelled", "Cancelled", assigneeStatusCounts.cancelled || 0],
-                ].map(([id, label, count]) => {
+              {/* filter tabs */}
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
+                {[["all","All"], ["completed","Done"], ["pending","Pending"], ["in_progress","Active"], ["cancelled","Cancelled"]].map(([id, label]) => {
                   const active = taskAssigneeFilter === id;
+                  const count = id === "all" ? assignees.length : (assigneeStatusCounts[id] || 0);
                   const cfg = STATUS[id] || { color: "#0d9488", bg: "#ccfbf1" };
                   return (
                     <button key={id} onClick={() => setTaskAssigneeFilterState({ taskId, value: id })}
-                      style={{ border: `1.5px solid ${active ? cfg.color : "#e5e7eb"}`, background: active ? cfg.bg : "#fff", color: active ? cfg.color : "#6b7280", borderRadius: 999, padding: "5px 10px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      style={{ border: `1px solid ${active ? cfg.color : "#e5e7eb"}`, background: active ? cfg.bg : "#fff", color: active ? cfg.color : "#6b7280", borderRadius: 999, padding: "4px 10px", fontSize: "0.71rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                       {label} ({count})
                     </button>
                   );
                 })}
               </div>
-              {assignees.length === 0 ? <div style={{ fontSize: "0.83rem", color: "#9ca3af" }}>No users assigned</div> : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {visibleAssignees.length === 0 ? <div style={{ fontSize: "0.83rem", color: "#9ca3af", textAlign: "center", padding: "18px 8px" }}>No assignees in this status</div> : visibleAssignees.map(u => {
+              {/* assignee list */}
+              {assignees.length === 0 ? (
+                <div style={{ fontSize: "0.83rem", color: "#9ca3af", textAlign: "center", padding: 16 }}>No users assigned</div>
+              ) : visibleAssignees.length === 0 ? (
+                <div style={{ fontSize: "0.83rem", color: "#9ca3af", textAlign: "center", padding: 16 }}>No assignees in this status</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {visibleAssignees.map(u => {
                     const userTaskStatus = getAssigneeTaskStatus(u.id);
-                    const statusCfg = STATUS[userTaskStatus] || STATUS.pending;
-                    const taskDone = userTaskStatus === "completed";
-                    const taskRate = taskDone ? 100 : 0;
                     return (
-                      <div key={u.id} onClick={() => setViewingUser(u)}
-                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1.5px solid #e5e7eb", cursor: "pointer", background: "#fff" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#ccfbf1"; e.currentTarget.style.borderColor = "#5eead4"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+                      <div key={u.id} onClick={() => openUserDetailPage(u.id)}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 10, border: "1px solid #f0f2f5", cursor: "pointer", background: "#fff" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "#f0fdf9"; e.currentTarget.style.borderColor = "#a7f3d0"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#f0f2f5"; }}>
                         <Avatar user={u} size={34} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "space-between" }}>
-                            <div style={{ fontSize: "0.86rem", fontWeight: 700, color: "#1a2233", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
-                            <span style={{ fontSize: "0.64rem", fontWeight: 800, color: statusCfg.color, background: statusCfg.bg, padding: "2px 7px", borderRadius: 999, flexShrink: 0 }}>{statusCfg.label}</span>
-                          </div>
+                          <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#1a2233", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
                           <div style={{ fontSize: "0.7rem", color: "#9ca3af", textTransform: "capitalize" }}>{u.role}</div>
-                          <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 7 }}>
-                            <div style={{ flex: 1, height: 4, background: "#e5e7eb", borderRadius: 999, overflow: "hidden" }}>
-                              <div style={{ height: "100%", width: `${taskRate}%`, background: "#10b981", borderRadius: 999 }} />
-                            </div>
-                            <span style={{ fontSize: "0.67rem", fontWeight: 700, color: taskDone ? "#10b981" : "#6b7280" }}>{taskDone ? "1/1" : "0/1"}</span>
-                          </div>
                         </div>
-                        <FiChevronRight size={15} color="#9ca3af" />
+                        <UserStatusTrail status={userTaskStatus} />
+                        <FiChevronRight size={14} color="#d1d5db" />
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
-            {[
-              task.createdBy && { icon: "👤", label: "Created By", val: enrichUser(task.createdBy)?.name },
-              task.approvalStatus && { icon: "🛡", label: "Approval", val: task.approvalStatus === "pending" ? "⏳ Pending" : task.approvalStatus === "approved" ? "✅ Approved" : "❌ Rejected" },
-              { icon: "📅", label: "Due Date", val: fmtDate(task.dueDate) },
-              task.reminder && { icon: "⏰", label: "Reminder", val: new Date(task.reminder).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
-              { icon: "🕐", label: "Created", val: new Date(task.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
-              { icon: "💬", label: "Responses", val: task.responses?.length || 0 },
-            ].filter(Boolean).map(({ icon, label, val }) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 13px", background: "#f9fafb", borderRadius: 9, border: "1px solid #e5e7eb" }}>
-                <span style={{ fontSize: "0.79rem", color: "#6b7280", fontWeight: 600 }}>{icon} {label}</span>
-                <span style={{ fontSize: "0.81rem", color: "#1a2233", fontWeight: 700 }}>{val}</span>
-              </div>
-            ))}
+
+            {/* meta info */}
+            <div style={{ background: "#fff", borderRadius: 12, padding: "4px 6px", border: "1px solid #f0f2f5" }}>
+              {[
+                task.createdBy && { icon: <FiUser size={13} />, label: "Created by", val: enrichUser(task.createdBy)?.name },
+                task.approvalStatus && { icon: <FiShield size={13} />, label: "Approval", val: task.approvalStatus === "pending" ? "⏳ Pending" : task.approvalStatus === "approved" ? "✅ Approved" : "❌ Rejected" },
+                { icon: <FiCalendar size={13} />, label: "Due date", val: fmtDate(task.dueDate) },
+                task.reminder && { icon: <FiBell size={13} />, label: "Reminder", val: new Date(task.reminder).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
+                { icon: <FiClock size={13} />, label: "Created", val: new Date(task.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
+                { icon: <FiMessageSquare size={13} />, label: "Responses", val: task.responses?.length || 0 },
+              ].filter(Boolean).map(({ icon, label, val }) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 8px", borderBottom: "1px solid #f9fafb" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: "0.78rem", color: "#6b7280", fontWeight: 500 }}>{icon} {label}</span>
+                  <span style={{ fontSize: "0.8rem", color: "#1a2233", fontWeight: 600 }}>{val}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
-
-      {viewingUser && <UserDetailModal user={viewingUser} allTasks={allTasks} currentUser={currentUser} userTaskStatuses={userTaskStatuses} onClose={() => setViewingUser(null)} />}
     </>
   );
 }
@@ -962,6 +1572,42 @@ const [statusFilter, setStatusFilter] = useState("all");
   }, [currentUser]);
 
   useEffect(() => { API.get("/users").then(res => { if (res.data.success) setUsers(res.data.data.map(enrichUser)); }).catch(() => { }); }, []);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const socket = getSocket();
+    const join = () => socket.emit("joinUserIdRoom", currentUser.id);
+    if (socket.connected) join();
+    else socket.once("connect", join);
+    if (!socket.connected) socket.connect();
+
+    const upsertTask = (task) => {
+      if (!task) return;
+      const taskId = task._id || task.id;
+      setTasks(prev => {
+        const exists = prev.some(t => (t._id || t.id) === taskId);
+        return exists ? prev.map(t => ((t._id || t.id) === taskId ? task : t)) : [task, ...prev];
+      });
+      setSelectedTask(prev => ((prev?._id || prev?.id) === taskId ? task : prev));
+    };
+    const removeTask = ({ taskId }) => {
+      setTasks(prev => prev.filter(t => (t._id || t.id) !== taskId));
+      setSelectedTask(prev => ((prev?._id || prev?.id) === taskId ? null : prev));
+    };
+
+    socket.on("newTask", upsertTask);
+    socket.on("taskUpdated", upsertTask);
+    socket.on("taskResponse", upsertTask);
+    socket.on("taskDeleted", removeTask);
+
+    return () => {
+      socket.off("connect", join);
+      socket.off("newTask", upsertTask);
+      socket.off("taskUpdated", upsertTask);
+      socket.off("taskResponse", upsertTask);
+      socket.off("taskDeleted", removeTask);
+    };
+  }, [currentUser?.id]);
 
   // -- dispatch events for layout --
   useEffect(() => { if (selectedTask) window.dispatchEvent(new CustomEvent("detailViewOpen")); else window.dispatchEvent(new CustomEvent("detailViewClose")); }, [selectedTask]);
@@ -1052,20 +1698,40 @@ const [statusFilter, setStatusFilter] = useState("all");
 
   const selectedTaskLive = useMemo(() => tasks.find(t => (t._id || t.id) === (selectedTask?._id || selectedTask?.id)) || selectedTask, [tasks, selectedTask]);
 
-  const handleResponse = useCallback(async () => {
+  const handleResponse = useCallback(async (attachments = []) => {
     const taskId = selectedTaskLive?._id || selectedTaskLive?.id;
     if (!taskId) return;
+    const safeAttachments = Array.isArray(attachments) ? attachments : [];
     const hasText = responseInput.trim().length > 0;
     const hasForm = formValues.quickReplySelected || Object.values(formValues.inputFields).some(Boolean) || Object.values(formValues.dropdownSelections).some(Boolean) || Object.values(formValues.checkboxSelections).some(arr => arr.length > 0);
-    if (!hasText && !hasForm) return;
+    const hasAttachments = safeAttachments.length > 0;
+    if (!hasText && !hasForm && !hasAttachments) return;
     const formData = { inputFields: Object.entries(formValues.inputFields).map(([id, value]) => ({ id, value })), dropdownSelections: Object.entries(formValues.dropdownSelections).map(([id, selected]) => ({ id, selected })), quickReplySelected: formValues.quickReplySelected, checkboxSelections: Object.entries(formValues.checkboxSelections).map(([id, selected]) => ({ id, selected })) };
     setSaving(true);
     try {
-      const res = await API.post(`/tasks/${taskId}/response`, { message: responseInput.trim(), formData });
-      if (res.data.success) { setTasks(p => p.map(t => ((t._id || t.id) === taskId ? res.data.data : t))); setSelectedTask(res.data.data); setResponseInput(""); setFormValues({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} }); }
-    } catch { setError("Failed to send response"); }
-    setSaving(false);
+      setError("");
+      const res = await API.post(`/tasks/${taskId}/response`, { message: responseInput.trim(), formData, attachments: safeAttachments });
+      if (res.data?.success && res.data?.data) { setTasks(p => p.map(t => ((t._id || t.id) === taskId ? res.data.data : t))); setSelectedTask(res.data.data); setResponseInput(""); setFormValues({ inputFields: {}, dropdownSelections: {}, quickReplySelected: "", checkboxSelections: {} }); }
+      else setError(res.data?.error || res.data?.message || "Failed to send response");
+    } catch (err) {
+      setError(err.response?.data?.error || err.response?.data?.message || "Failed to send response");
+    } finally {
+      setSaving(false);
+    }
   }, [responseInput, formValues, selectedTaskLive]);
+
+  const handleDeleteResponse = useCallback(async (taskId, responseId) => {
+    if (!taskId || !responseId) return;
+    try {
+      const res = await API.delete(`/tasks/${taskId}/response/${responseId}`);
+      if (res.data.success) {
+        setTasks(p => p.map(t => ((t._id || t.id) === taskId ? res.data.data : t)));
+        if ((selectedTask?._id || selectedTask?.id) === taskId) setSelectedTask(res.data.data);
+      }
+    } catch {
+      setError("Failed to delete message");
+    }
+  }, [selectedTask]);
 
   const handleReadNotif = useCallback(async (id) => {
     if (id === "all") { await API.patch("/tasks/notifications/read-all"); setNotifications(p => p.map(n => ({ ...n, read: true }))); }
@@ -1724,9 +2390,9 @@ color: tab === id ? "#fff" : "#9ca3af",
                                         type="button"
                                         title="Edit task"
                                         onClick={() => setEditingTask(task)}
-                                        style={{ width: 30, height: 30, borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#eff6ff", color: "#2563eb", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                        style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#3b82f6", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                                       >
-                                        <FiEdit2 size={14} />
+                                        <FiEdit2 size={13} />
                                       </button>
                                     )}
                                     {_isAdmin && (
@@ -1734,9 +2400,9 @@ color: tab === id ? "#fff" : "#9ca3af",
                                         type="button"
                                         title="Delete task"
                                         onClick={() => handleDelete(task._id || task.id)}
-                                        style={{ width: 30, height: 30, borderRadius: 8, border: "1.5px solid #fecaca", background: "#fee2e2", color: "#ef4444", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                        style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #fee2e2", background: "#fff", color: "#dc2626", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                                       >
-                                        <FiTrash2 size={14} />
+                                        <FiTrash2 size={13} />
                                       </button>
                                     )}
                                   </div>
@@ -1784,13 +2450,13 @@ color: tab === id ? "#fff" : "#9ca3af",
                         {(_isAdmin || _isManager) && (canEditTask || _isAdmin) && (
                           <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 8 }}>
                             {canEditTask && (
-                              <button type="button" onClick={() => setEditingTask(task)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#eff6ff", color: "#2563eb", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                                <FiEdit2 size={13} /> Edit
+                              <button type="button" title="Edit task" onClick={() => setEditingTask(task)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#3b82f6", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <FiEdit2 size={13} />
                               </button>
                             )}
                             {_isAdmin && (
-                              <button type="button" onClick={() => handleDelete(task._id || task.id)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1.5px solid #fecaca", background: "#fee2e2", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                                <FiTrash2 size={13} /> Delete
+                              <button type="button" title="Delete task" onClick={() => handleDelete(task._id || task.id)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #fee2e2", background: "#fff", color: "#dc2626", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <FiTrash2 size={13} />
                               </button>
                             )}
                           </div>
@@ -1807,7 +2473,7 @@ color: tab === id ? "#fff" : "#9ca3af",
         </div>
       </div>
 
-      {selectedTaskLive && <ChatDrawer task={selectedTaskLive} currentUser={currentUser} allTasks={tasks} allUsers={users} onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} saving={saving} responseInput={responseInput} setResponseInput={setResponseInput} formValues={formValues} onFormChange={handleFormChange} onSubmit={handleResponse} userTaskStatuses={userTaskStatuses} />}
+      {selectedTaskLive && <ChatDrawer task={selectedTaskLive} currentUser={currentUser} onClose={() => setSelectedTask(null)} onStatusChange={handleStatusChange} onDelete={handleDelete} onDeleteResponse={handleDeleteResponse} saving={saving} responseInput={responseInput} setResponseInput={setResponseInput} formValues={formValues} onFormChange={handleFormChange} onSubmit={handleResponse} userTaskStatuses={userTaskStatuses} />}
       {showCreate && <CreateTaskModal currentUser={currentUser} users={users} onClose={() => setShowCreate(false)} onCreate={handleCreate} />}
       {editingTask && <CreateTaskModal currentUser={currentUser} users={users} task={editingTask} onClose={() => setEditingTask(null)} onCreate={handleCreate} onUpdate={handleUpdate} />}
       {showApprovals && <ApprovalPanel tasks={tasks} users={users} onApprove={handleApprove} onReject={handleReject} onClose={() => setShowApprovals(false)} />}
