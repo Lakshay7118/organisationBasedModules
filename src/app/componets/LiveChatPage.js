@@ -158,11 +158,16 @@ const CALL_ERROR_MESSAGES = {
 
 const CALL_LOG_TEXT_RE = /^(voice call|video call|missed voice call|missed video call|cancelled voice call|cancelled video call|call declined|voice call declined|video call declined|call busy|call failed)\b/i;
 
-const isCallLogMessage = (source = {}) =>
-  source.messageType === "call" ||
-  Boolean(source.callStatus) ||
-  Boolean(source.callType) ||
-  (typeof source.text === "string" && CALL_LOG_TEXT_RE.test(source.text.trim()));
+const isCallLogMessage = (source = {}) => {
+  const message = source || {};
+
+  return (
+    message.messageType === "call" ||
+    Boolean(message.callStatus) ||
+    Boolean(message.callType) ||
+    (typeof message.text === "string" && CALL_LOG_TEXT_RE.test(message.text.trim()))
+  );
+};
 
 /* ─────────────────────────────────────────────
   Skeleton components (unchanged)
