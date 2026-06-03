@@ -682,8 +682,8 @@ function EditTemplateModalV2({ templateId, onClose, onUpdate, isSuperAdmin }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 24, width: 960, maxWidth: "96vw", maxHeight: "92vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(15,23,42,0.22)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
-        <div style={{ padding: "20px 24px 0", borderBottom: "1px solid #f1f5f9", background: "linear-gradient(180deg,#f8fafc 0%,#fff 100%)" }}>
+      <div className="template-edit-modal" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 24, width: 960, maxWidth: "96vw", maxHeight: "92vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(15,23,42,0.22)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
+        <div className="template-edit-header" style={{ padding: "20px 24px 0", borderBottom: "1px solid #f1f5f9", background: "linear-gradient(180deg,#f8fafc 0%,#fff 100%)" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
             <div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(15,95,100,0.08)", color: "#0f5f64", borderRadius: 999, padding: "4px 12px", fontSize: 11, fontWeight: 800, marginBottom: 7 }}>
@@ -708,7 +708,7 @@ function EditTemplateModalV2({ templateId, onClose, onUpdate, isSuperAdmin }) {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: 24, background: "#fbfdff" }}>
+        <div className="template-edit-body" style={{ flex: 1, overflowY: "auto", padding: 24, background: "#fbfdff" }}>
           {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: 12, marginBottom: 18, fontSize: 13, color: "#dc2626", fontWeight: 700 }}>{error}</div>}
 
           {activeSection === "basics" && (
@@ -780,8 +780,8 @@ function EditTemplateModalV2({ templateId, onClose, onUpdate, isSuperAdmin }) {
 
           {activeSection === "preview" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 18 }}>
-              <div style={{ ...sectionBox, background: "#eef5f1" }}>
-                <div style={{ maxWidth: 430, margin: "0 auto", background: "#fff", borderRadius: 18, border: "1px solid #dbe3eb", padding: 14, boxShadow: "0 10px 30px rgba(15,23,42,0.08)" }}>
+              <div className="template-edit-preview-frame" style={{ ...sectionBox, background: "#eef5f1" }}>
+                <div className="template-edit-preview-phone" style={{ maxWidth: 430, margin: "0 auto", background: "#fff", borderRadius: 18, border: "1px solid #dbe3eb", padding: 14, boxShadow: "0 10px 30px rgba(15,23,42,0.08)" }}>
                   {form.category === "Marketing" && form.mediaType === "Image" && imageFile?.url && <img src={imageFile.url} alt="Template preview" style={{ width: "100%", maxHeight: 210, objectFit: "cover", borderRadius: 12, marginBottom: 10 }} />}
                   {form.category === "Marketing" && form.mediaType === "Video" && videoFile?.url && <video src={videoFile.url} controls style={{ width: "100%", maxHeight: 210, borderRadius: 12, marginBottom: 10, background: "#000" }} />}
                   {form.category === "Marketing" && form.mediaType === "Carousel" && currentCarouselItem && <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", marginBottom: 10 }}>{currentCarouselItem.mediaUrl ? (currentCarouselItem.mediaType === "video" ? <video src={currentCarouselItem.mediaUrl} controls style={{ width: "100%", height: 180, objectFit: "cover", background: "#000" }} /> : <img src={currentCarouselItem.mediaUrl} alt={currentCarouselItem.title || "Carousel card"} style={{ width: "100%", height: 180, objectFit: "cover" }} />) : <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", color: "#94a3b8", fontSize: 12, fontWeight: 800 }}>No media</div>}<div style={{ padding: 10 }}><div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>{currentCarouselItem.title || "Card title"}</div><div style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginTop: 3 }}>{currentCarouselItem.description || "Card description"}</div>{currentCarouselItem.button && <button type="button" style={{ ...secondaryButton, minHeight: 34, marginTop: 8 }}>{currentCarouselItem.button}</button>}</div>{carouselItems.length > 1 && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 10px 10px" }}><button type="button" style={iconButton} onClick={() => setActiveCarouselIndex((prev) => prev === 0 ? carouselItems.length - 1 : prev - 1)}><ChevronLeft size={15} /></button><span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>{activeCarouselIndex + 1} / {carouselItems.length}</span><button type="button" style={iconButton} onClick={() => setActiveCarouselIndex((prev) => prev === carouselItems.length - 1 ? 0 : prev + 1)}><ChevronRight size={15} /></button></div>}</div>}
@@ -793,13 +793,13 @@ function EditTemplateModalV2({ templateId, onClose, onUpdate, isSuperAdmin }) {
                   {visiblePreviewButtons.length > 0 && <div style={{ display: "grid", gap: 8, marginTop: 12 }}>{visiblePreviewButtons.map((item, index) => <button key={`${item.id}-${index}`} type="button" style={secondaryButton}>{item.type === "Phone Number" ? "Call" : item.type === "URL" ? "Open" : item.type === "Copy Code" ? "Copy" : "Reply"} / {item.title}</button>)}</div>}
                 </div>
               </div>
-              <div style={{ ...sectionBox, display: "grid", gap: 12, alignSelf: "start" }}>{[["Name", form.name || "-"], ["Type", form.type || "-"], ["Media", form.category === "Marketing" ? form.mediaType : "Not allowed"], ["Actions", form.actionType], ["Variables", String(Object.keys(variableValues).length)], ["Carousel Cards", String(carouselItems.length)]].map(([label, value]) => <div key={label}><div style={{ color: "#94a3b8", fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>{label}</div><div style={{ color: "#0f172a", fontSize: 13, fontWeight: 800, wordBreak: "break-word" }}>{value}</div></div>)}</div>
+              <div className="template-edit-summary-panel" style={{ ...sectionBox, display: "grid", gap: 12, alignSelf: "start" }}>{[["Name", form.name || "-"], ["Type", form.type || "-"], ["Media", form.category === "Marketing" ? form.mediaType : "Not allowed"], ["Actions", form.actionType], ["Variables", String(Object.keys(variableValues).length)], ["Carousel Cards", String(carouselItems.length)]].map(([label, value]) => <div key={label}><div style={{ color: "#94a3b8", fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>{label}</div><div style={{ color: "#0f172a", fontSize: 13, fontWeight: 800, wordBreak: "break-word" }}>{value}</div></div>)}</div>
             </div>
           )}
         </div>
 
-        <div style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 12, background: "#fff" }}>
-          <button type="button" onClick={onClose} style={secondaryButton}>Cancel</button>
+        <div className="template-edit-footer" style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 12, background: "#fff" }}>
+          <button className="template-edit-secondary-btn" type="button" onClick={onClose} style={secondaryButton}>Cancel</button>
           <button type="button" onClick={handleSubmit} disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.75 : 1, cursor: saving ? "not-allowed" : "pointer" }}>
             <Save size={16} /> {saving ? "Saving..." : "Save Changes"}
           </button>
@@ -1301,6 +1301,74 @@ export default function TemplatesPage() {
         }
         .view-detail-btn { width:100%; margin-top:10px; padding:8px; border-radius:12px; border:1px solid #e2e8f0; background:#f8fafc; color:#0d5b63; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.2s; }
         .view-detail-btn:hover { background:#e0f7f5; border-color:#0d5b63; }
+        body[data-theme="dark"] .template-edit-modal {
+          background: #111b21 !important;
+          color: #e9edef !important;
+          box-shadow: 0 32px 80px rgba(0,0,0,0.42) !important;
+        }
+        body[data-theme="dark"] .template-edit-header {
+          background: linear-gradient(180deg, #1f2c34 0%, #111b21 100%) !important;
+          border-bottom-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .template-edit-body {
+          background: #0b141a !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .template-edit-footer {
+          background: #1f2c34 !important;
+          border-top-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .template-edit-modal h3,
+        body[data-theme="dark"] .template-edit-modal label,
+        body[data-theme="dark"] .template-edit-modal strong,
+        body[data-theme="dark"] .template-edit-modal [style*="color: #0f172a"],
+        body[data-theme="dark"] .template-edit-modal [style*="color: #111827"],
+        body[data-theme="dark"] .template-edit-modal [style*="color: #334155"] {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .template-edit-modal [style*="color: #64748b"],
+        body[data-theme="dark"] .template-edit-modal [style*="color: #94a3b8"] {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .template-edit-modal :is(input, select, textarea) {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .template-edit-modal :is(input, textarea)::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .template-edit-modal [style*="background: #fff"],
+        body[data-theme="dark"] .template-edit-modal [style*="background: #fbfdff"] {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .template-edit-modal [style*="background: #f8fafc"],
+        body[data-theme="dark"] .template-edit-modal [style*="background: #fbfdff"],
+        body[data-theme="dark"] .template-edit-modal [style*="background: #eef5f1"] {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .template-edit-preview-frame {
+          background: rgba(0,168,132,0.1) !important;
+          border-color: rgba(0,168,132,0.28) !important;
+        }
+        body[data-theme="dark"] .template-edit-preview-phone,
+        body[data-theme="dark"] .template-edit-summary-panel {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+          box-shadow: 0 16px 34px rgba(0,0,0,0.22) !important;
+        }
+        body[data-theme="dark"] .template-edit-preview-phone [style*="border-top"] {
+          border-top-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .template-edit-secondary-btn {
+          background: #111b21 !important;
+          border-color: #33444c !important;
+          color: #e9edef !important;
+        }
         body[data-theme="dark"] .campaigns-page-shell {
           background: #0b141a !important;
           color: #e9edef;

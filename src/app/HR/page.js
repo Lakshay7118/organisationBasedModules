@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   CreditCard,
   Download,
   DollarSign,
@@ -2971,7 +2970,7 @@ export default function HRPage() {
       )}
 
       {loading ? (
-        <div className="hr-loading-screen"><Clock3 size={28} /> Loading HR system…</div>
+        <HRPageSkeleton />
       ) : (
         <>
           {/* Top tab bar */}
@@ -3010,6 +3009,92 @@ function pillBg(tone) {
 }
 function pillFg(tone) {
   return { green: "#166534", rose: "#be123c", amber: "#92400e", blue: "#1d4ed8", violet: "#6d28d9", slate: "#475569" }[tone] || "#475569";
+}
+
+function SkeletonBlock({ className = "", style = {} }) {
+  return <span className={`hr-skeleton ${className}`} style={style} />;
+}
+
+function HRPageSkeleton() {
+  return (
+    <div className="hr-skeleton-page" role="status" aria-live="polite" aria-label="Loading HR system">
+      <div className="hr-nav-tabs hr-skeleton-tabs" aria-hidden="true">
+        {HR_MAIN_TABS.map((tab, index) => (
+          <div key={tab.id} className={`hr-nav-tab hr-skeleton-tab ${index === 0 ? "active" : ""}`}>
+            <SkeletonBlock className="hr-skeleton-icon" />
+            <SkeletonBlock style={{ width: index === 1 ? 108 : 78, height: 12 }} />
+          </div>
+        ))}
+      </div>
+
+      <section className="hr-main-section hr-skeleton-section" aria-hidden="true">
+        <div className="hr-section-topbar">
+          <div>
+            <SkeletonBlock style={{ width: 210, height: 22, marginBottom: 8 }} />
+            <SkeletonBlock style={{ width: 165, height: 12 }} />
+          </div>
+          <div className="hr-topbar-actions">
+            <SkeletonBlock style={{ width: 116, height: 36, borderRadius: 8 }} />
+            <SkeletonBlock style={{ width: 132, height: 36, borderRadius: 8 }} />
+          </div>
+        </div>
+
+        <div className="hr-date-bar">
+          <div>
+            <SkeletonBlock style={{ width: 150, height: 18, marginBottom: 7 }} />
+            <SkeletonBlock style={{ width: 112, height: 12 }} />
+          </div>
+          <div className="hr-date-nav-row">
+            <SkeletonBlock style={{ width: 36, height: 36, borderRadius: 8 }} />
+            <SkeletonBlock style={{ width: 142, height: 36, borderRadius: 8 }} />
+            <SkeletonBlock style={{ width: 36, height: 36, borderRadius: 8 }} />
+          </div>
+        </div>
+
+        <div className="hr-summary-strip">
+          {[0, 1, 2, 3, 4].map((item) => (
+            <div key={item} className="hr-summary-cell">
+              <SkeletonBlock style={{ width: 74, height: 12, marginBottom: 8 }} />
+              <SkeletonBlock style={{ width: 42, height: 22 }} />
+            </div>
+          ))}
+        </div>
+
+        <div className="hr-att-table-wrap">
+          <table className="hr-att-table hr-skeleton-table">
+            <thead>
+              <tr>
+                <th><SkeletonBlock style={{ width: 72, height: 10 }} /></th>
+                <th><SkeletonBlock style={{ width: 64, height: 10 }} /></th>
+                <th><SkeletonBlock style={{ width: 82, height: 10 }} /></th>
+                <th><SkeletonBlock style={{ width: 70, height: 10 }} /></th>
+                <th><SkeletonBlock style={{ width: 92, height: 10 }} /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[0, 1, 2, 3, 4, 5].map((row) => (
+                <tr key={row}>
+                  <td>
+                    <div className="hr-skeleton-staff">
+                      <SkeletonBlock className="hr-skeleton-avatar" />
+                      <div>
+                        <SkeletonBlock style={{ width: row % 2 ? 132 : 164, height: 14, marginBottom: 7 }} />
+                        <SkeletonBlock style={{ width: 92, height: 10 }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td><SkeletonBlock style={{ width: 86, height: 14 }} /></td>
+                  <td><SkeletonBlock style={{ width: 118, height: 30, borderRadius: 7 }} /></td>
+                  <td><SkeletonBlock style={{ width: 72, height: 14 }} /></td>
+                  <td><SkeletonBlock style={{ width: 140, height: 14 }} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 // Compact P / A buttons with ⋮ dropdown (screenshot 1 style)
@@ -3114,15 +3199,349 @@ const hrStyles = `
     color: var(--app-text);
     background: transparent;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --hr-primary: #4f46e5;
-    --hr-primary-dark: #3730a3;
+    --hr-primary: #0d9488;
+    --hr-primary-dark: #0b6f68;
+    --hr-primary-soft: rgba(13,148,136,0.1);
+    --hr-primary-border: rgba(13,148,136,0.28);
     --hr-green: #0f766e;
     --hr-line: #e2e8f0;
     --hr-muted: #64748b;
     --hr-bg: var(--card-bg, #fff);
   }
 
+  body[data-theme="dark"] .hr-page {
+    --hr-primary: #00a884;
+    --hr-primary-dark: #008069;
+    --hr-primary-soft: rgba(0,168,132,0.14);
+    --hr-primary-border: rgba(0,168,132,0.34);
+    --hr-green: #00a884;
+    --hr-line: #2a3942;
+    --hr-muted: #9fb0ba;
+    --hr-bg: #111b21;
+    --hr-surface: #202c33;
+    --hr-surface-soft: #16252c;
+    --hr-surface-raised: #1f3038;
+    --hr-input: #202c33;
+    --hr-text: #e9edef;
+  }
+
+  body[data-theme="dark"] .hr-page,
+  body[data-theme="dark"] .hr-main-section,
+  body[data-theme="dark"] .hr-detail-layout,
+  body[data-theme="dark"] .hr-modal,
+  body[data-theme="dark"] .hr-detail-rail,
+  body[data-theme="dark"] .hr-bank-ledger-detail {
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-main-section,
+  body[data-theme="dark"] .hr-detail-layout {
+    background: var(--hr-bg);
+    border-color: var(--hr-line);
+    box-shadow: 0 18px 42px rgba(0,0,0,0.22);
+  }
+
+  body[data-theme="dark"] .hr-nav-tab {
+    background: var(--hr-surface);
+    border-color: var(--hr-line);
+    color: var(--hr-muted);
+  }
+
+  body[data-theme="dark"] .hr-nav-tab:hover {
+    border-color: #3b4f5a;
+    background: var(--hr-surface-raised);
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-nav-tab.active {
+    background: linear-gradient(135deg, #008069 0%, #00a884 100%);
+    border-color: rgba(94,234,212,0.45);
+    color: #fff;
+    box-shadow: 0 10px 28px rgba(0,168,132,0.24);
+  }
+
+  body[data-theme="dark"] .hr-section-topbar,
+  body[data-theme="dark"] .hr-detail-topbar,
+  body[data-theme="dark"] .hr-detail-tabs,
+  body[data-theme="dark"] .hr-summary-strip,
+  body[data-theme="dark"] .hr-finance-strip,
+  body[data-theme="dark"] .hr-cash-bank-layout,
+  body[data-theme="dark"] .hr-bank-detail-tabs,
+  body[data-theme="dark"] .hr-bank-account-summary,
+  body[data-theme="dark"] .hr-ledger-balance,
+  body[data-theme="dark"] .hr-ledger-section-title,
+  body[data-theme="dark"] .hr-rail-head,
+  body[data-theme="dark"] .hr-rail-item,
+  body[data-theme="dark"] .hr-bank-ledger-item {
+    border-color: var(--hr-line);
+  }
+
+  body[data-theme="dark"] .hr-section-topbar h1,
+  body[data-theme="dark"] .hr-sub-h,
+  body[data-theme="dark"] .hr-tools-panel h3,
+  body[data-theme="dark"] .hr-modal-header h3,
+  body[data-theme="dark"] .hr-summary-cell strong,
+  body[data-theme="dark"] .hr-metric-card strong,
+  body[data-theme="dark"] .hr-finance-strip strong,
+  body[data-theme="dark"] .hr-finance-card strong,
+  body[data-theme="dark"] .hr-finance-card b,
+  body[data-theme="dark"] .hr-mini-card strong,
+  body[data-theme="dark"] .hr-payroll-detail-card h4,
+  body[data-theme="dark"] .hr-bank-ledger-item b,
+  body[data-theme="dark"] .hr-bank-account-summary strong,
+  body[data-theme="dark"] .hr-loan-card strong {
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-att-table th,
+  body[data-theme="dark"] .hr-detail-att-table th,
+  body[data-theme="dark"] .hr-mini-table th,
+  body[data-theme="dark"] .hr-att-table tfoot td,
+  body[data-theme="dark"] .hr-field-inline,
+  body[data-theme="dark"] .hr-field,
+  body[data-theme="dark"] .hr-mini-card,
+  body[data-theme="dark"] .hr-dept-card,
+  body[data-theme="dark"] .hr-finance-strip div,
+  body[data-theme="dark"] .hr-finance-card,
+  body[data-theme="dark"] .hr-finance-table-wrap,
+  body[data-theme="dark"] .hr-bank-modal-summary div,
+  body[data-theme="dark"] .hr-bank-ledger-rail,
+  body[data-theme="dark"] .hr-ledger-balance.subtle,
+  body[data-theme="dark"] .hr-bank-detail-tabs,
+  body[data-theme="dark"] .hr-bank-detail-tabs button,
+  body[data-theme="dark"] .hr-payment-mode,
+  body[data-theme="dark"] .hr-payment-mode button,
+  body[data-theme="dark"] .hr-payment-preview,
+  body[data-theme="dark"] .ot-total,
+  body[data-theme="dark"] .hr-loan-card,
+  body[data-theme="dark"] .hr-metric-card,
+  body[data-theme="dark"] .ot-info-row {
+    background: var(--hr-surface-soft);
+    border-color: var(--hr-line);
+  }
+
+  body[data-theme="dark"] .hr-metric-card,
+  body[data-theme="dark"] .hr-finance-strip div,
+  body[data-theme="dark"] .hr-mini-card,
+  body[data-theme="dark"] .hr-dept-card,
+  body[data-theme="dark"] .hr-finance-card,
+  body[data-theme="dark"] .hr-loan-card,
+  body[data-theme="dark"] .hr-payroll-detail-card,
+  body[data-theme="dark"] .hr-detail-att-table-wrap {
+    background: var(--hr-surface-soft);
+    border-color: #334651;
+  }
+
+  body[data-theme="dark"] .hr-att-table td,
+  body[data-theme="dark"] .hr-detail-att-table td,
+  body[data-theme="dark"] .hr-mini-table td,
+  body[data-theme="dark"] .hr-info-row,
+  body[data-theme="dark"] .hr-loan-row {
+    border-color: var(--hr-line);
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-att-row:hover td,
+  body[data-theme="dark"] .hr-rail-item.selected,
+  body[data-theme="dark"] .hr-rail-item:hover,
+  body[data-theme="dark"] .hr-bank-ledger-item:hover,
+  body[data-theme="dark"] .hr-bank-ledger-item.selected,
+  body[data-theme="dark"] .hr-bank-card:hover,
+  body[data-theme="dark"] .hr-bank-card.selected,
+  body[data-theme="dark"] .hr-att-menu button:hover,
+  body[data-theme="dark"] .hr-btn.hr-btn-ghost:hover,
+  body[data-theme="dark"] .hr-icon-btn:hover {
+    background: var(--hr-primary-soft);
+  }
+
+  body[data-theme="dark"] .hr-field input,
+  body[data-theme="dark"] .hr-field select,
+  body[data-theme="dark"] .hr-field textarea,
+  body[data-theme="dark"] .hr-date-stepper input,
+  body[data-theme="dark"] .hr-month-nav input,
+  body[data-theme="dark"] .hr-mini-input,
+  body[data-theme="dark"] .hr-finance-card-actions input,
+  body[data-theme="dark"] .hr-bank-filter-controls select,
+  body[data-theme="dark"] .hr-bank-filter-controls input,
+  body[data-theme="dark"] .hr-payroll-toolbar select,
+  body[data-theme="dark"] .hr-detail-att-input,
+  body[data-theme="dark"] .ot-hrs-input,
+  body[data-theme="dark"] .ot-time-input select,
+  body[data-theme="dark"] .ot-rate-input select,
+  body[data-theme="dark"] .ot-fixed-input {
+    background: var(--hr-input);
+    border-color: #334651;
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-field input::placeholder,
+  body[data-theme="dark"] .hr-field textarea::placeholder,
+  body[data-theme="dark"] .hr-mini-input::placeholder {
+    color: #7f919b;
+  }
+
+  body[data-theme="dark"] .hr-mini-input:disabled {
+    background: #18262d;
+    color: #7f919b;
+  }
+
+  body[data-theme="dark"] .hr-btn,
+  body[data-theme="dark"] .hr-icon-btn,
+  body[data-theme="dark"] .hr-att-btn,
+  body[data-theme="dark"] .hr-att-more-btn,
+  body[data-theme="dark"] .hr-att-menu {
+    background: var(--hr-surface);
+    border-color: #334651;
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-btn.hr-btn-primary {
+    background: linear-gradient(135deg, #008069 0%, #00a884 100%);
+    border-color: rgba(94,234,212,0.35);
+    color: #fff;
+  }
+
+  body[data-theme="dark"] .hr-btn.hr-btn-primary:hover {
+    background: linear-gradient(135deg, #00715f 0%, #009a79 100%);
+    border-color: rgba(94,234,212,0.48);
+  }
+
+  body[data-theme="dark"] .hr-btn.hr-btn-ghost,
+  body[data-theme="dark"] .hr-icon-btn {
+    background: #202c33;
+    border-color: #334651;
+    color: #e9edef;
+  }
+
+  body[data-theme="dark"] .hr-btn.hr-btn-outline-danger,
+  body[data-theme="dark"] .hr-icon-btn.danger {
+    background: rgba(239,68,68,0.12);
+    border-color: rgba(248,113,113,0.35);
+    color: #f87171;
+  }
+
+  body[data-theme="dark"] .hr-pill.green,
+  body[data-theme="dark"] .hr-bank-filter-totals .in {
+    background: rgba(0,168,132,0.18);
+    color: #5eead4;
+  }
+
+  body[data-theme="dark"] .hr-pill.amber {
+    background: rgba(245,158,11,0.18);
+    color: #fbbf24;
+  }
+
+  body[data-theme="dark"] .hr-pill.blue {
+    background: rgba(59,130,246,0.18);
+    color: #93c5fd;
+  }
+
+  body[data-theme="dark"] .hr-pill.violet {
+    background: rgba(139,92,246,0.2);
+    color: #c4b5fd;
+  }
+
+  body[data-theme="dark"] .hr-pill.rose,
+  body[data-theme="dark"] .hr-bank-filter-totals .out {
+    background: rgba(244,63,94,0.18);
+    color: #fda4af;
+  }
+
+  body[data-theme="dark"] .hr-pill.slate,
+  body[data-theme="dark"] .hr-bank-view-hint {
+    background: rgba(148,163,184,0.14);
+    border-color: #3b4f5a;
+    color: #cbd5e1;
+  }
+
+  body[data-theme="dark"] .hr-metric-card.blue svg { background: rgba(59,130,246,0.18); color: #93c5fd; }
+  body[data-theme="dark"] .hr-metric-card.green svg { background: rgba(0,168,132,0.2); color: #5eead4; }
+  body[data-theme="dark"] .hr-metric-card.violet svg { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+  body[data-theme="dark"] .hr-metric-card.amber svg { background: rgba(245,158,11,0.18); color: #fbbf24; }
+  body[data-theme="dark"] .hr-metric-card.rose svg { background: rgba(244,63,94,0.18); color: #fda4af; }
+  body[data-theme="dark"] .hr-metric-card.slate svg { background: rgba(148,163,184,0.16); color: #cbd5e1; }
+
+  body[data-theme="dark"] .hr-amount.in,
+  body[data-theme="dark"] .hr-footer-balance.settled,
+  body[data-theme="dark"] .hr-balance-chip.settled {
+    color: #5eead4;
+  }
+
+  body[data-theme="dark"] .hr-amount.out,
+  body[data-theme="dark"] .hr-overdue,
+  body[data-theme="dark"] .hr-footer-balance.due,
+  body[data-theme="dark"] .hr-balance-chip.due,
+  body[data-theme="dark"] .hr-rail-item b.due {
+    color: #fb7185;
+  }
+
+  body[data-theme="dark"] .hr-payment-mode button + button {
+    border-color: var(--hr-line);
+  }
+
+  body[data-theme="dark"] .hr-payment-mode button.active {
+    background: linear-gradient(135deg, #008069 0%, #00a884 100%);
+    color: #fff;
+  }
+
+  body[data-theme="dark"] .hr-modal-backdrop {
+    background: rgba(3,12,17,0.72);
+  }
+
+  body[data-theme="dark"] .hr-modal {
+    background: var(--hr-bg);
+    border: 1px solid var(--hr-line);
+    box-shadow: 0 28px 70px rgba(0,0,0,0.45);
+  }
+
   /* ── Nav tabs ── */
+  .hr-skeleton {
+    display: block;
+    max-width: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 42%, #e7edf5 78%);
+    background-size: 220% 100%;
+    animation: hrSkeletonShimmer 1.25s ease-in-out infinite;
+  }
+  .hr-skeleton-page {
+    min-height: 360px;
+  }
+  .hr-skeleton-tabs .hr-nav-tab {
+    cursor: default;
+  }
+  .hr-skeleton-tab.active {
+    background: #ccfbf1;
+    border-color: #99f6e4;
+    color: inherit;
+  }
+  .hr-skeleton-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+  }
+  .hr-skeleton-section {
+    overflow: hidden;
+  }
+  .hr-skeleton-staff {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hr-skeleton-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .hr-skeleton-table th,
+  .hr-skeleton-table td {
+    pointer-events: none;
+  }
+  @keyframes hrSkeletonShimmer {
+    0% { background-position: 120% 0; }
+    100% { background-position: -120% 0; }
+  }
+
   .hr-nav-tabs {
     display: flex;
     align-items: center;
@@ -3145,7 +3564,7 @@ const hrStyles = `
     cursor: pointer;
   }
   .hr-nav-tab.active {
-    background: var(--hr-primary);
+    background: linear-gradient(135deg, #0b6f68 0%, #0d9488 100%);
     border-color: var(--hr-primary);
     color: #fff;
   }
@@ -3261,7 +3680,7 @@ const hrStyles = `
   .hr-footer-balance.due { color: #e11d48; }
   .hr-footer-balance.settled { color: #16a34a; }
   .hr-att-row { cursor: pointer; }
-  .hr-att-row:hover td { background: rgba(79,70,229,0.04); }
+  .hr-att-row:hover td { background: var(--hr-primary-soft); }
   .hr-staff-cell strong { display: block; font-weight: 600; }
   .hr-staff-cell small { display: block; font-size: 12px; color: var(--hr-muted); margin-top: 2px; }
   .hr-att-table td strong { display: block; font-weight: 600; }
@@ -3374,11 +3793,21 @@ const hrStyles = `
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
   }
-  .hr-btn.hr-btn-primary { background: var(--hr-primary); border-color: var(--hr-primary); color: #fff; }
+  .hr-btn.hr-btn-primary {
+    background: linear-gradient(135deg, #0b6f68 0%, #0d9488 100%);
+    border-color: var(--hr-primary);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(13,148,136,0.18);
+  }
   .hr-btn.hr-btn-primary:hover { background: var(--hr-primary-dark); border-color: var(--hr-primary-dark); }
   .hr-btn.hr-btn-ghost { background: var(--hr-bg); }
-  .hr-btn.hr-btn-ghost:hover { background: #f8fafc; }
+  .hr-btn.hr-btn-ghost:hover {
+    background: var(--hr-primary-soft);
+    border-color: var(--hr-primary-border);
+    color: var(--hr-primary);
+  }
   .hr-btn.hr-btn-outline-danger { border-color: #fecaca; color: #dc2626; background: #fff; font-size: 13px; min-height: 30px; padding: 0 10px; }
   .hr-btn.compact { min-height: 30px; padding: 0 10px; font-size: 12px; }
   .hr-btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -3394,9 +3823,14 @@ const hrStyles = `
     color: var(--app-text);
     cursor: pointer;
     padding: 0;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   }
   .hr-icon-btn.danger { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
-  .hr-icon-btn:hover { background: #f8fafc; }
+  .hr-icon-btn:hover {
+    background: var(--hr-primary-soft);
+    border-color: var(--hr-primary-border);
+    color: var(--hr-primary);
+  }
 
   /* ── Detail layout ── */
   .hr-detail-layout {
@@ -3448,7 +3882,7 @@ const hrStyles = `
   .hr-rail-item b { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; white-space: nowrap; }
   .hr-rail-item b.due { color: #e11d48; }
   .hr-rail-item b.settled { color: #16a34a; }
-  .hr-rail-item.selected, .hr-rail-item:hover { background: rgba(79,70,229,0.06); }
+  .hr-rail-item.selected, .hr-rail-item:hover { background: var(--hr-primary-soft); }
 
   /* ── Detail main ── */
   .hr-detail-main { display: flex; flex-direction: column; min-width: 0; }
@@ -3735,7 +4169,7 @@ const hrStyles = `
   .hr-bank-card:hover,
   .hr-bank-card.selected {
     border-color: var(--hr-primary);
-    background: rgba(79,70,229,0.05);
+    background: var(--hr-primary-soft);
   }
   .hr-bank-card-main {
     display: flex;
@@ -3908,7 +4342,7 @@ const hrStyles = `
   }
   .hr-bank-ledger-item:hover,
   .hr-bank-ledger-item.selected {
-    background: rgba(79,70,229,0.08);
+    background: var(--hr-primary-soft);
   }
   .hr-bank-ledger-item strong,
   .hr-bank-ledger-item small {
@@ -3936,7 +4370,7 @@ const hrStyles = `
     width: 34px;
     height: 34px;
     border-radius: 999px;
-    background: #eef2ff;
+    background: #ccfbf1;
     color: var(--hr-primary);
   }
   .hr-bank-ledger-detail {
@@ -3956,7 +4390,7 @@ const hrStyles = `
     min-width: 150px;
     border: 0;
     border-right: 1px solid var(--hr-line);
-    background: #f4f3ff;
+    background: #ccfbf1;
     color: var(--hr-primary);
     font-size: 14px;
     font-weight: 700;
@@ -4200,6 +4634,72 @@ const hrStyles = `
   .hr-detail-transactions .hr-mini-card { overflow-x: auto; }
   .mt12 { margin-top: 12px; }
   .mt16 { margin-top: 16px; }
+
+  body[data-theme="dark"] .hr-bank-ledger-detail,
+  body[data-theme="dark"] .hr-bank-account-summary,
+  body[data-theme="dark"] .hr-bank-filter-bar,
+  body[data-theme="dark"] .hr-bank-ledger-table,
+  body[data-theme="dark"] .hr-salary-preview,
+  body[data-theme="dark"] .hr-shift-preview {
+    background: var(--hr-bg);
+    border-color: var(--hr-line);
+  }
+
+  body[data-theme="dark"] .hr-bank-account-summary,
+  body[data-theme="dark"] .hr-salary-preview,
+  body[data-theme="dark"] .hr-shift-preview {
+    background: var(--hr-surface-soft);
+    border-color: #334651;
+  }
+
+  body[data-theme="dark"] .hr-bank-ledger-table.hr-finance-table-wrap {
+    background: var(--hr-bg);
+    border-color: var(--hr-line);
+  }
+
+  body[data-theme="dark"] .hr-bank-ledger-table .hr-att-table,
+  body[data-theme="dark"] .hr-bank-ledger-table .bank-tx-table {
+    background: var(--hr-bg);
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-bank-ledger-table .hr-att-table th,
+  body[data-theme="dark"] .hr-bank-ledger-table .bank-tx-table th {
+    background: var(--hr-surface-soft);
+    border-color: var(--hr-line);
+    color: #d7e2e8;
+  }
+
+  body[data-theme="dark"] .hr-bank-ledger-table .hr-att-table td,
+  body[data-theme="dark"] .hr-bank-ledger-table .bank-tx-table td {
+    background: var(--hr-bg);
+    border-color: var(--hr-line);
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-bank-ledger-table .hr-att-table tbody tr:hover td,
+  body[data-theme="dark"] .hr-bank-ledger-table .bank-tx-table tbody tr:hover td {
+    background: var(--hr-primary-soft);
+  }
+
+  body[data-theme="dark"] .hr-bank-account-summary span,
+  body[data-theme="dark"] .hr-bank-account-summary small,
+  body[data-theme="dark"] .hr-salary-preview > span,
+  body[data-theme="dark"] .hr-shift-preview span,
+  body[data-theme="dark"] .hr-shift-preview small {
+    color: var(--hr-muted);
+  }
+
+  body[data-theme="dark"] .hr-bank-account-summary strong,
+  body[data-theme="dark"] .hr-salary-preview strong,
+  body[data-theme="dark"] .hr-shift-preview strong {
+    color: var(--hr-text);
+  }
+
+  body[data-theme="dark"] .hr-salary-preview strong {
+    background: var(--hr-surface);
+    border-color: #334651;
+  }
 
   /* ── Responsive ── */
   @media (max-width: 1024px) {

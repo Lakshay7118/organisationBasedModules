@@ -536,15 +536,16 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
 
   const inputStyle = {
     width: "100%", padding: "10px 14px", borderRadius: 12,
-    border: "1px solid #dbe3eb", background: "#fff", fontSize: 13,
-    fontWeight: 500, color: "#0f172a", outline: "none",
+    border: "1px solid var(--campaign-modal-input-border, #dbe3eb)",
+    background: "var(--campaign-modal-input-bg, #fff)", fontSize: 13,
+    fontWeight: 500, color: "var(--campaign-modal-text, #0f172a)", outline: "none",
     transition: "border 0.2s", boxSizing: "border-box",
   };
 
   const checkboxGroupStyle = {
-    maxHeight: 180, overflowY: "auto", border: "1px solid #e5e7eb",
+    maxHeight: 180, overflowY: "auto", border: "1px solid var(--campaign-modal-border, #e5e7eb)",
     borderRadius: 12, padding: "10px 14px", display: "flex",
-    flexDirection: "column", gap: 8, background: "#fafbfc",
+    flexDirection: "column", gap: 8, background: "var(--campaign-modal-soft, #fafbfc)",
   };
 
   if (loading) {
@@ -559,19 +560,140 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 24, width: 680, maxWidth: "95vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(15,23,42,0.22)", overflow: "hidden", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }} onClick={(e) => e.stopPropagation()}>
+    <>
+      <style>{`
+        body[data-theme="dark"] .campaign-edit-modal {
+          --campaign-modal-bg: #111b21;
+          --campaign-modal-header-bg: linear-gradient(180deg, #1f2c33 0%, #111b21 100%);
+          --campaign-modal-body-bg: #0b141a;
+          --campaign-modal-soft: #17232a;
+          --campaign-modal-soft-2: #202c33;
+          --campaign-modal-text: #e9edef;
+          --campaign-modal-title: #f8fafc;
+          --campaign-modal-muted: #aebac1;
+          --campaign-modal-border: #2a3942;
+          --campaign-modal-input-bg: #202c33;
+          --campaign-modal-input-border: #33444c;
+          --campaign-modal-tab-active-bg: #0b141a;
+          --campaign-modal-tab-muted: #aebac1;
+          --campaign-modal-selected-bg: rgba(20, 184, 166, 0.16);
+          --campaign-modal-selected-border: #22d3c5;
+          --campaign-modal-template-bg: #111b21;
+          --campaign-modal-template-hover: #17232a;
+          background: var(--campaign-modal-bg) !important;
+          border: 1px solid var(--campaign-modal-border);
+          color: var(--campaign-modal-text);
+        }
+        body[data-theme="dark"] .campaign-edit-header {
+          background: var(--campaign-modal-header-bg) !important;
+          border-color: var(--campaign-modal-border) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-title,
+        body[data-theme="dark"] .campaign-edit-template-name {
+          color: var(--campaign-modal-title) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-body {
+          background: var(--campaign-modal-body-bg) !important;
+          color: var(--campaign-modal-text);
+          scrollbar-color: #687982 #17232a;
+        }
+        body[data-theme="dark"] .campaign-edit-label {
+          color: #c7d2da !important;
+        }
+        body[data-theme="dark"] .campaign-edit-body label,
+        body[data-theme="dark"] .campaign-edit-body label span,
+        body[data-theme="dark"] .campaign-edit-body label div {
+          color: #c7d2da !important;
+        }
+        body[data-theme="dark"] .campaign-edit-input,
+        body[data-theme="dark"] .campaign-edit-input option,
+        body[data-theme="dark"] .campaign-edit-body input,
+        body[data-theme="dark"] .campaign-edit-body select,
+        body[data-theme="dark"] .campaign-edit-body textarea {
+          background: var(--campaign-modal-input-bg) !important;
+          border-color: var(--campaign-modal-input-border) !important;
+          color: var(--campaign-modal-text) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-input::placeholder {
+          color: #7f9098 !important;
+        }
+        body[data-theme="dark"] .campaign-edit-tab.active {
+          background: var(--campaign-modal-tab-active-bg) !important;
+          border-color: var(--campaign-modal-border) !important;
+          border-bottom-color: var(--campaign-modal-tab-active-bg) !important;
+          color: #2dd4bf !important;
+        }
+        body[data-theme="dark"] .campaign-edit-tab:not(.active) {
+          color: var(--campaign-modal-tab-muted) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-close {
+          background: #202c33 !important;
+          border-color: #33444c !important;
+        }
+        body[data-theme="dark"] .campaign-edit-close svg {
+          color: #aebac1;
+          stroke: #aebac1;
+        }
+        body[data-theme="dark"] .campaign-template-option {
+          background: var(--campaign-modal-template-bg) !important;
+          border-color: var(--campaign-modal-border) !important;
+        }
+        body[data-theme="dark"] .campaign-template-option.selected {
+          background: var(--campaign-modal-selected-bg) !important;
+          border-color: var(--campaign-modal-selected-border) !important;
+          box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.24);
+        }
+        body[data-theme="dark"] .campaign-template-meta {
+          color: var(--campaign-modal-muted) !important;
+        }
+        body[data-theme="dark"] .campaign-template-option > div:last-child {
+          color: var(--campaign-modal-muted) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-body button:not(.campaign-edit-tab) {
+          border-color: var(--campaign-modal-input-border) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-preview-box {
+          background: rgba(0, 168, 132, 0.12) !important;
+          border-color: rgba(0, 168, 132, 0.34) !important;
+          color: var(--campaign-modal-text) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-preview-box span {
+          color: var(--campaign-modal-muted) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-summary-box,
+        body[data-theme="dark"] .campaign-edit-footer {
+          background: var(--campaign-modal-soft) !important;
+          border-color: var(--campaign-modal-border) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-summary-title,
+        body[data-theme="dark"] .campaign-edit-summary-key {
+          color: var(--campaign-modal-title) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-summary-value {
+          color: var(--campaign-modal-muted) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-summary-row {
+          border-bottom-color: var(--campaign-modal-input-border) !important;
+        }
+        body[data-theme="dark"] .campaign-edit-secondary-btn {
+          background: #111b21 !important;
+          border-color: var(--campaign-modal-input-border) !important;
+          color: var(--campaign-modal-title) !important;
+        }
+      `}</style>
+      <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+      <div className="campaign-edit-modal" style={{ background: "var(--campaign-modal-bg, #fff)", borderRadius: 24, width: 680, maxWidth: "95vw", maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(15,23,42,0.22)", overflow: "hidden", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }} onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding: "20px 24px 0", borderBottom: "1px solid #f1f5f9", background: "linear-gradient(180deg, #f8fafc 0%, #fff 100%)" }}>
+        <div className="campaign-edit-header" style={{ padding: "20px 24px 0", borderBottom: "1px solid var(--campaign-modal-border, #f1f5f9)", background: "var(--campaign-modal-header-bg, linear-gradient(180deg, #f8fafc 0%, #fff 100%))" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
             <div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(15,95,100,0.08)", color: "#0f5f64", borderRadius: 999, padding: "4px 12px", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
                 ✏️ EDIT CAMPAIGN
               </div>
-              <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>{form.campaignName || "Campaign"}</h3>
+              <h3 className="campaign-edit-title" style={{ fontSize: 20, fontWeight: 800, color: "var(--campaign-modal-title, #0f172a)", margin: 0 }}>{form.campaignName || "Campaign"}</h3>
             </div>
-            <button onClick={onClose} style={{ border: "1px solid #e2e8f0", borderRadius: 10, width: 36, height: 36, background: "#f8fafc", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <button className="campaign-edit-close" onClick={onClose} style={{ border: "1px solid #e2e8f0", borderRadius: 10, width: 36, height: 36, background: "#f8fafc", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <X size={16} color="#64748b" />
             </button>
           </div>
@@ -585,7 +707,7 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
           {/* Section tabs — scrollable on mobile */}
           <div style={{ display: "flex", gap: 4, overflowX: "auto", scrollbarWidth: "none" }}>
             {sections.map((s) => (
-              <button key={s.id} onClick={() => setActiveSection(s.id)} style={{ padding: "8px 12px", borderRadius: "10px 10px 0 0", border: "1px solid transparent", borderBottom: "none", background: activeSection === s.id ? "#fff" : "transparent", borderColor: activeSection === s.id ? "#e5e7eb" : "transparent", borderBottomColor: activeSection === s.id ? "#fff" : "transparent", marginBottom: activeSection === s.id ? -1 : 0, fontSize: 12, fontWeight: 700, color: activeSection === s.id ? "#0f5f64" : "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flexShrink: 0 }}>
+              <button className={`campaign-edit-tab ${activeSection === s.id ? "active" : ""}`} key={s.id} onClick={() => setActiveSection(s.id)} style={{ padding: "8px 12px", borderRadius: "10px 10px 0 0", border: "1px solid transparent", borderBottom: "none", background: activeSection === s.id ? "var(--campaign-modal-tab-active-bg, #fff)" : "transparent", borderColor: activeSection === s.id ? "var(--campaign-modal-border, #e5e7eb)" : "transparent", borderBottomColor: activeSection === s.id ? "var(--campaign-modal-tab-active-bg, #fff)" : "transparent", marginBottom: activeSection === s.id ? -1 : 0, fontSize: 12, fontWeight: 700, color: activeSection === s.id ? "#0f5f64" : "var(--campaign-modal-tab-muted, #94a3b8)", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flexShrink: 0 }}>
                 <span style={{ fontSize: 14 }}>{s.icon}</span>
                 <span className="d-none d-sm-inline">{s.label}</span>
               </button>
@@ -594,7 +716,7 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px", scrollbarWidth: "thin" }}>
+        <div className="campaign-edit-body" style={{ flex: 1, overflowY: "auto", padding: "24px", scrollbarWidth: "thin", background: "var(--campaign-modal-body-bg, #fff)" }}>
           {error && (
             <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#991b1b", marginBottom: 16 }}>
               ❌ {error}
@@ -605,24 +727,24 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
           {activeSection === "basics" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>Campaign Name *</label>
-                <input type="text" style={inputStyle} value={form.campaignName} onChange={(e) => handleChange("campaignName", e.target.value)} placeholder="e.g. Diwali Offer 2025" />
+                <label className="campaign-edit-label" style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>Campaign Name *</label>
+                <input className="campaign-edit-input" type="text" style={inputStyle} value={form.campaignName} onChange={(e) => handleChange("campaignName", e.target.value)} placeholder="e.g. Diwali Offer 2025" />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>Message Type</label>
-                <select style={inputStyle} value={form.messageType} onChange={(e) => handleChange("messageType", e.target.value)}>
+                <label className="campaign-edit-label" style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>Message Type</label>
+                <select className="campaign-edit-input" style={inputStyle} value={form.messageType} onChange={(e) => handleChange("messageType", e.target.value)}>
                   <option value="Pre-approved template message">Pre-approved template message</option>
                   <option value="Custom message">Custom message</option>
                 </select>
               </div>
               {form.messageType === "Pre-approved template message" && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 8 }}>Select Template</label>
+                  <label className="campaign-edit-label" style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 8 }}>Select Template</label>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {templates.filter((t) => t.approvalStatus === "approved").map((t) => (
-                      <div key={t._id} onClick={() => handleChange("templateId", t._id.toString())} style={{ padding: "12px 16px", borderRadius: 12, cursor: "pointer", border: `1px solid ${form.templateId === t._id.toString() ? "#14808a" : "#e5e7eb"}`, background: form.templateId === t._id.toString() ? "#f0fdfa" : "#fff", transition: "all 0.2s" }}>
+                      <div className={`campaign-template-option ${form.templateId === t._id.toString() ? "selected" : ""}`} key={t._id} onClick={() => handleChange("templateId", t._id.toString())} style={{ padding: "12px 16px", borderRadius: 12, cursor: "pointer", border: `1px solid ${form.templateId === t._id.toString() ? "var(--campaign-modal-selected-border, #14808a)" : "var(--campaign-modal-border, #e5e7eb)"}`, background: form.templateId === t._id.toString() ? "var(--campaign-modal-selected-bg, #f0fdfa)" : "var(--campaign-modal-template-bg, #fff)", transition: "all 0.2s" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{t.name}</div>
+                          <div className="campaign-edit-template-name" style={{ fontWeight: 700, fontSize: 13, color: "var(--campaign-modal-title, #0f172a)" }}>{t.name}</div>
                           <span style={{ background: "#dcfce7", color: "#166534", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>✅ Approved</span>
                         </div>
                         <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.category} • {t.mediaType}</div>
@@ -766,22 +888,22 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
           {activeSection === "preview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>Message Preview</label>
-                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 16, padding: 16, minHeight: 120, fontSize: 13, color: "#334155", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+                <label className="campaign-edit-label" style={{ fontSize: 12, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>Message Preview</label>
+                <div className="campaign-edit-preview-box" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 16, padding: 16, minHeight: 120, fontSize: 13, color: "#334155", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
                   {form.messagePreview || <span style={{ color: "#94a3b8" }}>No preview available.</span>}
                 </div>
               </div>
-              <div style={{ background: "#f8fafc", borderRadius: 12, padding: 16, border: "1px solid #e5e7eb" }}>
-                <div style={{ fontWeight: 700, color: "#334155", fontSize: 13, marginBottom: 12 }}>Campaign Summary</div>
+              <div className="campaign-edit-summary-box" style={{ background: "#f8fafc", borderRadius: 12, padding: 16, border: "1px solid #e5e7eb" }}>
+                <div className="campaign-edit-summary-title" style={{ fontWeight: 700, color: "#334155", fontSize: 13, marginBottom: 12 }}>Campaign Summary</div>
                 {[
                   ["Name", form.campaignName || "—"],
                   ["Audience", form.audienceType],
                   ["Recurrence", form.recurrence.type],
                   ["Scheduled (IST)", form.scheduledDateTime ? form.scheduledDateTime.replace("T", " ") : "—"],
                 ].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px dashed #e2e8f0", fontSize: 13 }}>
-                    <span style={{ fontWeight: 700, color: "#334155" }}>{k}</span>
-                    <span style={{ color: "#64748b", fontWeight: 600, textTransform: "capitalize" }}>{v}</span>
+                  <div className="campaign-edit-summary-row" key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px dashed #e2e8f0", fontSize: 13 }}>
+                    <span className="campaign-edit-summary-key" style={{ fontWeight: 700, color: "#334155" }}>{k}</span>
+                    <span className="campaign-edit-summary-value" style={{ color: "#64748b", fontWeight: 600, textTransform: "capitalize" }}>{v}</span>
                   </div>
                 ))}
               </div>
@@ -790,14 +912,14 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fafbfc", flexWrap: "wrap", gap: 10 }}>
+        <div className="campaign-edit-footer" style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fafbfc", flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", gap: 8 }}>
             {sections.map((s) => (
               <div key={s.id} onClick={() => setActiveSection(s.id)} style={{ width: 8, height: 8, borderRadius: "50%", cursor: "pointer", background: activeSection === s.id ? "linear-gradient(135deg,#0f5f64,#22c55e)" : "#dbe3eb", transition: "all 0.2s" }} />
             ))}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} style={{ border: "1px solid #dbe3eb", borderRadius: 12, padding: "9px 20px", background: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", color: "#334155" }}>Cancel</button>
+            <button className="campaign-edit-secondary-btn" onClick={onClose} style={{ border: "1px solid #dbe3eb", borderRadius: 12, padding: "9px 20px", background: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", color: "#334155" }}>Cancel</button>
             <button onClick={handleSubmit} disabled={saving} style={{ background: saving ? "#94a3b8" : "linear-gradient(135deg,#0f5f64 0%,#14808a 60%,#22c55e 100%)", border: "none", borderRadius: 12, padding: "9px 24px", color: "#fff", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 8, cursor: saving ? "not-allowed" : "pointer", boxShadow: saving ? "none" : "0 8px 20px rgba(15,95,100,0.22)" }}>
               <Save size={15} />
               {saving ? "Saving..." : isSuperAdmin ? "Save Changes" : "Submit for Approval"}
@@ -806,6 +928,7 @@ function EditCampaignModal({ campaignId, onClose, onUpdate, isSuperAdmin }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

@@ -16,25 +16,26 @@ import API from "../utils/api";
    Notification type config
 ───────────────────────────────────────── */
 const NOTIF_META = {
-  task_assigned:               { icon: <ListTodo  size={13} />, color: "#0d9488", bg: "#ccfbf1", label: "Task Assigned",          path: "/task"      },
-  response_received:           { icon: <ListTodo  size={13} />, color: "#3b82f6", bg: "#eff6ff", label: "Task Response",          path: "/task"      },
-  approval_requested:          { icon: <Shield    size={13} />, color: "#f59e0b", bg: "#fef3c7", label: "Approval Needed",        path: "/task"      },
-  task_approved:               { icon: <ListTodo  size={13} />, color: "#10b981", bg: "#d1fae5", label: "Task Approved",          path: "/task"      },
-  task_rejected:               { icon: <ListTodo  size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Task Rejected",          path: "/task"      },
-  contact_approval_requested:  { icon: <Users     size={13} />, color: "#8b5cf6", bg: "#ede9fe", label: "Contact Pending",        path: "/contacts"  },
-  contact_approved:            { icon: <Users     size={13} />, color: "#10b981", bg: "#d1fae5", label: "Contact Approved",       path: "/contacts"  },
-  contact_rejected:            { icon: <Users     size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Contact Rejected",       path: "/contacts"  },
-  template_approval_requested: { icon: <FileText  size={13} />, color: "#ec4899", bg: "#fce7f3", label: "Template Pending",       path: "/Template"  },
-  template_approved:           { icon: <FileText  size={13} />, color: "#10b981", bg: "#d1fae5", label: "Template Approved",      path: "/Template"  },
-  template_rejected:           { icon: <FileText  size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Template Rejected",      path: "/Template"  },
-  campaign_approval_requested: { icon: <Megaphone size={13} />, color: "#f97316", bg: "#ffedd5", label: "Campaign Pending",       path: "/Campaigns" },
-  campaign_approved:           { icon: <Megaphone size={13} />, color: "#10b981", bg: "#d1fae5", label: "Campaign Approved",      path: "/Campaigns" },
-  campaign_rejected:           { icon: <Megaphone size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Campaign Rejected",      path: "/Campaigns" },
-  profile_approval_requested:  { icon: <Shield    size={13} />, color: "#14b8a6", bg: "#ccfbf1", label: "Profile Pending",        path: "/Settings"  },
-  profile_approved:            { icon: <Shield    size={13} />, color: "#10b981", bg: "#d1fae5", label: "Profile Approved",       path: "/Settings"  },
-  profile_rejected:            { icon: <Shield    size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Profile Rejected",       path: "/Settings"  },
-  support_ticket_created:      { icon: <Bell      size={13} />, color: "#06b6d4", bg: "#cffafe", label: "Support Ticket",         path: "/Settings"  },
-  support_ticket_replied:      { icon: <Bell      size={13} />, color: "#3b82f6", bg: "#dbeafe", label: "Support Reply",          path: "/Settings"  },
+  task_assigned:               { icon: <ListTodo  size={13} />, color: "#0d9488", bg: "#ccfbf1", label: "Task",          path: "/task"      },
+  response_received:           { icon: <ListTodo  size={13} />, color: "#3b82f6", bg: "#eff6ff", label: "Task",          path: "/task"      },
+  task_reminder:               { icon: <Bell      size={13} />, color: "#d97706", bg: "#fef3c7", label: "Task",          path: "/task"      },
+  approval_requested:          { icon: <Shield    size={13} />, color: "#d97706", bg: "#fef3c7", label: "Approval",      path: "/task"      },
+  task_approved:               { icon: <ListTodo  size={13} />, color: "#059669", bg: "#d1fae5", label: "Task",          path: "/task"      },
+  task_rejected:               { icon: <ListTodo  size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Task",          path: "/task"      },
+  contact_approval_requested:  { icon: <Users     size={13} />, color: "#7c3aed", bg: "#f3e8ff", label: "Contact",       path: "/contacts"  },
+  contact_approved:            { icon: <Users     size={13} />, color: "#059669", bg: "#d1fae5", label: "Contact",       path: "/contacts"  },
+  contact_rejected:            { icon: <Users     size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Contact",       path: "/contacts"  },
+  template_approval_requested: { icon: <FileText  size={13} />, color: "#ec4899", bg: "#fce7f3", label: "Template",      path: "/Template"  },
+  template_approved:           { icon: <FileText  size={13} />, color: "#059669", bg: "#d1fae5", label: "Template",      path: "/Template"  },
+  template_rejected:           { icon: <FileText  size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Template",      path: "/Template"  },
+  campaign_approval_requested: { icon: <Megaphone size={13} />, color: "#f97316", bg: "#ffedd5", label: "Campaign",      path: "/Campaigns" },
+  campaign_approved:           { icon: <Megaphone size={13} />, color: "#059669", bg: "#d1fae5", label: "Campaign",      path: "/Campaigns" },
+  campaign_rejected:           { icon: <Megaphone size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Campaign",      path: "/Campaigns" },
+  profile_approval_requested:  { icon: <Shield    size={13} />, color: "#14b8a6", bg: "#ccfbf1", label: "Profile",       path: "/Settings"  },
+  profile_approved:            { icon: <Shield    size={13} />, color: "#059669", bg: "#d1fae5", label: "Profile",       path: "/Settings"  },
+  profile_rejected:            { icon: <Shield    size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Profile",       path: "/Settings"  },
+  support_ticket_created:      { icon: <Bell      size={13} />, color: "#06b6d4", bg: "#cffafe", label: "Support",       path: "/Settings"  },
+  support_ticket_replied:      { icon: <Bell      size={13} />, color: "#3b82f6", bg: "#dbeafe", label: "Support",       path: "/Settings"  },
 };
 
 const getMeta = (type) =>
@@ -73,10 +74,7 @@ function BellBadge({ size = 16, active = false, unreadCount = 0 }) {
 }
 
 /* ─────────────────────────────────────────
-   NotifToast
-   - Parent passes a new `key` per notification → full remount → timer
-     always starts fresh at 100%, no reset logic needed inside
-   - onClose must be a stable useCallback ref so the timer dep never changes
+   NotifToast  (unchanged)
 ───────────────────────────────────────── */
 function NotifToast({ notification, onClose, onNavigate }) {
   const meta = getMeta(notification?.type);
@@ -85,26 +83,18 @@ function NotifToast({ notification, onClose, onNavigate }) {
   useEffect(() => {
     const duration = 4000;
     const start    = Date.now();
-
     const tick = setInterval(() => {
       const elapsed   = Date.now() - start;
       const remaining = Math.max(0, 100 - (elapsed / duration) * 100);
       setProgress(remaining);
-      if (elapsed >= duration) {
-        clearInterval(tick);
-        onClose();
-      }
+      if (elapsed >= duration) { clearInterval(tick); onClose(); }
     }, 40);
-
     return () => clearInterval(tick);
   }, [onClose]);
 
   if (!notification) return null;
 
-  const handleClick = () => {
-    onClose();
-    if (meta.path) onNavigate(meta.path);
-  };
+  const handleClick = () => { onClose(); if (meta.path) onNavigate(meta.path); };
 
   return (
     <motion.div
@@ -130,7 +120,6 @@ function NotifToast({ notification, onClose, onNavigate }) {
           borderRadius: 3, transition: "width 0.04s linear",
         }} />
       </div>
-
       <div style={{ padding: "12px 14px 14px", display: "flex", alignItems: "flex-start", gap: 12 }}>
         <div style={{
           width: 40, height: 40, borderRadius: 12,
@@ -140,7 +129,6 @@ function NotifToast({ notification, onClose, onNavigate }) {
         }}>
           {(() => { const I = meta.icon?.type; return I ? <I size={18} /> : <Bell size={18} />; })()}
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
             <span style={{ fontSize: "0.68rem", fontWeight: 800, color: meta.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -172,12 +160,13 @@ function NotifToast({ notification, onClose, onNavigate }) {
 }
 
 /* ─────────────────────────────────────────
-   NotifRow
+   NotifRow  ← REDESIGNED (slim)
 ───────────────────────────────────────── */
-function NotifRow({ n, onRead, onNavigate, compact = false }) {
+function NotifRow({ n, onRead, onNavigate }) {
   const meta = getMeta(n.type);
-  const rowBg = n.read ? "var(--app-surface)" : "color-mix(in srgb, var(--app-surface-2) 86%, #00a884 14%)";
-  const hoverBg = "color-mix(in srgb, var(--app-surface-2) 82%, #00a884 18%)";
+
+  const rowBg      = n.read ? "var(--app-surface)" : `color-mix(in srgb, var(--app-surface) 93%, ${meta.color} 7%)`;
+  const rowBgHover = `color-mix(in srgb, var(--app-surface-2) 88%, ${meta.color} 12%)`;
 
   const handleClick = async () => {
     if (!n.read) await onRead(n._id || n.id);
@@ -188,64 +177,73 @@ function NotifRow({ n, onRead, onNavigate, compact = false }) {
     <div
       onClick={handleClick}
       style={{
-        display: "flex", alignItems: "flex-start", gap: compact ? 10 : 11,
-        padding: compact ? "11px 12px" : "12px 14px",
-        margin: compact ? "0 10px 8px" : "0 12px 10px",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 9,
+        padding: "7px 12px",
         background: rowBg,
-        border: "1px solid var(--app-border)",
-        borderRadius: 12,
         cursor: "pointer",
-        transition: "background 0.15s, border-color 0.15s",
+        transition: "background 0.12s",
+        borderBottom: "0.5px solid var(--app-border)",
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = hoverBg; e.currentTarget.style.borderColor = "color-mix(in srgb, var(--app-border) 70%, #00a884 30%)"; }}
-      onMouseLeave={e => { e.currentTarget.style.background = rowBg; e.currentTarget.style.borderColor = "var(--app-border)"; }}
+      onMouseEnter={e => { e.currentTarget.style.background = rowBgHover; }}
+      onMouseLeave={e => { e.currentTarget.style.background = rowBg; }}
     >
+      {/* Icon badge */}
       <div style={{
-        width: compact ? 30 : 34, height: compact ? 30 : 34,
-        borderRadius: compact ? 9 : 10,
-        background: `color-mix(in srgb, ${meta.color} 18%, var(--app-surface-2))`,
-        color: meta.color,
+        width: 28, height: 28, borderRadius: 8,
+        background: meta.bg, color: meta.color,
         display: "flex", alignItems: "center", justifyContent: "center",
         flexShrink: 0, marginTop: 1,
-        border: `1px solid color-mix(in srgb, ${meta.color} 35%, transparent)`,
       }}>
         {meta.icon}
       </div>
+
+      {/* Text */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {!compact && (
-          <div style={{ fontSize: "0.72rem", fontWeight: 700, color: meta.color, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {meta.label}
-          </div>
-        )}
         <div style={{
-          fontSize: compact ? "0.81rem" : "0.83rem",
+          fontSize: "0.8rem",
           color: n.read ? "var(--app-text-muted)" : "var(--app-text)",
-          fontWeight: n.read ? 500 : 750, lineHeight: 1.45,
-          overflow: compact ? "hidden" : undefined,
-          textOverflow: compact ? "ellipsis" : undefined,
-          whiteSpace: compact ? "nowrap" : undefined,
+          fontWeight: n.read ? 400 : 500,
+          lineHeight: 1.4,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}>
           {n.message}
         </div>
-        <div style={{ fontSize: "0.67rem", color: "var(--app-text-muted)", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
-          <Clock size={9} style={{ verticalAlign: "middle" }} />
-          {fmtRelative(n.createdAt || n.timestamp)}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+          <Clock size={9} color="var(--app-text-muted)" />
+          <span style={{ fontSize: "0.67rem", color: "var(--app-text-muted)" }}>
+            {fmtRelative(n.createdAt || n.timestamp)}
+          </span>
           {meta.path && (
-            <span style={{ color: meta.color, fontWeight: 800, marginLeft: 4 }}>
-              → {meta.label.split(" ")[0]}
+            <span style={{
+              fontSize: "0.67rem", fontWeight: 600,
+              color: meta.color,
+              background: meta.bg,
+              padding: "0 5px", borderRadius: 4,
+              lineHeight: "16px",
+            }}>
+              {meta.label}
             </span>
           )}
         </div>
       </div>
+
+      {/* Unread dot */}
       {!n.read && (
-        <div style={{ width: compact ? 7 : 8, height: compact ? 7 : 8, borderRadius: "50%", background: meta.color, flexShrink: 0, marginTop: compact ? 4 : 5 }} />
+        <div style={{
+          width: 6, height: 6, borderRadius: "50%",
+          background: meta.color, flexShrink: 0, marginTop: 5,
+        }} />
       )}
     </div>
   );
 }
 
 /* ─────────────────────────────────────────
-   NotifDropdown
+   NotifDropdown  ← REDESIGNED (slim)
 ───────────────────────────────────────── */
 function NotifDropdown({ notifications, onRead, onReadAll, onViewAll, onClose, onNavigate }) {
   const preview     = notifications.slice(0, 5);
@@ -254,58 +252,88 @@ function NotifDropdown({ notifications, onRead, onReadAll, onViewAll, onClose, o
   return (
     <motion.div
       initial={{ opacity: 0, y: -8, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -4, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0,  scale: 1     }}
+      exit={{    opacity: 0, y: -4, scale: 0.97  }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       style={{
         position: "absolute", top: "calc(100% + 10px)", right: 0,
-        transform: "translateX(-20px)", width: 430, minWidth: 360, maxWidth: "90vw",
-        background: "var(--app-surface)", borderRadius: 18,
-        boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
-        border: "1px solid var(--app-border)", overflow: "hidden", maxHeight: "520px", zIndex: 9999,
+        transform: "translateX(-20px)",
+        width: 360, maxWidth: "90vw",
+        background: "var(--app-surface)",
+        borderRadius: 14,
+        boxShadow: "0 16px 48px rgba(0,0,0,0.18)",
+        border: "1px solid var(--app-border)",
+        overflow: "hidden",
+        zIndex: 9999,
         color: "var(--app-text)",
       }}
     >
-      <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--app-border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--app-surface)" }}>
-        <span style={{ fontWeight: 850, fontSize: "0.92rem", color: "var(--app-text)" }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 12px 9px",
+        borderBottom: "1px solid var(--app-border)",
+      }}>
+        <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--app-text)", display: "flex", alignItems: "center", gap: 6 }}>
           Notifications
           {unreadCount > 0 && (
-            <span style={{ marginLeft: 7, background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: "0.62rem", fontWeight: 800 }}>
+            <span style={{
+              background: "#ef4444", color: "#fff",
+              borderRadius: 20, padding: "1px 6px",
+              fontSize: "0.6rem", fontWeight: 800,
+            }}>
               {unreadCount}
             </span>
           )}
         </span>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {unreadCount > 0 && (
-            <button onClick={onReadAll} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.72rem", color: "#00a884", fontWeight: 800, padding: 0 }}>
-              Mark all read
+            <button onClick={onReadAll} style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: "0.72rem", color: "#0d9488", fontWeight: 700,
+              display: "flex", alignItems: "center", gap: 3, padding: 0,
+            }}>
+              <CheckCheck size={11} /> Mark all read
             </button>
           )}
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--app-text-muted)", display: "flex", alignItems: "center" }}>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--app-text-muted)", display: "flex", alignItems: "center",
+          }}>
             <X size={13} />
           </button>
         </div>
       </div>
 
-      <div style={{ maxHeight: "354px", overflowY: "auto", paddingTop: 10, background: "var(--app-surface)" }}>
+      {/* Rows */}
+      <div style={{ maxHeight: 320, overflowY: "auto" }}>
         {preview.length === 0 ? (
-          <div style={{ padding: 28, textAlign: "center", color: "var(--app-text-muted)", fontSize: "0.83rem" }}>No notifications</div>
+          <div style={{ padding: 28, textAlign: "center", color: "var(--app-text-muted)", fontSize: "0.82rem" }}>
+            No notifications
+          </div>
         ) : (
           preview.map(n => (
-            <NotifRow key={n._id || n.id} n={n} onRead={onRead}
-              onNavigate={(path) => { onClose(); onNavigate(path); }} compact />
+            <NotifRow
+              key={n._id || n.id}
+              n={n}
+              onRead={onRead}
+              onNavigate={(path) => { onClose(); onNavigate(path); }}
+            />
           ))
         )}
       </div>
 
+      {/* Footer */}
       {notifications.length > 0 && (
         <button onClick={onViewAll} style={{
-          width: "100%", padding: "12px 14px", background: "var(--app-surface-2)", border: "none",
-          borderTop: "1px solid var(--app-border)", cursor: "pointer", fontSize: "0.8rem",
-          fontWeight: 800, color: "#00a884", display: "flex", alignItems: "center",
-          justifyContent: "center", gap: 5,
+          width: "100%", padding: "9px 12px",
+          background: "var(--app-surface-2)",
+          border: "none", borderTop: "1px solid var(--app-border)",
+          cursor: "pointer", fontSize: "0.78rem", fontWeight: 700,
+          color: "#0d9488",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
         }}>
-          View all {notifications.length} notifications <ChevronRight size={13} />
+          View all {notifications.length} notifications <ChevronRight size={12} />
         </button>
       )}
     </motion.div>
@@ -313,7 +341,7 @@ function NotifDropdown({ notifications, onRead, onReadAll, onViewAll, onClose, o
 }
 
 /* ─────────────────────────────────────────
-   AllNotificationsModal
+   AllNotificationsModal  ← REDESIGNED (slim)
 ───────────────────────────────────────── */
 function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNavigate }) {
   const grouped = {
@@ -327,64 +355,110 @@ function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNa
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 99998,
-        background: "rgba(15,23,42,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+        background: "rgba(15,23,42,0.5)",
+        backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
         display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
       }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.93, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1,    y: 0  }}
+        exit={{    opacity: 0, scale: 0.95, y: 8  }}
         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         onClick={e => e.stopPropagation()}
         style={{
-          background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440,
-          maxHeight: "80vh", display: "flex", flexDirection: "column",
-          overflow: "hidden", boxShadow: "0 32px 64px rgba(15,23,42,0.18)",
+          background: "var(--app-surface)",
+          borderRadius: 16,
+          width: "100%", maxWidth: 420,
+          maxHeight: "80vh",
+          display: "flex", flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 32px 64px rgba(15,23,42,0.18)",
+          border: "1px solid var(--app-border)",
         }}
       >
-        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid #f0f2f5", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        {/* Modal header */}
+        <div style={{
+          padding: "12px 14px 10px",
+          borderBottom: "1px solid var(--app-border)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          flexShrink: 0,
+        }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: "0.96rem", color: "#0f172a" }}>🔔 All Notifications</div>
-            <div style={{ fontSize: "0.71rem", color: "#94a3b8", marginTop: 2 }}>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--app-text)" }}>
+              All Notifications
+            </div>
+            <div style={{ fontSize: "0.7rem", color: "var(--app-text-muted)", marginTop: 1 }}>
               {grouped.unread.length} unread · {notifications.length} total
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {grouped.unread.length > 0 && (
-              <button onClick={onReadAll} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 20, border: "1.5px solid #0d9488", background: "#ccfbf1", color: "#0d9488", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
-                <CheckCheck size={12} /> Mark all read
+              <button onClick={onReadAll} style={{
+                display: "flex", alignItems: "center", gap: 4,
+                padding: "4px 10px", borderRadius: 20,
+                border: "1px solid #0d9488",
+                background: "#ccfbf1", color: "#0d9488",
+                fontSize: "0.7rem", fontWeight: 700, cursor: "pointer",
+              }}>
+                <CheckCheck size={11} /> Mark all read
               </button>
             )}
-            <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}>
-              <X size={14} />
+            <button onClick={onClose} style={{
+              background: "var(--app-surface-2)", border: "none", borderRadius: "50%",
+              width: 28, height: 28, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--app-text-muted)",
+            }}>
+              <X size={13} />
             </button>
           </div>
         </div>
 
+        {/* Modal body */}
         <div style={{ overflowY: "auto", flex: 1 }}>
           {notifications.length === 0 ? (
-            <div style={{ padding: 48, textAlign: "center", color: "#94a3b8" }}>
-              <div style={{ fontSize: "2.2rem", marginBottom: 10 }}>🔕</div>
-              <div style={{ fontSize: "0.86rem", fontWeight: 600 }}>No notifications yet</div>
+            <div style={{ padding: 48, textAlign: "center", color: "var(--app-text-muted)" }}>
+              <div style={{ fontSize: "2rem", marginBottom: 8 }}>🔕</div>
+              <div style={{ fontSize: "0.84rem", fontWeight: 600 }}>No notifications yet</div>
             </div>
           ) : (
             <>
               {grouped.unread.length > 0 && (
                 <div>
-                  <div style={{ padding: "8px 18px 4px", fontSize: "0.63rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", background: "#f8fafc" }}>Unread</div>
+                  <div style={{
+                    padding: "6px 12px 4px",
+                    fontSize: "0.62rem", fontWeight: 700,
+                    color: "var(--app-text-muted)",
+                    textTransform: "uppercase", letterSpacing: "0.07em",
+                    background: "var(--app-surface-2)",
+                  }}>
+                    Unread
+                  </div>
                   {grouped.unread.map(n => (
-                    <NotifRow key={n._id || n.id} n={n} onRead={onRead}
-                      onNavigate={(path) => { onClose(); onNavigate(path); }} />
+                    <NotifRow
+                      key={n._id || n.id} n={n} onRead={onRead}
+                      onNavigate={(path) => { onClose(); onNavigate(path); }}
+                    />
                   ))}
                 </div>
               )}
               {grouped.read.length > 0 && (
                 <div>
-                  <div style={{ padding: "8px 18px 4px", fontSize: "0.63rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", background: "#f8fafc" }}>Earlier</div>
+                  <div style={{
+                    padding: "6px 12px 4px",
+                    fontSize: "0.62rem", fontWeight: 700,
+                    color: "var(--app-text-muted)",
+                    textTransform: "uppercase", letterSpacing: "0.07em",
+                    background: "var(--app-surface-2)",
+                  }}>
+                    Earlier
+                  </div>
                   {grouped.read.map(n => (
-                    <NotifRow key={n._id || n.id} n={n} onRead={onRead}
-                      onNavigate={(path) => { onClose(); onNavigate(path); }} />
+                    <NotifRow
+                      key={n._id || n.id} n={n} onRead={onRead}
+                      onNavigate={(path) => { onClose(); onNavigate(path); }}
+                    />
                   ))}
                 </div>
               )}
@@ -397,7 +471,7 @@ function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNa
 }
 
 /* ─────────────────────────────────────────
-   MAIN TOPBAR
+   MAIN TOPBAR  (unchanged logic)
 ───────────────────────────────────────── */
 export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hidden = false }) {
   const router = useRouter();
@@ -405,10 +479,11 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const topbarRef      = useRef(null);
   const bellRefMobile  = useRef(null);
   const bellRefDesktop = useRef(null);
-  const toastKeyRef    = useRef(0);  // incremented per toast → forces AnimatePresence remount
+  const toastKeyRef    = useRef(0);
 
   const [searchValue,     setSearchValue]     = useState("");
   const [userName,        setUserName]        = useState("");
+  const [userId,          setUserId]          = useState("");
   const [userPhone,       setUserPhone]       = useState("");
   const [userRole,        setUserRole]        = useState("");
   const [showLogoutPopup, setShowLogoutPopup] = useState(false);
@@ -417,7 +492,6 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const [notifications,   setNotifications]   = useState([]);
   const [toastNotif,      setToastNotif]      = useState(null);
 
-  // Stable ref — never changes, so the toast timer dep never triggers a restart
   const closeToast = useCallback(() => setToastNotif(null), []);
 
   const handleNavigate = useCallback((path) => {
@@ -426,12 +500,12 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
     router.push(path);
   }, [router]);
 
-  /* ── 1. Load user from localStorage ── */
   useEffect(() => {
     const load = () => {
       try {
         const u = JSON.parse(localStorage.getItem("user") || "{}");
         setUserName(u.name || u.phone || "");
+        setUserId((u.id || u._id || "").toString());
         setUserPhone(u.phone || "");
         setUserRole(u.role || "");
       } catch {}
@@ -441,7 +515,6 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
     return () => window.removeEventListener("loginStatusChanged", load);
   }, []);
 
-  /* ── 2. GSAP entrance ── */
   useEffect(() => {
     const ctx = gsap.context(() => {
       gsap.fromTo(topbarRef.current,
@@ -452,22 +525,14 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
     return () => ctx.revert();
   }, []);
 
-  /* ── 3. Fetch existing notifications on page load ────────────────────
-     Also shows a toast for the most recent unread one on every refresh.
-     This is intentional — the user sees what they missed immediately.
-  ─────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
     let cancelled = false;
     API.get("/notifications")
       .then((res) => {
         if (cancelled) return;
         const raw    = res.data?.data || [];
-        const sorted = raw.sort(
-          (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-        );
+        const sorted = raw.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         setNotifications(sorted);
-
-        // Toast for the latest unread notification on page load/refresh
         const latestUnread = sorted.find(n => !n.read);
         if (latestUnread) {
           toastKeyRef.current += 1;
@@ -478,79 +543,36 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
     return () => { cancelled = true; };
   }, []);
 
-  /* ── 4. Socket: real-time notifications ──────────────────────────────
-     Runs once userName is resolved from localStorage.
-     Sequence guaranteed: socket already connected (autoConnect:true)
-     → emit joinUserRoom → attach listener.
-
-     socket.once("connect", joinRoom) handles the case where this effect
-     runs BEFORE the socket finishes its initial TCP handshake.
-
-     socket.on("connect", joinRoom) re-joins on every future reconnect
-     so a network drop doesn't silently kill real-time updates.
-  ─────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!userPhone) return;
-
+    if (!userPhone && !userId) return;
     const socket = getSocket();
-
     const joinRoom = () => {
-      console.log("📡 Joining room:", userPhone, "| socket:", socket.id);
-      socket.emit("joinUserRoom", userPhone);
+      if (userPhone) socket.emit("joinUserRoom", userPhone);
+      if (userId)    socket.emit("joinUserIdRoom", userId);
     };
-
-    // Join immediately if connected, else wait for the connect event
-    if (socket.connected) {
-      joinRoom();
-    } else {
-      socket.once("connect", joinRoom);
-      socket.connect();
-    }
-
-    // Re-join on every future reconnect (network drop recovery)
+    if (socket.connected) joinRoom();
+    else { socket.once("connect", joinRoom); socket.connect(); }
     socket.on("connect", joinRoom);
-
-    // Wipe stale listeners before attaching a fresh one
     socket.off("newNotification");
-
     const handleNew = (notif) => {
-      console.log("✅ Real-time notification:", notif);
-
       const safeNotif = {
         ...notif,
         _id:       notif._id || notif.id || `temp-${Date.now()}`,
         read:      notif.read ?? false,
         createdAt: notif.createdAt || notif.timestamp || new Date().toISOString(),
       };
-
       setNotifications((prev) => {
-        const exists = prev.some(
-          (n) => String(n._id || n.id) === String(safeNotif._id)
-        );
-        if (exists) {
-          return prev.map((n) =>
-            String(n._id || n.id) === String(safeNotif._id)
-              ? { ...n, ...safeNotif }
-              : n
-          );
-        }
+        const exists = prev.some(n => String(n._id || n.id) === String(safeNotif._id));
+        if (exists) return prev.map(n => String(n._id || n.id) === String(safeNotif._id) ? { ...n, ...safeNotif } : n);
         return [safeNotif, ...prev];
       });
-
-      // New key → AnimatePresence fully remounts the toast
       toastKeyRef.current += 1;
       setToastNotif({ ...safeNotif, _toastKey: toastKeyRef.current });
     };
-
     socket.on("newNotification", handleNew);
+    return () => { socket.off("newNotification", handleNew); socket.off("connect", joinRoom); };
+  }, [userPhone, userId]);
 
-    return () => {
-      socket.off("newNotification", handleNew);
-      socket.off("connect", joinRoom);
-    };
-  }, [userPhone]);
-
-  /* ── 5. Close dropdown on outside click ── */
   useEffect(() => {
     const fn = (e) => {
       const inMobile  = bellRefMobile.current?.contains(e.target);
@@ -564,9 +586,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const handleRead = useCallback(async (id) => {
     try {
       await API.patch(`/notifications/${id}/read`);
-      setNotifications(prev =>
-        prev.map(n => (n._id || n.id) === id ? { ...n, read: true } : n)
-      );
+      setNotifications(prev => prev.map(n => (n._id || n.id) === id ? { ...n, read: true } : n));
     } catch (err) { console.log(err); }
   }, []);
 
@@ -615,26 +635,13 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
         body[data-theme="dark"] .app-topbar-user-name {
           color: #e9edef !important;
         }
-        body[data-theme="dark"] .app-topbar-divider {
-          background: #2a3942 !important;
-        }
-        body[data-theme="dark"] .app-topbar-search input {
-          color: #e9edef !important;
-        }
-        body[data-theme="dark"] .app-topbar-search input::placeholder {
-          color: #8696a0 !important;
-        }
-        body[data-theme="dark"] .app-topbar-logout {
-          background: rgba(239, 68, 68, 0.12) !important;
-        }
-        body[data-theme="dark"] .app-topbar-soft svg[stroke="#374151"] {
-          stroke: #e9edef !important;
-        }
-        body[data-theme="dark"] .app-topbar-soft[style*="background: rgb(204, 251, 241)"],
-        body[data-theme="dark"] .app-topbar-soft[style*="background: #ccfbf1"] {
-          background: rgba(0, 168, 132, 0.22) !important;
-        }
+        body[data-theme="dark"] .app-topbar-divider { background: #2a3942 !important; }
+        body[data-theme="dark"] .app-topbar-search input { color: #e9edef !important; }
+        body[data-theme="dark"] .app-topbar-search input::placeholder { color: #8696a0 !important; }
+        body[data-theme="dark"] .app-topbar-logout { background: rgba(239, 68, 68, 0.12) !important; }
+        body[data-theme="dark"] .app-topbar-soft svg[stroke="#374151"] { stroke: #e9edef !important; }
       `}</style>
+
       <header
         ref={topbarRef}
         style={{ width: "100%", marginBottom: "14px", boxSizing: "border-box", position: "relative", zIndex: 100 }}
@@ -727,9 +734,9 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
       <AnimatePresence>
         {toastNotif && (
           <NotifToast
-            key={toastNotif._toastKey}     // new key per notif = full remount = fresh timer
+            key={toastNotif._toastKey}
             notification={toastNotif}
-            onClose={closeToast}           // stable useCallback, never restarts timer
+            onClose={closeToast}
             onNavigate={handleNavigate}
           />
         )}

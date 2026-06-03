@@ -115,18 +115,42 @@ const isManager = (u) => u?.role === "manager";
 const isUser = (u) => u?.role === "user";
 
 const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-const toDateInput = (iso) => iso ? new Date(iso).toISOString().slice(0, 10) : "";
-const toDateTimeInput = (iso) => iso ? new Date(iso).toISOString().slice(0, 16) : "";
+const toDateInput = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const toDateTimeInput = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 const fmtDate = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
-  const diff = Math.floor((d - new Date()) / 86400000);
+  if (Number.isNaN(d.getTime())) return "â€”";
+  const today = new Date();
+  const targetDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diff = Math.round((targetDay - todayDay) / 86400000);
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff === -1) return "Yesterday";
   return d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
 };
-const isOverdue = (due, st) => st !== "completed" && due && new Date(due) < new Date();
+const isOverdue = (due, st) => {
+  if (["completed", "cancelled"].includes(st) || !due) return false;
+  const d = new Date(due);
+  if (Number.isNaN(d.getTime())) return false;
+  const targetDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = new Date();
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return targetDay < todayDay;
+};
 
 /* ---------- Avatar ---------- */
 function Avatar({ user, size = 32, onClick }) {
@@ -255,14 +279,14 @@ function UserStatusTrail({ status }) {
   const trackColor  = isCancelled ? "#9ca3af" : "#0d9488";
 
   return (
-    <div style={{ width: 260, flexShrink: 0, position: "relative", padding: "6px 0 22px" }}>
+    <div className="task-status-trail" style={{ width: 260, flexShrink: 0, position: "relative", padding: "6px 0 22px" }}>
       {/* base track */}
-      <div style={{
+      <div className="task-status-trail-base" style={{
         position: "absolute", left: 9, right: 9, top: 15,
         height: 2, background: "#e5e7eb", borderRadius: 999,
       }} />
       {/* filled track */}
-      <div style={{
+      <div className="task-status-trail-fill" style={{
         position: "absolute", left: 9, top: 15,
         height: 2, borderRadius: 999,
         background: trackColor,
@@ -296,7 +320,7 @@ function UserStatusTrail({ status }) {
 
           return (
             <div key={id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <div style={{
+              <div className={`task-status-dot ${isDone || isCancelDot ? "done" : ""} ${isActive && !isCancelled ? "active" : ""}`} style={{
                 width: 20, height: 20, borderRadius: "50%",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: bg, border, boxSizing: "border-box",
@@ -308,7 +332,7 @@ function UserStatusTrail({ status }) {
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: trackColor }} />
                 )}
               </div>
-              <span style={{
+              <span className={`task-status-label ${isActive ? "active" : ""}`} style={{
                 fontSize: 10, whiteSpace: "nowrap",
                 color: isActive
                   ? trackColor
@@ -361,8 +385,8 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "appModalBackdropIn 0.32s ease-out both" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(100%, 440px)", margin: 16, maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
-        <div style={{ background: `linear-gradient(135deg, ${u.color}18, ${u.color}08)`, padding: "24px 20px 16px", borderBottom: "1px solid #f0f2f5" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(100%, 440px)", margin: 16, height: "min(85vh, 720px)", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 32px 80px rgba(0,0,0,.18)", animation: "appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both" }}>
+        <div style={{ background: `linear-gradient(135deg, ${u.color}18, ${u.color}08)`, padding: "20px 20px 14px", borderBottom: "1px solid #f0f2f5", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
               <div style={{ width: 52, height: 52, borderRadius: "50%", background: u.color + "22", color: u.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem", fontWeight: 800, border: `3px solid ${u.color}55` }}>{u.initial}</div>
@@ -374,20 +398,20 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
             <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}><FiX size={14} /></button>
           </div>
         </div>
-        <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, borderBottom: "1px solid #f0f2f5" }}>
+        <div style={{ padding: "14px 20px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, borderBottom: "1px solid #f0f2f5", flexShrink: 0 }}>
           {[
             { label: "Total", value: userTasks.length, color: "#0d9488", bg: "#ccfbf1" },
             { label: "Done", value: byStatus.completed, color: "#10b981", bg: "#d1fae5" },
             { label: "Cancelled", value: byStatus.cancelled, color: "#6b7280", bg: "#f3f4f6" }, // ← swapped
             { label: "Late", value: overdueTasks.length, color: "#ef4444", bg: "#fee2e2" },
           ].map(s => (
-            <div key={s.label} style={{ textAlign: "center", padding: "12px 6px", background: s.bg, borderRadius: 10 }}>
-              <div style={{ fontSize: "1.6rem", fontWeight: 800, color: s.color }}>{s.value}</div>
+            <div key={s.label} style={{ textAlign: "center", padding: "10px 6px", background: s.bg, borderRadius: 10 }}>
+              <div style={{ fontSize: "1.35rem", fontWeight: 800, color: s.color }}>{s.value}</div>
               <div style={{ fontSize: "0.66rem", color: "#6b7280", fontWeight: 600, marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid #f0f2f5" }}>
+        <div style={{ padding: "12px 20px", borderBottom: "1px solid #f0f2f5", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
             <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#374151" }}>Completion Rate</span>
             <span style={{ fontSize: "0.76rem", fontWeight: 800, color: completionRate >= 70 ? "#10b981" : completionRate >= 40 ? "#f59e0b" : "#ef4444" }}>{completionRate}%</span>
@@ -441,8 +465,11 @@ function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
   };
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px 16px" }}>
-      <div style={{ display: "flex", gap: 5, marginBottom: 12, background: "#f3f4f6", borderRadius: 9, padding: 3 }}>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "10px 20px 16px", overflow: "hidden" }}>
+      <div style={{ flexShrink: 0, fontSize: "0.76rem", fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 8 }}>
+        Assigned Tasks
+      </div>
+      <div style={{ flexShrink: 0, display: "flex", gap: 5, marginBottom: 10, background: "#f3f4f6", borderRadius: 9, padding: 3 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
             flex: 1, padding: "6px 0", borderRadius: 7, border: "none", cursor: "pointer", fontSize: "0.74rem", fontWeight: 700,
@@ -452,6 +479,7 @@ function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
           }}>{t.label}</button>
         ))}
       </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 2 }}>
       {activeTab === "completed" && (completed.length === 0
         ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>⏳ No completed tasks</div>
         : completed.map(renderTask))}
@@ -461,6 +489,7 @@ function UserTaskTabs({ userTasks, overdueTasks, effectiveStatus }) {
       {activeTab === "cancelled" && (cancelled.length === 0
         ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 24, fontSize: "0.84rem" }}>✅ No cancelled tasks</div>
         : cancelled.map(renderTask))}
+      </div>
     </div>
   );
 }
@@ -480,7 +509,7 @@ function FormDataSummary({ formData, task }) {
   });
   if (!items.length) return null;
   return (
-    <div style={{ marginTop: 5, padding: "5px 9px", background: "rgba(13,148,136,.08)", borderRadius: 7, borderLeft: "2px solid #0d9488" }}>
+    <div className="task-form-summary" style={{ marginTop: 5, padding: "5px 9px", background: "rgba(13,148,136,.08)", borderRadius: 7, borderLeft: "2px solid #0d9488" }}>
       {items.map((item, i) => (
         <div key={i} style={{ fontSize: "0.72rem", color: "#374151", marginBottom: i < items.length - 1 ? 3 : 0 }}>
           <span style={{ color: "#0d9488", fontWeight: 700 }}>{item.label}:</span> {item.value}
@@ -522,7 +551,7 @@ function TaskAttachmentBubble({ file, isMine = false }) {
   }
 
   return (
-    <div style={{ marginTop: 7, padding: 10, borderRadius: 10, border: `1px solid ${isMine ? "#5eead4" : "#e5e7eb"}`, background: isMine ? "#ecfdf5" : "#fff", display: "flex", alignItems: "center", gap: 10, color: "#1f2937", maxWidth: 310, boxShadow: "0 1px 4px rgba(15,23,42,.06)" }}>
+    <div className={`task-attachment-bubble ${isMine ? "mine" : "theirs"}`} style={{ marginTop: 7, padding: 10, borderRadius: 10, border: `1px solid ${isMine ? "#5eead4" : "#e5e7eb"}`, background: isMine ? "#ecfdf5" : "#fff", display: "flex", alignItems: "center", gap: 10, color: "#1f2937", maxWidth: 310, boxShadow: "0 1px 4px rgba(15,23,42,.06)" }}>
       <div style={{ width: 40, height: 44, borderRadius: 8, background: isPdf ? "#fee2e2" : "#e0f2fe", color: isPdf ? "#dc2626" : "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
         {icon}
         {isPdf && <span style={{ position: "absolute", bottom: 5, fontSize: 8, fontWeight: 900, lineHeight: 1 }}>PDF</span>}
@@ -583,7 +612,7 @@ const teal = "#0d9488";
   const borderRadius = isCard ? 10 : isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px";
 
   return (
-    <div style={{
+    <div className={`task-audio-player ${isCard ? "card" : isMine ? "mine" : "theirs"}`} style={{
       background: bg, border, borderRadius,
       padding: "10px 12px", minWidth: 220, maxWidth: 280,
     }}>
@@ -625,8 +654,8 @@ function TaskFormElements({ task, values, onChange, onSubmit, readonly = false }
   const inp = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: "0.84rem", outline: "none", color: "#1a2233", background: readonly ? "#f9fafb" : "#fff", boxSizing: "border-box" };
   const normalizeOptions = (raw) => typeof raw === "string" ? raw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean) : Array.isArray(raw) ? raw.map(s => String(s).trim()).filter(Boolean) : [];
   return (
-    <div style={{ margin: "8px 12px", background: "#fff", borderRadius: 12, border: "1.5px solid #e5e7eb", overflow: "hidden", flexShrink: 0 }}>
-      <div onClick={() => setCollapsed(p => !p)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", cursor: "pointer", background: "#f9fafb", borderBottom: collapsed ? "none" : "1px solid #f0f0f0" }}>
+    <div className="task-form-panel" style={{ margin: "8px 12px", background: "#fff", borderRadius: 12, border: "1.5px solid #e5e7eb", overflow: "hidden", flexShrink: 0 }}>
+      <div className="task-form-panel-header" onClick={() => setCollapsed(p => !p)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", cursor: "pointer", background: "#f9fafb", borderBottom: collapsed ? "none" : "1px solid #f0f0f0" }}>
         <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase", letterSpacing: "0.04em" }}>📝 Task Form {readonly && "(Submitted)"}</span>
         <span style={{ fontSize: "0.6rem", color: "#0d9488", transform: collapsed ? "rotate(-90deg)" : "rotate(0)", transition: ".2s" }}>▼</span>
       </div>
@@ -707,13 +736,20 @@ function FieldRow({ title, onRemove, children }) {
 }
 
 const getTaskUserId = (u) => (u?._id || u?.id || u)?.toString?.() || "";
+const taskReminderValues = (task) => {
+  const reminders = Array.isArray(task?.reminders)
+    ? task.reminders.filter(r => !r?.sentAt).map(r => r?.remindAt).filter(Boolean)
+    : [];
+  const values = reminders.length ? reminders : [task?.reminderAt || task?.reminder].filter(Boolean);
+  return values.map(toDateTimeInput).filter(Boolean);
+};
 const taskToForm = (task, currentUser) => ({
   title: task?.title || "",
   description: task?.description || "",
   assignedTo: (task?.assignedTo || []).map(getTaskUserId).filter(Boolean),
   priority: task?.priority || "medium",
   dueDate: toDateInput(task?.dueDate),
-  reminder: toDateTimeInput(task?.reminderAt || task?.reminder),
+  reminders: taskReminderValues(task),
   isPersonal: task?.isPersonal ?? (isUser(currentUser) ? true : false),
   inputFields: task?.inputFields || [],
   dropdownButtons: task?.dropdownButtons || [],
@@ -754,6 +790,12 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
   const addQuickReply = () => set("quickReplies", [...form.quickReplies, { id: genId(), title: "" }]);
   const addCtaButton = () => set("ctaButtons", [...form.ctaButtons, { id: genId(), btnType: "URL", title: "", value: "" }]);
   const addCheckboxGroup = () => set("checkboxes", [...form.checkboxes, { id: genId(), label: "", options: "" }]);
+  const addReminder = () => set("reminders", [...(form.reminders || []), ""]);
+  const patchReminder = (index, value) => {
+    const reminders = (form.reminders || []).length ? form.reminders : [""];
+    set("reminders", reminders.map((item, i) => i === index ? value : item));
+  };
+  const removeReminder = (index) => set("reminders", (form.reminders || []).filter((_, i) => i !== index));
   const patchArr = (key, id, field, val) => set(key, form[key].map(x => x.id === id ? { ...x, [field]: val } : x));
   const removeArr = (key, id) => set(key, form[key].filter(x => x.id !== id));
   const parseOptions = (raw) => { if (Array.isArray(raw)) return raw.map(s => String(s).trim()).filter(Boolean); if (typeof raw === "string") return raw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean); return []; };
@@ -872,8 +914,16 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
     const assignedTo = form.isPersonal ? [currentUser.id] : form.assignedTo;
     const dropdownButtons = form.dropdownButtons.map(dd => ({ ...dd, options: parseOptions(dd.options) }));
     const checkboxes = form.checkboxes.map(cb => ({ ...cb, options: parseOptions(cb.options) }));
-    const payload = { ...form, assignedTo, reminderAt: form.reminder || null, dropdownButtons, checkboxes, needsApproval };
-    delete payload.reminder;
+    const reminderValues = [...new Set((form.reminders || []).filter(Boolean))].sort();
+    const payload = {
+      ...form,
+      assignedTo,
+      reminders: reminderValues.map(remindAt => ({ remindAt })),
+      reminderAt: reminderValues[0] || null,
+      dropdownButtons,
+      checkboxes,
+      needsApproval,
+    };
     if (isEditing) onUpdate(task._id || task.id, payload);
     else onCreate(payload);
     onClose();
@@ -928,7 +978,22 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
                 <div><label style={lbl}>Priority</label><select value={form.priority} onChange={e => set("priority", e.target.value)} style={inp}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
                 <div><label style={lbl}>Due Date *</label><input type="date" value={form.dueDate} onChange={e => set("dueDate", e.target.value)} style={inp} /></div>
               </div>
-              <div><label style={lbl}>Reminder</label><input type="datetime-local" value={form.reminder} onChange={e => set("reminder", e.target.value)} style={inp} /></div>
+              <div>
+                <label style={lbl}>Reminders</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {((form.reminders || []).length ? form.reminders : [""]).map((reminder, index) => (
+                    <div key={index} style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                      <input type="datetime-local" value={reminder} onChange={e => patchReminder(index, e.target.value)} style={inp} />
+                      <button type="button" onClick={() => removeReminder(index)} title="Remove reminder" style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #fee2e2", background: "#fff", color: "#dc2626", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <FiTrash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={addReminder} style={{ alignSelf: "flex-start", padding: "6px 10px", borderRadius: 8, border: "1px solid #ccfbf1", background: "#ecfdf5", color: "#0d9488", cursor: "pointer", fontSize: "0.74rem", fontWeight: 800, display: "flex", alignItems: "center", gap: 5 }}>
+                    <FiPlus size={13} /> Add reminder
+                  </button>
+                </div>
+              </div>
               {!_isUser && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 11px", background: "#f9fafb", borderRadius: 9, border: "1.5px solid #e5e7eb" }}>
                   <div>
@@ -1104,6 +1169,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
   const pCfg = PRIORITY[task.priority] || PRIORITY.medium;
   const assignees = (task.assignedTo || []).map(enrichUser).filter(Boolean);
   const taskId = task._id || task.id;
+  const reminderValues = taskReminderValues(task);
   const taskAssigneeFilter = taskAssigneeFilterState.taskId === taskId ? taskAssigneeFilterState.value : "all";
   const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser?.id && uts.taskId.toString() === taskId.toString());
   const effectiveStatus = myStatusRec ? myStatusRec.status : task.status;
@@ -1196,7 +1262,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
       <div className="task-drawer" style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(100%, 480px)", background: "#f8fafc", zIndex: 900, display: "flex", flexDirection: "column", boxShadow: "-8px 0 32px rgba(0,0,0,.10)", animation: "slideInRight .25s ease", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
 
         {/* ── Header ── */}
-        <div style={{ background: "#fff", borderBottom: "1px solid #f0f2f5", flexShrink: 0 }}>
+        <div className="task-drawer-header" style={{ background: "#fff", borderBottom: "1px solid #f0f2f5", flexShrink: 0 }}>
 
           {/* row 1: close + title + badges */}
           <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "14px 16px 10px" }}>
@@ -1258,14 +1324,14 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
           <>
             {/* description card */}
             {(task.description || task.attachments?.length > 0) && (
-              <div style={{ margin: "14px 12px 0", padding: "14px 16px", background: "linear-gradient(135deg, #ecfdf5 0%, #dff7f0 100%)", border: "1px solid #6ee7b7", borderRadius: 14, flexShrink: 0, boxShadow: "0 8px 22px rgba(13,148,136,.08)" }}>
+              <div className="task-description-card" style={{ margin: "14px 12px 0", padding: "14px 16px", background: "linear-gradient(135deg, #ecfdf5 0%, #dff7f0 100%)", border: "1px solid #6ee7b7", borderRadius: 14, flexShrink: 0, boxShadow: "0 8px 22px rgba(13,148,136,.08)" }}>
                 {task.description && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
                       <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#0d9488", boxShadow: "0 0 0 4px rgba(13,148,136,.12)" }} />
-                      <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#0F6E56", textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</div>
+                      <div className="task-description-title" style={{ fontSize: "0.66rem", fontWeight: 800, color: "#0F6E56", textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</div>
                     </div>
-                    <div style={{ fontSize: "0.87rem", color: "#064e3b", lineHeight: 1.6, marginBottom: task.attachments?.length ? 12 : 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{task.description}</div>
+                    <div className="task-description-text" style={{ fontSize: "0.87rem", color: "#064e3b", lineHeight: 1.6, marginBottom: task.attachments?.length ? 12 : 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{task.description}</div>
                   </>
                 )}
                 {task.attachments?.length > 0 && (
@@ -1286,7 +1352,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
             <TaskFormElements task={task} values={formValues} onSubmit={onSubmit} onChange={onFormChange} readonly={isLocked} />
 
             {/* messages */}
-            <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div ref={scrollRef} className="task-chat-messages" style={{ flex: 1, overflowY: "auto", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
               {(!task.responses || task.responses.length === 0) ? (
                 <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, color: "#9ca3af", padding: 36 }}>
                   <FiMessageSquare size={28} strokeWidth={1.5} />
@@ -1310,11 +1376,10 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
                   >
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 7, flexDirection: isMine ? "row-reverse" : "row" }}>
                       <Avatar user={sender} size={27} />
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 6, flexDirection: isMine ? "row-reverse" : "row", maxWidth: "82%" }}>
+                      <div className={`task-message-stack ${isMine ? "mine" : "theirs"}`} style={{ display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", gap: 4, maxWidth: "82%", minWidth: 0 }}>
                         {!isMine && (
-                          <span style={{
-                            marginTop: 5,
-                            maxWidth: 96,
+                          <span className="task-sender-name" style={{
+                            maxWidth: 170,
                             padding: "3px 8px",
                             borderRadius: 999,
                             background: sender?.color ? `${sender.color}18` : "#eef2ff",
@@ -1330,7 +1395,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
                         )}
                         <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 4, maxWidth: "100%", alignItems: isMine ? "flex-end" : "flex-start", paddingTop: isMine ? 4 : 0 }}>
                         {hasText && (
-                          <div style={{
+                          <div className={`task-message-bubble ${isMine ? "mine" : "theirs"}`} style={{
                             padding: "8px 13px",
                             borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
                             background: isMine ? "#ccfbf1" : "#fff",
@@ -1349,7 +1414,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
                           return <TaskAttachmentBubble key={idx} file={file} isMine={isMine} />;
                         })}
                         {resp.formData && <FormDataSummary formData={resp.formData} task={task} />}
-                        <div style={{ fontSize: "0.63rem", color: "#9ca3af", display: "flex", alignItems: "center", gap: 3, paddingLeft: isMine ? 0 : 2, paddingRight: isMine ? 2 : 0 }}>
+                        <div className="task-message-time" style={{ fontSize: "0.63rem", color: "#9ca3af", display: "flex", alignItems: "center", gap: 3, paddingLeft: isMine ? 0 : 2, paddingRight: isMine ? 2 : 0 }}>
                           {fmt(resp.createdAt || resp.timestamp)}
                           {isMine && <span style={{ color: "#0d9488", fontSize: "0.72rem" }}>✓✓</span>}
                         </div>
@@ -1395,17 +1460,18 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
             </div>
 
             {/* input bar */}
-            <div style={{ padding: "10px 12px", borderTop: "1px solid #f0f2f5", background: "#fff", display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <div className="task-chat-composer" style={{ padding: "10px 12px", borderTop: "1px solid #f0f2f5", background: "#fff", display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
               <input ref={responseFileInputRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip" hidden onChange={handleResponseFilePick} />
 
               {/* attach */}
-              <button onClick={() => responseFileInputRef.current?.click()} disabled={saving || uploadingResponseFile || isLocked} title="Attach file"
+              <button className="task-composer-icon" onClick={() => responseFileInputRef.current?.click()} disabled={saving || uploadingResponseFile || isLocked} title="Attach file"
                 style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid #e5e7eb", background: "#f8fafc", color: "#6b7280", cursor: saving || uploadingResponseFile || isLocked ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <FiPaperclip size={15} />
               </button>
 
               {/* mic / recording */}
               <button
+                className="task-composer-icon"
                 onClick={isRecordingResponseAudio ? stopResponseAudioRecording : startResponseAudioRecording}
                 disabled={saving || uploadingResponseFile || isLocked}
                 title={isRecordingResponseAudio ? "Stop recording" : "Record audio"}
@@ -1425,6 +1491,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
 
               {/* text input */}
               <input
+                className="task-response-input"
                 value={responseInput}
                 onChange={e => setResponseInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && !isLocked && onSubmit()}
@@ -1434,7 +1501,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
               />
 
               {/* send */}
-              <button onClick={() => onSubmit()} disabled={saving || uploadingResponseFile || isRecordingResponseAudio || isLocked}
+              <button className="task-send-button" onClick={() => onSubmit()} disabled={saving || uploadingResponseFile || isRecordingResponseAudio || isLocked}
                 style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: saving || uploadingResponseFile || isRecordingResponseAudio || isLocked ? "#a7f3d0" : "#0d9488", color: "#fff", cursor: saving || uploadingResponseFile || isRecordingResponseAudio || isLocked ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <FiSend size={14} />
               </button>
@@ -1444,12 +1511,12 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
 
         {/* ── Details Tab ── */}
         {activeTab === "details" && (
-          <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="task-details-panel" style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
             {/* assignees card */}
-            <div style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid #f0f2f5" }}>
+            <div className="task-details-card" style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid #f0f2f5" }}>
               <div style={{ fontSize: "0.67rem", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>Assigned To</div>
               {/* progress */}
-              <div style={{ padding: "10px 12px", background: "#f9fafb", border: "1px solid #f0f2f5", borderRadius: 9, marginBottom: 10 }}>
+              <div className="task-progress-card" style={{ padding: "10px 12px", background: "#f9fafb", border: "1px solid #f0f2f5", borderRadius: 9, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#374151" }}>Task progress</span>
                   <span style={{ fontSize: "0.75rem", fontWeight: 700, color: selectedTaskRate >= 70 ? "#10b981" : selectedTaskRate >= 40 ? "#f59e0b" : "#ef4444" }}>{selectedTaskDone}/{assignees.length} · {selectedTaskRate}%</span>
@@ -1465,7 +1532,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
                   const count = id === "all" ? assignees.length : (assigneeStatusCounts[id] || 0);
                   const cfg = STATUS[id] || { color: "#0d9488", bg: "#ccfbf1" };
                   return (
-                    <button key={id} onClick={() => setTaskAssigneeFilterState({ taskId, value: id })}
+                    <button key={id} className={`task-assignee-filter ${active ? "active" : ""}`} onClick={() => setTaskAssigneeFilterState({ taskId, value: id })}
                       style={{ border: `1px solid ${active ? cfg.color : "#e5e7eb"}`, background: active ? cfg.bg : "#fff", color: active ? cfg.color : "#6b7280", borderRadius: 999, padding: "4px 10px", fontSize: "0.71rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                       {label} ({count})
                     </button>
@@ -1482,7 +1549,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
                   {visibleAssignees.map(u => {
                     const userTaskStatus = getAssigneeTaskStatus(u.id);
                     return (
-                      <div key={u.id} onClick={() => openUserDetailPage(u.id)}
+                      <div key={u.id} className="task-assignee-row" onClick={() => openUserDetailPage(u.id)}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 10, border: "1px solid #f0f2f5", cursor: "pointer", background: "#fff" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#f0fdf9"; e.currentTarget.style.borderColor = "#a7f3d0"; }}
                         onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#f0f2f5"; }}>
@@ -1501,12 +1568,16 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
             </div>
 
             {/* meta info */}
-            <div style={{ background: "#fff", borderRadius: 12, padding: "4px 6px", border: "1px solid #f0f2f5" }}>
+            <div className="task-details-card task-meta-card" style={{ background: "#fff", borderRadius: 12, padding: "4px 6px", border: "1px solid #f0f2f5" }}>
               {[
                 task.createdBy && { icon: <FiUser size={13} />, label: "Created by", val: enrichUser(task.createdBy)?.name },
                 task.approvalStatus && { icon: <FiShield size={13} />, label: "Approval", val: task.approvalStatus === "pending" ? "⏳ Pending" : task.approvalStatus === "approved" ? "✅ Approved" : "❌ Rejected" },
                 { icon: <FiCalendar size={13} />, label: "Due date", val: fmtDate(task.dueDate) },
-                task.reminder && { icon: <FiBell size={13} />, label: "Reminder", val: new Date(task.reminder).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
+                reminderValues.length > 0 && {
+                  icon: <FiBell size={13} />,
+                  label: "Reminders",
+                  val: reminderValues.map(value => new Date(value).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })).join(", "),
+                },
                 { icon: <FiClock size={13} />, label: "Created", val: new Date(task.createdAt).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
                 { icon: <FiMessageSquare size={13} />, label: "Responses", val: task.responses?.length || 0 },
               ].filter(Boolean).map(({ icon, label, val }) => (
@@ -1594,11 +1665,28 @@ const [statusFilter, setStatusFilter] = useState("all");
       setTasks(prev => prev.filter(t => (t._id || t.id) !== taskId));
       setSelectedTask(prev => ((prev?._id || prev?.id) === taskId ? null : prev));
     };
+    const upsertNotification = (notif) => {
+      if (!notif) return;
+      const notifUserId = (notif.userId?._id || notif.userId)?.toString();
+      if (notifUserId && notifUserId !== currentUser.id) return;
+      const safeNotif = {
+        ...notif,
+        _id: notif._id || notif.id || `temp-${Date.now()}`,
+        read: notif.read ?? false,
+        createdAt: notif.createdAt || notif.timestamp || new Date().toISOString(),
+      };
+      setNotifications(prev => {
+        const exists = prev.some(n => (n._id || n.id)?.toString() === safeNotif._id.toString());
+        if (exists) return prev.map(n => ((n._id || n.id)?.toString() === safeNotif._id.toString() ? { ...n, ...safeNotif } : n));
+        return [safeNotif, ...prev];
+      });
+    };
 
     socket.on("newTask", upsertTask);
     socket.on("taskUpdated", upsertTask);
     socket.on("taskResponse", upsertTask);
     socket.on("taskDeleted", removeTask);
+    socket.on("newNotification", upsertNotification);
 
     return () => {
       socket.off("connect", join);
@@ -1606,6 +1694,7 @@ const [statusFilter, setStatusFilter] = useState("all");
       socket.off("taskUpdated", upsertTask);
       socket.off("taskResponse", upsertTask);
       socket.off("taskDeleted", removeTask);
+      socket.off("newNotification", upsertNotification);
     };
   }, [currentUser?.id]);
 
@@ -2077,6 +2166,198 @@ const visibleTasks = useMemo(() => {
         body[data-theme="dark"] .task-approval-panel [style*="border-bottom: 1px solid"],
         body[data-theme="dark"] .task-approval-panel [style*="border-top: 1px solid"],
         body[data-theme="dark"] .task-approval-panel [style*="border: 1px solid"] {
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-drawer {
+          background: #0b141a !important;
+        }
+        body[data-theme="dark"] .task-drawer-header {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.02) !important;
+        }
+        body[data-theme="dark"] .task-drawer > [style*="backdrop"] {
+          background: rgba(11,20,26,0.68) !important;
+        }
+        body[data-theme="dark"] .task-description-card {
+          background: linear-gradient(135deg, rgba(0,168,132,0.16) 0%, rgba(32,44,51,0.96) 100%) !important;
+          border-color: rgba(0,168,132,0.34) !important;
+          box-shadow: 0 10px 26px rgba(0,0,0,0.22) !important;
+        }
+        body[data-theme="dark"] .task-description-card div[style*="color: #064e3b"],
+        body[data-theme="dark"] .task-description-card div[style*="color: #0F6E56"] {
+          color: #d8fff5 !important;
+        }
+        body[data-theme="dark"] .task-chat-messages {
+          background:
+            radial-gradient(circle at 20% 0%, rgba(0,168,132,0.05), transparent 28%),
+            linear-gradient(180deg, #111b21 0%, #0b141a 100%) !important;
+        }
+        body[data-theme="dark"] .task-message-bubble.theirs {
+          background: #202c33 !important;
+          border-color: #2f414b !important;
+          color: #e9edef !important;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.16) !important;
+        }
+        body[data-theme="dark"] .task-message-bubble.mine {
+          background: #005c4b !important;
+          border-color: #0a7c68 !important;
+          color: #e9edef !important;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.16) !important;
+        }
+        body[data-theme="dark"] .task-message-time {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .task-chat-composer {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 -10px 24px rgba(0,0,0,0.18) !important;
+        }
+        body[data-theme="dark"] .task-composer-icon {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .task-composer-icon:hover {
+          background: #263842 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-response-input {
+          background: #0b141a !important;
+          border-color: #2a3942 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-response-input::placeholder {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .task-send-button {
+          background: #00a884 !important;
+          color: #fff !important;
+          box-shadow: 0 8px 18px rgba(0,168,132,0.2) !important;
+        }
+        body[data-theme="dark"] .task-send-button:disabled {
+          background: rgba(0,168,132,0.34) !important;
+          box-shadow: none !important;
+        }
+        body[data-theme="dark"] .task-form-panel {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-form-panel-header {
+          background: #202c33 !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-form-summary {
+          background: rgba(0,168,132,0.12) !important;
+          border-left-color: #00a884 !important;
+        }
+        body[data-theme="dark"] .task-form-summary div {
+          color: #d7e2e8 !important;
+        }
+        body[data-theme="dark"] .task-attachment-bubble.theirs {
+          background: #202c33 !important;
+          border-color: #2f414b !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-attachment-bubble.mine {
+          background: #005c4b !important;
+          border-color: #0a7c68 !important;
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-attachment-bubble div[style*="color: #111827"],
+        body[data-theme="dark"] .task-attachment-bubble div[style*="color: #1f2937"] {
+          color: #e9edef !important;
+        }
+        body[data-theme="dark"] .task-audio-player.theirs,
+        body[data-theme="dark"] .task-audio-player.card {
+          background: #202c33 !important;
+          border-color: #2f414b !important;
+        }
+        body[data-theme="dark"] .task-audio-player.mine {
+          background: #005c4b !important;
+          border-color: #0a7c68 !important;
+        }
+        body[data-theme="dark"] .task-audio-player span {
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .task-description-card {
+          background: #172a30 !important;
+          border-color: #2f5550 !important;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 10px 24px rgba(0,0,0,0.2) !important;
+        }
+        body[data-theme="dark"] .task-description-title {
+          color: #7debd4 !important;
+        }
+        body[data-theme="dark"] .task-description-text {
+          color: #d7e2e8 !important;
+        }
+        body[data-theme="dark"] .task-sender-name {
+          background: rgba(78,118,255,0.16) !important;
+          color: #8fb4ff !important;
+          border: 1px solid rgba(78,118,255,0.2) !important;
+        }
+        body[data-theme="dark"] .task-message-stack.theirs {
+          align-items: flex-start !important;
+        }
+        body[data-theme="dark"] .task-message-stack.mine {
+          align-items: flex-end !important;
+        }
+        body[data-theme="dark"] .task-details-panel {
+          background: #0b141a !important;
+        }
+        body[data-theme="dark"] .task-details-card,
+        body[data-theme="dark"] .task-progress-card {
+          background: #111b21 !important;
+          border-color: #2a3942 !important;
+          box-shadow: 0 8px 20px rgba(0,0,0,0.16) !important;
+        }
+        body[data-theme="dark"] .task-progress-card {
+          background: #17232a !important;
+        }
+        body[data-theme="dark"] .task-details-card > div[style*="border-bottom"] {
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-assignee-filter {
+          background: #202c33 !important;
+          border-color: #334651 !important;
+          color: #aebac1 !important;
+        }
+        body[data-theme="dark"] .task-assignee-filter.active {
+          background: rgba(0,168,132,0.16) !important;
+          border-color: #00a884 !important;
+          color: #7debd4 !important;
+        }
+        body[data-theme="dark"] .task-assignee-row {
+          background: #17232a !important;
+          border-color: #2a3942 !important;
+        }
+        body[data-theme="dark"] .task-assignee-row:hover {
+          background: rgba(0,168,132,0.12) !important;
+          border-color: rgba(0,168,132,0.42) !important;
+        }
+        body[data-theme="dark"] .task-status-trail-base {
+          background: #334651 !important;
+        }
+        body[data-theme="dark"] .task-status-dot {
+          background: #202c33 !important;
+          border-color: #48606c !important;
+        }
+        body[data-theme="dark"] .task-status-dot.active {
+          background: #111b21 !important;
+          border-color: #00a884 !important;
+        }
+        body[data-theme="dark"] .task-status-dot.done {
+          background: #00a884 !important;
+          border-color: #00a884 !important;
+        }
+        body[data-theme="dark"] .task-status-label {
+          color: #8696a0 !important;
+        }
+        body[data-theme="dark"] .task-status-label.active {
+          color: #7debd4 !important;
+        }
+        body[data-theme="dark"] .task-meta-card span,
+        body[data-theme="dark"] .task-meta-card div {
           border-color: #2a3942 !important;
         }
       `}</style>
