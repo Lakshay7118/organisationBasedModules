@@ -34,6 +34,7 @@ import {
   FiMic,
   FiMicOff,
   FiVideo,
+  FiVideoOff,
 } from "react-icons/fi";
 
 import API from "../utils/api";
@@ -449,6 +450,7 @@ const [audioBlob, setAudioBlob] = useState(null);
 const [callState, setCallState] = useState(createIdleCallState);
 const [callSeconds, setCallSeconds] = useState(0);
 const [isCallMuted, setIsCallMuted] = useState(false);
+const [isCameraOff, setIsCameraOff] = useState(false);
 const [showCallTypePicker, setShowCallTypePicker] = useState(false);
 const [localCallStream, setLocalCallStream] = useState(null);
 const [remoteCallStream, setRemoteCallStream] = useState(null);
@@ -1170,6 +1172,7 @@ const resetCallMedia = () => {
   setLocalCallStream(null);
   setRemoteCallStream(null);
   setIsCallMuted(false);
+  setIsCameraOff(false);
   setCallSeconds(0);
 };
 
@@ -1220,8 +1223,11 @@ const attachRemoteStream = (stream, track) => {
   remoteStreamRef.current = nextStream;
   setRemoteCallStream(new MediaStream(nextStream.getTracks()));
 
-  if ((callStateRef.current.callType || "audio") === "audio" && remoteAudioRef.current) {
-    remoteAudioRef.current.srcObject = nextStream;
+  const audioTracks = nextStream.getAudioTracks();
+  if (audioTracks.length && remoteAudioRef.current) {
+    remoteAudioRef.current.srcObject = new MediaStream(audioTracks);
+    remoteAudioRef.current.muted = false;
+    remoteAudioRef.current.volume = 1;
     const playPromise = remoteAudioRef.current.play?.();
     if (playPromise?.catch) playPromise.catch(() => {});
   }
@@ -1381,6 +1387,12 @@ const getLocalMediaStream = async (callType = "audio") => {
       : false,
   });
   localStreamRef.current = stream;
+  stream.getAudioTracks().forEach(track => {
+    track.enabled = !isCallMuted;
+  });
+  stream.getVideoTracks().forEach(track => {
+    track.enabled = !isCameraOff;
+  });
   setLocalCallStream(stream);
   return stream;
 };
@@ -1538,6 +1550,14 @@ const toggleCallMute = () => {
     track.enabled = !nextMuted;
   });
   setIsCallMuted(nextMuted);
+};
+
+const toggleCallCamera = () => {
+  const nextCameraOff = !isCameraOff;
+  localStreamRef.current?.getVideoTracks().forEach(track => {
+    track.enabled = !nextCameraOff;
+  });
+  setIsCameraOff(nextCameraOff);
 };
 
 const openCallTypePicker = () => {
@@ -3004,12 +3024,14 @@ const getChatStatus = (chat) => {
           callState={callState}
           callSeconds={callSeconds}
           isMuted={isCallMuted}
+          isCameraOff={isCameraOff}
           localStream={localCallStream}
           remoteStream={remoteCallStream}
           onAccept={acceptIncomingCall}
           onReject={rejectIncomingCall}
           onEnd={() => endCall("ended", true)}
           onToggleMute={toggleCallMute}
+          onToggleCamera={toggleCallCamera}
         />,
         document.body
       )}
@@ -4456,15 +4478,16 @@ useEffect(() => {
 
   const isMine = msg.type === "sent";
   const isTemplate = !!msg.templateMeta;
+  const isCallMessage = isCallLogMessage(msg) || isCallLogMessage(chatLastMessage);
 
   // ── Bubble wrapper style — strip padding/bg/radius for templates
   const bubbleBase = {
     alignSelf: isMine ? "flex-end" : "flex-start",
-    maxWidth: isTemplate ? 280 : "65%",
+    maxWidth: isTemplate ? 280 : isCallMessage ? 330 : "65%",
     // Templates own their own card — no double wrapper
     background: isTemplate ? "transparent" : isMine ? "#d9fdd3" : "#ffffff",
     color: "#111b21",
-    padding: isTemplate ? 0 : "6px 8px 6px 10px",
+    padding: isTemplate ? 0 : isCallMessage ? "7px 7px 4px" : "6px 8px 6px 10px",
     borderRadius: isTemplate
       ? 0
       : isMine
@@ -4991,21 +5014,27 @@ const renderContent = () => {
         status === "ended" && callSource.callDuration > 0
           ? `Duration ${formatCallDuration(callSource.callDuration)}`
           : isProblemCall
-          ? "Tap call icon to try again"
+          ? "Tap to call back"
           : callSource.callType === "video"
           ? "Video"
           : "Audio";
 
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 220, maxWidth: 290, padding: "6px 4px 3px" }}>
-          <div style={{ width: 42, height: 42, borderRadius: "50%", background: isProblemCall ? "#fff0f0" : "#e7f8f2", color: isProblemCall ? "#d93025" : "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {callSource.callType === "video" ? <FiVideo size={19} /> : <FiPhone size={18} />}
+        <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 240, maxWidth: 310, padding: "3px 2px 4px" }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", background: isProblemCall ? "#ffebe9" : "#e7f8f2", color: isProblemCall ? "#d93025" : "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {callSource.callType === "video" ? <FiVideo size={18} /> : <FiPhone size={17} />}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               <span style={{ fontSize: "0.92rem", fontWeight: 700, color: "#111b21", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
             </div>
-            <div style={{ fontSize: "0.74rem", color: "#667781", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.74rem", color: "#667781", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: isProblemCall ? "#d93025" : "#00a884", flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+            </div>
+          </div>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: isMine ? "rgba(0, 168, 132, 0.14)" : "#f0f2f5", color: "#00a884", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {callSource.callType === "video" ? <FiVideo size={17} /> : <FiPhone size={16} />}
           </div>
         </div>
       );
@@ -6719,7 +6748,7 @@ const playCallVideo = (video) => {
   if (playPromise?.catch) playPromise.catch(() => {});
 };
 
-function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute }) {
+function CallOverlay({ callState, callSeconds, isMuted, isCameraOff, localStream, remoteStream, onAccept, onReject, onEnd, onToggleMute, onToggleCamera }) {
   const callStatus = callState.status;
   const isIncoming = callStatus === "incoming";
   const isConnected = callStatus === "connected";
@@ -6746,6 +6775,7 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
   const localVideoTrackKey = localVideoStream?.getVideoTracks().map(track => track.id).join("-") || "no-local-video";
   const remoteVideoTrackKey = remoteVideoStream?.getVideoTracks().map(track => track.id).join("-") || "no-remote-video";
   const hasLocalVideoTrack = Boolean(localVideoStream);
+  const hasLocalAudioTrack = Boolean(localStream?.getAudioTracks?.().length);
 
   useLayoutEffect(() => {
     const video = localVideoRef.current;
@@ -7061,6 +7091,7 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                     key={`remote-${remoteVideoTrackKey}-${callStatus}`}
                     ref={remoteVideoRef}
                     autoPlay
+                    muted
                     playsInline
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", background: "#050f12" }}
                   />
@@ -7087,7 +7118,7 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                     boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
                   }}
                 >
-                  {hasLocalVideoTrack ? (
+                  {hasLocalVideoTrack && !isCameraOff ? (
                     <video
                       key={`local-${localVideoTrackKey}-${callStatus}`}
                       ref={localVideoRef}
@@ -7101,8 +7132,8 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                       style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", display: "block" }}
                     />
                   ) : (
-                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#aebac1" }}>
-                      <FiVideo size={22} />
+                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#aebac1", background: "#111b21" }}>
+                      {isCameraOff ? <FiVideoOff size={22} /> : <FiVideo size={22} />}
                     </div>
                   )}
                 </div>
@@ -7135,7 +7166,7 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
 
             <div style={{ marginTop: "auto", width: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
-                {isConnected && (
+                {hasLocalAudioTrack && (
                   <button
                     type="button"
                     onClick={onToggleMute}
@@ -7154,6 +7185,27 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
                     title={isMuted ? "Unmute" : "Mute"}
                   >
                     {isMuted ? <FiMicOff size={22} /> : <FiMic size={22} />}
+                  </button>
+                )}
+                {isVideoCall && hasLocalVideoTrack && (
+                  <button
+                    type="button"
+                    onClick={onToggleCamera}
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: "50%",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      background: isCameraOff ? "rgba(239, 68, 68, 0.18)" : "rgba(255,255,255,0.1)",
+                      color: isCameraOff ? "#ffb4b4" : "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    title={isCameraOff ? "Turn camera on" : "Turn camera off"}
+                  >
+                    {isCameraOff ? <FiVideoOff size={22} /> : <FiVideo size={22} />}
                   </button>
                 )}
               <button
@@ -7178,7 +7230,7 @@ function CallOverlay({ callState, callSeconds, isMuted, localStream, remoteStrea
               </button>
               </div>
               <div style={{ marginTop: 12, fontSize: "0.78rem", color: "#aebac1", minHeight: 18 }}>
-                {isConnected ? (isMuted ? "Microphone muted" : "Call connected") : "Waiting for answer"}
+                {isConnected ? (isMuted ? "Microphone muted" : isCameraOff ? "Camera off" : "Call connected") : "Waiting for answer"}
               </div>
             </div>
           </div>
