@@ -452,6 +452,12 @@ function monthlyWorkingDaysForDepartment(department, dueDate, cycleDay) {
   return countWorkingDates(period.dates, department) || WORK_DAYS_PER_MONTH;
 }
 
+function monthlySalaryDaysForCycle(dueDate, cycleDay) {
+  const safeCycleDay = normalizePayrollCycleDay(cycleDay, 1);
+  const period = buildPayrollPeriod(payrollDueDateFromValue(safeCycleDay, dueDate || localDate()), safeCycleDay);
+  return period.dates.length || datesInMonth((dueDate || localDate()).slice(0, 7)).length;
+}
+
 function estimateHourlyRateForStaff(person, referenceDate = localDate()) {
   const basis = normalizeSalaryBasisValue(person?.salaryBasis);
   const salary = Number(person?.monthlySalary || 0);
@@ -459,8 +465,8 @@ function estimateHourlyRateForStaff(person, referenceDate = localDate()) {
   if (basis === "hourly") return salary;
   if (basis === "daily") return dailyHours > 0 ? salary / dailyHours : 0;
   const dueDate = monthlyDueDateForWorkDate(referenceDate, staffPayrollCycleDay(person));
-  const workingDays = monthlyWorkingDaysForDepartment(person?.department, dueDate, staffPayrollCycleDay(person));
-  return workingDays > 0 ? salary / (workingDays * dailyHours) : 0;
+  const salaryDays = monthlySalaryDaysForCycle(dueDate, staffPayrollCycleDay(person));
+  return salaryDays > 0 ? salary / (salaryDays * dailyHours) : 0;
 }
 
 export default function HRPage() {
@@ -804,6 +810,7 @@ export default function HRPage() {
     const cycleDay = normalizePayrollCycleDay(staffForm.payrollCycleDay || cycleStartDay, cycleStartDay);
     const monthlyDueDate = monthlyDueDateForWorkDate(attendanceDate || localDate(), cycleDay);
     const monthlyWorkingDays = monthlyWorkingDaysForDepartment(selectedStaffFormDepartment, monthlyDueDate, cycleDay);
+    const monthlySalaryDays = monthlySalaryDaysForCycle(monthlyDueDate, cycleDay);
 
     if (basis === "hourly") {
       const daily = amount * dailyHours;
@@ -822,9 +829,9 @@ export default function HRPage() {
       ];
     }
 
-    const daily = amount / monthlyWorkingDays;
+    const daily = monthlySalaryDays > 0 ? amount / monthlySalaryDays : 0;
     return [
-      { label: "Working days", value: `${monthlyWorkingDays} days`, plain: true },
+      { label: "Month days", value: `${monthlySalaryDays} days`, plain: true },
       { label: "Daily salary", value: daily },
       { label: "Hourly salary", value: daily / dailyHours },
     ];

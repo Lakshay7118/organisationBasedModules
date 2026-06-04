@@ -1790,7 +1790,21 @@ const handleSelectChat = (chat) => {
 const handleChatDropdownOpen = (e, chat) => {
   e.stopPropagation();
   const rect = e.currentTarget.getBoundingClientRect();
-  setChatDropdown({ open: true, chat, x: rect.left - 160, y: rect.bottom + 4 });
+  const menuWidth = 240;
+  const menuHeight = 144;
+  const gap = 8;
+  const viewportPadding = 10;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const opensUp = spaceBelow < menuHeight + gap;
+  const x = Math.min(
+    Math.max(viewportPadding, rect.right - menuWidth),
+    window.innerWidth - menuWidth - viewportPadding
+  );
+  const y = opensUp
+    ? Math.max(viewportPadding, rect.top - menuHeight - gap)
+    : Math.min(rect.bottom + gap, window.innerHeight - menuHeight - viewportPadding);
+
+  setChatDropdown({ open: true, chat, x, y, opensUp });
 };
 
 const closeChatDropdown = () => setChatDropdown({ open: false, chat: null, x: 0, y: 0 });
@@ -2773,6 +2787,106 @@ const getChatStatus = (chat) => {
             transition: background 0.16s ease, transform 0.16s ease;
           }
           .emoji-chip:hover { background: #f5f6f6; transform: translateY(-1px); }
+          .chat-list-dropdown {
+            width: 240px;
+            min-width: 220px;
+            overflow: hidden;
+            border-radius: 8px;
+            background: #ffffff;
+            border: 1px solid #e9edef;
+            box-shadow: 0 10px 28px rgba(11, 20, 26, 0.18);
+            animation: chatMenuIn 0.14s ease-out both;
+          }
+          .chat-list-dropdown.opens-up {
+            transform-origin: bottom right;
+          }
+          .chat-list-dropdown:not(.opens-up) {
+            transform-origin: top right;
+          }
+          .chat-list-dropdown-item {
+            width: 100%;
+            min-height: 48px;
+            padding: 0 16px;
+            border: none;
+            border-bottom: 1px solid #f0f2f5;
+            background: transparent;
+            color: #111b21;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.92rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s ease, color 0.15s ease;
+          }
+          .chat-list-dropdown-item:last-child {
+            border-bottom: none;
+          }
+          .chat-list-dropdown-item:hover {
+            background: #f5f6f6;
+          }
+          .chat-list-dropdown-item.danger {
+            color: #dc3545;
+          }
+          .chat-list-dropdown-icon {
+            width: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.95rem;
+          }
+          .message-action-menu {
+            width: 220px;
+            overflow: hidden;
+            border-radius: 8px;
+            background: #ffffff;
+            border: 1px solid #e9edef;
+            box-shadow: 0 10px 28px rgba(11, 20, 26, 0.18);
+            animation: chatMenuIn 0.14s ease-out both;
+            transform-origin: top right;
+          }
+          .message-action-menu.opens-up {
+            transform-origin: bottom right;
+          }
+          .message-menu-item {
+            width: 100%;
+            min-height: 46px;
+            padding: 0 16px;
+            border: none;
+            border-bottom: 1px solid #f0f2f5;
+            background: transparent;
+            color: #111b21;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s ease, color 0.15s ease;
+          }
+          .message-menu-item:last-child {
+            border-bottom: none;
+          }
+          .message-menu-item:hover {
+            background: #f5f6f6;
+          }
+          .message-menu-item.danger {
+            color: #dc3545;
+          }
+          .message-menu-icon {
+            width: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+          }
+          @keyframes chatMenuIn {
+            from { opacity: 0; transform: scale(0.98) translateY(4px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+          }
           body[data-theme="dark"] .sticky-chat-shell {
             background: #111b21 !important;
             color: #e9edef;
@@ -2897,6 +3011,36 @@ const getChatStatus = (chat) => {
             background: #233138 !important;
             border-color: #2a3942 !important;
             box-shadow: 0 16px 45px rgba(0,0,0,0.45);
+          }
+          body[data-theme="dark"] .chat-list-dropdown {
+            background: #233138 !important;
+            border-color: #2a3942 !important;
+            box-shadow: 0 16px 42px rgba(0,0,0,0.52);
+          }
+          body[data-theme="dark"] .message-action-menu {
+            background: #233138 !important;
+            border-color: #2a3942 !important;
+            box-shadow: 0 16px 42px rgba(0,0,0,0.52);
+          }
+          body[data-theme="dark"] .chat-list-dropdown-item {
+            color: #e9edef !important;
+            border-color: #2a3942 !important;
+          }
+          body[data-theme="dark"] .message-menu-item {
+            color: #e9edef !important;
+            border-color: #2a3942 !important;
+          }
+          body[data-theme="dark"] .chat-list-dropdown-item:hover {
+            background: #2a3942 !important;
+          }
+          body[data-theme="dark"] .message-menu-item:hover {
+            background: #2a3942 !important;
+          }
+          body[data-theme="dark"] .chat-list-dropdown-item.danger {
+            color: #ff8f8f !important;
+          }
+          body[data-theme="dark"] .message-menu-item.danger {
+            color: #ff8f8f !important;
           }
           body[data-theme="dark"] .attach-row-btn,
           body[data-theme="dark"] .emoji-chip,
@@ -4260,12 +4404,15 @@ onClick={() => {
 {chatDropdown.open && createPortal(
   <>
     <div onClick={closeChatDropdown} style={{ position: "fixed", inset: 0, zIndex: 9998 }} />
-    <div style={{
-      position: "fixed", top: chatDropdown.y, left: chatDropdown.x,
-      zIndex: 9999, background: "#fff", borderRadius: 10,
-      boxShadow: "0 6px 24px rgba(0,0,0,0.14)", border: "1px solid #e9edef",
-      minWidth: 192, overflow: "hidden",
-    }}>
+    <div
+      className={`chat-list-dropdown${chatDropdown.opensUp ? " opens-up" : ""}`}
+      style={{
+        position: "fixed",
+        top: chatDropdown.y,
+        left: chatDropdown.x,
+        zIndex: 9999,
+      }}
+    >
       {[
         {
   label: "Clear chat",
@@ -4291,18 +4438,10 @@ onClick={() => {
         <button
           key={i}
           onClick={item.onClick}
-          style={{
-            width: "100%", padding: "11px 16px", border: "none",
-            background: "transparent", display: "flex", alignItems: "center", gap: 12,
-            fontSize: "0.88rem", color: item.danger ? "#dc3545" : "#111b21",
-            cursor: "pointer", textAlign: "left",
-            borderBottom: i < 2 ? "1px solid #f0f2f5" : "none",
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = "#f5f6f6"}
-          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          className={`chat-list-dropdown-item${item.danger ? " danger" : ""}`}
         >
-          <span style={{ fontSize: 14 }}>{item.icon}</span>
-          {item.label}
+          <span className="chat-list-dropdown-icon">{item.icon}</span>
+          <span>{item.label}</span>
         </button>
       ))}
     </div>
@@ -4457,7 +4596,7 @@ function MessageBubble({
 }) {
   const [showActions, setShowActions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, opensUp: false });
   const menuRef = useRef(null);
   const bubbleRef = useRef(null);
   const [previewMedia, setPreviewMedia] = useState(null);
@@ -5283,11 +5422,24 @@ const senderName = getSenderName();
         <button
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
+            const menuWidth = 220;
+            const menuHeight = multiSelectMode !== undefined ? 240 : 194;
+            const gap = 8;
+            const viewportPadding = 10;
             const spaceBelow = window.innerHeight - rect.bottom;
-            const menuHeight = 160;
+            const opensUp = spaceBelow < menuHeight + gap;
+            const left = Math.min(
+              Math.max(viewportPadding, rect.right - menuWidth),
+              window.innerWidth - menuWidth - viewportPadding
+            );
+            const top = opensUp
+              ? Math.max(viewportPadding, rect.top - menuHeight - gap)
+              : Math.min(rect.bottom + gap, window.innerHeight - menuHeight - viewportPadding);
+
             setMenuPos({
-              top: spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 4,
-              left: rect.right - 180,
+              top,
+              left,
+              opensUp,
             });
             setShowMenu((s) => !s);
           }}
@@ -5317,18 +5469,8 @@ const senderName = getSenderName();
         createPortal(
           <div
             ref={menuRef}
-            style={{
-              position: "fixed",
-              top: menuPos.top,
-              left: menuPos.left,
-              zIndex: 9999,
-              background: "#fff",
-              borderRadius: 8,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              border: "1px solid #e0e0e0",
-              minWidth: 180,
-              overflow: "hidden",
-            }}
+            className={`message-action-menu${menuPos.opensUp ? " opens-up" : ""}`}
+            style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
           >
             <MenuItem icon={<FiShare2 size={14} />} label="Forward" onClick={handleForward} />
             {msg.messageType === "text" && (
@@ -6390,25 +6532,9 @@ function MenuItem({ icon, label, onClick, danger = false }) {
   return (
     <button
       onClick={onClick}
-      style={{
-        width: "100%",
-        padding: "10px 16px",
-        border: "none",
-        background: "transparent",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        fontSize: "13px",
-        color: danger ? "#dc3545" : "#111b21",
-        cursor: "pointer",
-        textAlign: "left",
-        borderBottom: "1px solid #f0f0f0",
-        transition: "background 0.15s",
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "#f5f6f6")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      className={`message-menu-item${danger ? " danger" : ""}`}
     >
-      {icon}
+      <span className="message-menu-icon">{icon}</span>
       <span>{label}</span>
     </button>
   );
