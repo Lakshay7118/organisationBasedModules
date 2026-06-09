@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  Archive,
   ArrowDown,
   ArrowUp,
   BadgeDollarSign,
   Building2,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CreditCard,
@@ -44,14 +44,13 @@ const DAY_OPTIONS = [
 const HR_MAIN_TABS = [
   { id: "overview", label: "Overview", icon: ListChecks },
   { id: "staff-payroll", label: "Staff & Payroll", icon: Users },
-  { id: "banks-loans", label: "Banks & Loans", icon: Landmark },
+  { id: "banks-loans", label: "Banks & Advances", icon: Landmark },
 ];
 
 const PAYROLL_CYCLE_OPTIONS = [1, 7, 15];
 const WORK_DAYS_PER_MONTH = 26;
 const PAYROLL_SCOPE_OPTIONS = [
   { id: "daily", label: "Daily" },
-  { id: "hourly", label: "Hourly" },
   ...PAYROLL_CYCLE_OPTIONS.map((day) => ({ id: `monthly:${day}`, label: `${day} to ${day}` })),
 ];
 const ATTENDANCE_STATUS_META = {
@@ -106,6 +105,7 @@ const emptyBankPayment = {
   direction: "out",
   partyType: "employee",
   purpose: "salary",
+  lockedStaff: false,
   staff: "",
   loan: "",
   payroll: "",
@@ -249,6 +249,7 @@ function payrollCycleCaption(scope, dueDate) {
 }
 
 function payrollScopeLabel(scope) {
+  if (scope?.startsWith("monthly:")) return "Monthly";
   return PAYROLL_SCOPE_OPTIONS.find((option) => option.id === scope)?.label || "Payroll";
 }
 
@@ -271,6 +272,22 @@ function payrollDueDateForStaff(staff, referenceDate = localDate()) {
   const ref = parseDateValue(safeDate);
   const due = new Date(ref.getFullYear(), ref.getMonth(), cycleDay);
   if (localDate(due) > safeDate) due.setMonth(due.getMonth() - 1);
+  return localDate(due);
+}
+
+function payrollMonthFromDueDateForStaff(staff, dueDate = localDate()) {
+  const basis = normalizeSalaryBasisValue(staff?.salaryBasis);
+  if (basis === "daily" || basis === "hourly") return (dueDate || localDate()).slice(0, 7);
+  const due = parseDateValue(payrollDueDateFromValue(staffPayrollCycleDay(staff), dueDate || localDate()));
+  due.setMonth(due.getMonth() - 1);
+  return localDate(due).slice(0, 7);
+}
+
+function payrollDueDateFromSalaryMonth(staff, month = localDate().slice(0, 7)) {
+  const basis = normalizeSalaryBasisValue(staff?.salaryBasis);
+  if (basis === "daily" || basis === "hourly") return `${month}-01`;
+  const [year, monthIndex] = (month || localDate().slice(0, 7)).split("-").map(Number);
+  const due = new Date(year, monthIndex, staffPayrollCycleDay(staff));
   return localDate(due);
 }
 
@@ -307,6 +324,20 @@ function buildPayrollPeriodForStaff(staff, dueDate, cycleDay) {
   return buildPayrollPeriod(safeDueDate, staff ? staffPayrollCycleDay(staff) : cycleDay);
 }
 
+function isPayrollPayable(payroll, referenceDate = localDate()) {
+  if (!payroll) return false;
+  const basis = normalizeSalaryBasisValue(payroll.salaryBasis || payroll.staff?.salaryBasis);
+  const today = referenceDate || localDate();
+  if (basis === "daily" || basis === "hourly") {
+    return (payroll.periodEnd || payroll.periodStart || "") <= today;
+  }
+  if (payroll.periodEnd) {
+    const lastSalaryDate = localDate(addCalendarDays(parseDateValue(payroll.periodEnd), -1));
+    return lastSalaryDate <= today;
+  }
+  return (payroll.month || "") < today.slice(0, 7);
+}
+
 function idOf(item) {
   return (item?._id || item?.id || "").toString();
 }
@@ -316,6 +347,21 @@ function formatMoney(value) {
     maximumFractionDigits: 2,
     minimumFractionDigits: Number(value || 0) % 1 ? 2 : 0,
   })}`;
+}
+
+function payrollCameDays(payroll) {
+  return Number(payroll?.cameDays ?? (
+    Number(payroll?.presentDays || 0)
+    + Number(payroll?.halfDays || 0)
+    + Number(payroll?.shortLeaveDays || 0)
+  ));
+}
+
+function payrollNeedsLoanSettlement(payroll) {
+  return payroll
+    && Number(payroll.loanDeduction || 0) > 0
+    && Number(payroll.balanceDue ?? payroll.netPay ?? 0) <= 0
+    && !payroll.loanRepaymentApplied;
 }
 
 function transactionPeriodLabel(transaction) {
@@ -357,10 +403,11 @@ function transactionDirection(transaction) {
 function transactionTitle(transaction) {
   const titles = {
     salary: "Salary payment",
+    salary_prepayment: "Salary payment",
     manual_out: "Payment out",
     manual_in: "Payment in",
-    loan_out: "Employee loan paid",
-    loan_repayment: "Loan repayment",
+    loan_out: "Employee advance paid",
+    loan_repayment: "Advance repayment",
     advance_out: "Advance paid",
   };
   return titles[transaction?.type] || "Bank transaction";
@@ -369,9 +416,10 @@ function transactionTitle(transaction) {
 function staffTransactionTitle(transaction) {
   const titles = {
     salary: "Salary received",
-    loan_out: "Loan received",
+    salary_prepayment: "Salary received",
+    loan_out: "Advance received",
     advance_out: "Advance received",
-    loan_repayment: "EMI payment",
+    loan_repayment: "Advance repayment",
     manual_in: "Payment made",
     manual_out: "Payment received",
   };
@@ -379,13 +427,13 @@ function staffTransactionTitle(transaction) {
 }
 
 function staffTransactionDirection(transaction) {
-  if (["salary", "loan_out", "advance_out", "manual_out"].includes(transaction?.type)) return "in";
+  if (["salary", "salary_prepayment", "loan_out", "advance_out", "manual_out"].includes(transaction?.type)) return "in";
   if (["loan_repayment", "manual_in"].includes(transaction?.type)) return "out";
   return transactionDirection(transaction);
 }
 
 function repaymentKindLabel(item) {
-  return item?.category === "advance" ? "Advance" : "Loan";
+  return "Advance";
 }
 
 function dayLabels(days = []) {
@@ -470,7 +518,16 @@ function estimateHourlyRateForStaff(person, referenceDate = localDate()) {
 }
 
 export default function HRPage() {
-  const [active, setActive] = useState("overview");
+  const [currentUserRole] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      return localStorage.getItem("role") || storedUser.role || "";
+    } catch {
+      return localStorage.getItem("role") || "";
+    }
+  });
+  const [active, setActive] = useState("staff-payroll");
   const [toolsOpen, setToolsOpen] = useState("");
   const [attendanceSettings, setAttendanceSettings] = useState({
     autoMark: false,
@@ -526,6 +583,10 @@ export default function HRPage() {
   const [editingStaffId, setEditingStaffId] = useState("");
   const [bankForm, setBankForm] = useState(emptyBank);
   const [loanForm, setLoanForm] = useState(emptyLoan);
+  const [selfMonth, setSelfMonth] = useState("");
+  const [selfHr, setSelfHr] = useState(null);
+
+  const isRegularHrUser = currentUserRole === "user";
 
   const activeStaff = useMemo(() => staff.filter((item) => item.status === "active"), [staff]);
 
@@ -553,13 +614,14 @@ export default function HRPage() {
   }, [attendance]);
 
   const attendanceDaySummary = useMemo(() => {
-    const counts = { present: 0, absent: 0, half_day: 0, paid_leave: 0, weekly_off: 0 };
+    const counts = { present: 0, absent: 0, half_day: 0, paid_leave: 0, short_leave: 0, weekly_off: 0 };
     activeStaff.forEach((person) => {
       const record = attendanceByStaff.get(idOf(person));
       if (record?.status === "present") counts.present += 1;
       else if (record?.status === "absent") counts.absent += 1;
       else if (record?.status === "half_day") counts.half_day += 1;
       else if (record?.status === "paid_leave") counts.paid_leave += 1;
+      else if (record?.status === "short_leave") counts.short_leave += 1;
       else if (isWeeklyOffForStaff(person, attendanceDate)) counts.weekly_off += 1;
     });
     return counts;
@@ -597,7 +659,7 @@ export default function HRPage() {
       acc.overtime += Number(item.overtimeAmount || 0);
       acc.fine += Number(item.fineAmount || 0);
       acc.paid += Number(item.totalPaid || 0);
-      if (item.status !== "paid") acc.dues += Number(item.balanceDue ?? item.netPay ?? 0);
+      if (item.status !== "paid" && isPayrollPayable(item)) acc.dues += Number(item.balanceDue ?? item.netPay ?? 0);
       return acc;
     }, { gross: 0, net: 0, loan: 0, deductions: 0, overtime: 0, fine: 0, paid: 0, dues: 0 }),
     [currentCyclePayrolls]
@@ -612,7 +674,11 @@ export default function HRPage() {
   const staffDueSummaryByStaff = useMemo(() => {
     const map = new Map();
     payrolls
-      .filter((item) => item.status !== "paid" && Number(item.balanceDue ?? item.netPay ?? 0) > 0)
+      .filter((item) => (
+        item.status !== "paid"
+        && isPayrollPayable(item)
+        && (Number(item.balanceDue ?? item.netPay ?? 0) > 0 || payrollNeedsLoanSettlement(item))
+      ))
       .forEach((item) => {
         const staffId = idOf(item.staff);
         const current = map.get(staffId) || { amount: 0, hours: 0, count: 0, payrolls: [] };
@@ -631,9 +697,33 @@ export default function HRPage() {
     return map;
   }, [payrolls]);
 
+  const staffAccruedSummaryByStaff = useMemo(() => {
+    const map = new Map();
+    payrolls
+      .filter((item) => item.status !== "paid" && Number(item.balanceDue ?? item.netPay ?? 0) > 0)
+      .forEach((item) => {
+        const staffId = idOf(item.staff);
+        const current = map.get(staffId) || { amount: 0, payrolls: [] };
+        current.amount += Number(item.balanceDue ?? item.netPay ?? 0);
+        current.payrolls.push(item);
+        map.set(staffId, current);
+      });
+    map.forEach((summary) => {
+      summary.payrolls.sort((a, b) => new Date(a.periodEnd || a.createdAt || 0) - new Date(b.periodEnd || b.createdAt || 0));
+      summary.payroll = summary.payrolls[0] || null;
+    });
+    return map;
+  }, [payrolls]);
+
   const selectedPayroll = useMemo(
-    () => selectedDetailStaff ? payrollByStaff.get(idOf(selectedDetailStaff)) || null : null,
-    [payrollByStaff, selectedDetailStaff]
+    () => {
+      if (!selectedDetailStaff) return null;
+      const selectedId = idOf(selectedDetailStaff);
+      return payrollByStaff.get(selectedId)
+        || payrolls.find((item) => idOf(item.staff) === selectedId && item.periodEnd === currentPayrollDueDate && payrollMatchesScope(item, payrollScope))
+        || null;
+    },
+    [currentPayrollDueDate, payrollByStaff, payrolls, payrollScope, selectedDetailStaff]
   );
 
   const payrollRows = useMemo(
@@ -648,7 +738,7 @@ export default function HRPage() {
   }, [detailAttendance]);
 
   const detailAttendanceSummary = useMemo(() => {
-    const counts = { present: 0, absent: 0, half_day: 0, paid_leave: 0, weekly_off: 0 };
+    const counts = { present: 0, absent: 0, half_day: 0, paid_leave: 0, short_leave: 0, weekly_off: 0 };
     if (!selectedDetailStaff) return counts;
     const summaryDates = selectedDetailUsesSingleDay ? [detailDate] : datesInMonth(detailMonth);
     summaryDates.forEach((date) => {
@@ -657,6 +747,7 @@ export default function HRPage() {
       else if (record?.status === "absent") counts.absent += 1;
       else if (record?.status === "half_day") counts.half_day += 1;
       else if (record?.status === "paid_leave") counts.paid_leave += 1;
+      else if (record?.status === "short_leave") counts.short_leave += 1;
       else if (isWeeklyOffForStaff(selectedDetailStaff, date)) counts.weekly_off += 1;
     });
     return counts;
@@ -669,7 +760,7 @@ export default function HRPage() {
   }, [bankTransactions, selectedDetailStaff]);
 
   const activeLoans = useMemo(
-    () => loans.filter((loan) => loan.status === "active" && Number(loan.outstanding || 0) > 0),
+    () => loans.filter((loan) => loan.category === "advance" && loan.status === "active" && Number(loan.outstanding || 0) > 0),
     [loans]
   );
 
@@ -698,7 +789,12 @@ export default function HRPage() {
   const selectedPaymentPayrolls = useMemo(() => {
     if (!bankPaymentForm.staff) return [];
     return payrolls
-      .filter((payroll) => idOf(payroll.staff) === bankPaymentForm.staff && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0)
+      .filter((payroll) => (
+        idOf(payroll.staff) === bankPaymentForm.staff
+        && payroll.status !== "paid"
+        && isPayrollPayable(payroll)
+        && (Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0 || payrollNeedsLoanSettlement(payroll))
+      ))
       .sort((a, b) => new Date(a.periodEnd || a.createdAt || 0) - new Date(b.periodEnd || b.createdAt || 0));
   }, [bankPaymentForm.staff, payrolls]);
 
@@ -745,8 +841,7 @@ export default function HRPage() {
         loanDeduction: transactionLoanDeduction(t),
         breakdown: transactionBreakdownText(t),
         loanOutstandingAfter: Number(t.loanOutstandingAfter || 0),
-        loanCategory: t.loan?.category || (t.type === "advance_out" ? "advance" : "loan"),
-        hasLoanBalance: Boolean(t.loan || ["loan_out", "advance_out", "loan_repayment"].includes(t.type)),
+      hasLoanBalance: Boolean(t.loan || ["advance_out", "loan_out", "loan_repayment"].includes(t.type)),
         bankBalanceAfter: Number(t.bankBalanceAfter || 0),
       }))
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
@@ -764,14 +859,41 @@ export default function HRPage() {
 
   const repaymentBreakdown = useMemo(
     () => activeLoans.reduce((acc, item) => {
-      if (item.category === "advance") acc.advance += Number(item.outstanding || 0);
-      else acc.loan += Number(item.outstanding || 0);
+      acc.advance += Number(item.outstanding || 0);
       acc.deduction += Number(item.emi || 0);
       acc.count += 1;
       return acc;
     }, { loan: 0, advance: 0, deduction: 0, count: 0 }),
     [activeLoans]
   );
+
+  const receivableByStaff = useMemo(() => {
+    const map = new Map();
+    activeLoans.forEach((item) => {
+      const staffId = idOf(item.staff);
+      const current = map.get(staffId) || { amount: 0, loan: 0, advance: 0, count: 0 };
+      const outstanding = Number(item.outstanding || 0);
+      current.amount += outstanding;
+      current.advance += outstanding;
+      current.count += 1;
+      map.set(staffId, current);
+    });
+    return map;
+  }, [activeLoans]);
+
+  const staffTableTotals = useMemo(() => {
+    return activeStaff.reduce((acc, person) => {
+      const staffId = idOf(person);
+      const dueSummary = staffDueSummaryByStaff.get(staffId);
+      const payroll = payrollByStaff.get(staffId);
+      const salaryDue = dueSummary
+        ? Number(dueSummary.amount || 0)
+        : payroll?.status !== "paid" && isPayrollPayable(payroll) ? Number(payroll?.balanceDue ?? payroll?.netPay ?? 0) : 0;
+      acc.salaryDue += Math.max(0, salaryDue);
+      acc.receivable += Number(receivableByStaff.get(staffId)?.amount || 0);
+      return acc;
+    }, { salaryDue: 0, receivable: 0 });
+  }, [activeStaff, payrollByStaff, receivableByStaff, staffDueSummaryByStaff]);
 
   const recentBankTransactions = useMemo(
     () => bankTransactionRows.slice(0, 6),
@@ -840,6 +962,7 @@ export default function HRPage() {
   const showNotice = useCallback((type, text) => setNotice({ type, text }), []);
 
   const loadAll = useCallback(async () => {
+    if (isRegularHrUser) return;
     setLoading(true);
     try {
       const payrollBasis = payrollScopeBasis(payrollScope);
@@ -870,13 +993,36 @@ export default function HRPage() {
     } finally {
       setLoading(false);
     }
-  }, [attendanceDate, cycleStartDay, payrollDueDate, payrollScope, showNotice]);
+  }, [attendanceDate, cycleStartDay, isRegularHrUser, payrollDueDate, payrollScope, showNotice]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  const loadSelfHr = useCallback(async () => {
+    if (!isRegularHrUser) return;
+    setLoading(true);
+    try {
+      const res = await API.get(`/hr/me${selfMonth ? `?month=${selfMonth}` : ""}`);
+      const data = res.data?.data || null;
+      setSelfHr(data);
+      if (data?.month && data.month !== selfMonth) setSelfMonth(data.month);
+      setStaff(data?.staff ? [data.staff] : []);
+      setPayrolls(data?.payrolls || []);
+      setDetailAttendance(data?.attendance || []);
+    } catch (error) {
+      setSelfHr(null);
+      showNotice("error", error.response?.data?.error || "Could not load your HR details.");
+    } finally {
+      setLoading(false);
+    }
+  }, [isRegularHrUser, selfMonth, showNotice]);
+
+  useEffect(() => {
+    if (isRegularHrUser) loadSelfHr();
+    else loadAll();
+  }, [isRegularHrUser, loadAll, loadSelfHr]);
 
   useEffect(() => {
     let cancelled = false;
     const loadSettings = async () => {
+      if (isRegularHrUser) return;
       try {
         const res = await API.get("/hr/payroll/settings");
         if (cancelled) return;
@@ -889,7 +1035,7 @@ export default function HRPage() {
     };
     loadSettings();
     return () => { cancelled = true; };
-  }, []);
+  }, [isRegularHrUser]);
 
   useEffect(() => {
     const nextDrafts = {};
@@ -945,22 +1091,35 @@ export default function HRPage() {
     setDetailAttendanceDrafts(nextDrafts);
   }, [detailAttendance]);
 
-  const refreshSummary = async () => {
+  const mergePayrolls = useCallback((items = []) => {
+    setPayrolls((prev) => {
+      const payrollKey = (item) => `${idOf(item.staff)}:${item.periodEnd || ""}:${normalizeSalaryBasisValue(item.salaryBasis || item.staff?.salaryBasis)}`;
+      const nextByStaff = new Map(prev.map((item) => [payrollKey(item), item]));
+      items.forEach((item) => nextByStaff.set(payrollKey(item), item));
+      return Array.from(nextByStaff.values());
+    });
+  }, []);
+
+  const refreshSummary = useCallback(async () => {
     try {
       const res = await API.get("/hr/summary");
       setSummary(res.data?.data || null);
     } catch { /* non-blocking */ }
-  };
+  }, []);
 
   const openStaffDetail = (person, tab = "attendance") => {
     const baseDate = attendanceDate || localDate();
     const nextScope = payrollScopeForStaff(person);
+    const payrollMonth = baseDate.slice(0, 7);
     setDetailStaffId(idOf(person));
     setDetailTab(tab);
     setDetailDate(baseDate);
-    setDetailMonth(baseDate.slice(0, 7));
+    setDetailMonth(payrollMonth);
     setPayrollScope(nextScope);
     setPayrollDueDate(normalizePayrollDateForScope(payrollDueDateForStaff(person, baseDate), nextScope));
+    if (tab === "payroll") {
+      generatePayrollForStaffMonth(person, payrollMonth, { date: usesSingleDayAttendance(person) ? baseDate : undefined, syncSelectedDate: true });
+    }
   };
 
   const changeDetailDate = (nextDate) => {
@@ -975,30 +1134,67 @@ export default function HRPage() {
   };
 
   const staffBalanceValue = (person) => {
-    const dueSummary = staffDueSummaryByStaff.get(idOf(person));
-    if (dueSummary) return dueSummary.amount;
-    const payroll = payrollByStaff.get(idOf(person));
-    if (payroll) return Number(payroll.balanceDue ?? payroll.netPay ?? 0);
-    if (["hourly", "daily"].includes(normalizeSalaryBasisValue(person.salaryBasis))) return 0;
-    return Number(person.monthlySalary || 0);
+    return staffBalanceSummary(person).amount;
   };
 
-  const refreshDuePayrollForStaff = async (person, date) => {
+  const staffBalanceSummary = (person) => {
+    const staffId = idOf(person);
+    const dueSummary = staffDueSummaryByStaff.get(staffId);
+    const accruedSummary = staffAccruedSummaryByStaff.get(staffId);
+    const payroll = payrollByStaff.get(staffId);
+    const salaryDue = dueSummary
+      ? Number(dueSummary.amount || 0)
+      : payroll?.status !== "paid" && isPayrollPayable(payroll) ? Number(payroll?.balanceDue ?? payroll?.netPay ?? 0) : 0;
+    const salaryAccrued = accruedSummary ? Number(accruedSummary.amount || 0) : 0;
+    const receivable = receivableByStaff.get(staffId) || { amount: 0, loan: 0, advance: 0, count: 0 };
+    if (salaryDue > 0) return { amount: salaryDue, type: "salary_due", receivable };
+    if (salaryAccrued > 0) return { amount: salaryAccrued, type: "salary_accrued", receivable };
+    return { amount: Number(receivable.amount || 0), type: "receivable", receivable };
+  };
+
+  const staffReceivableSummary = (person) => {
+    return receivableByStaff.get(idOf(person)) || { amount: 0, loan: 0, advance: 0, count: 0 };
+  };
+
+  const generatePayrollForStaffMonth = useCallback(async (person, month, options = {}) => {
     const basis = normalizeSalaryBasisValue(person.salaryBasis);
-    if (basis !== "hourly" && basis !== "daily") return;
-    if (!date || date > localDate()) return;
+    const safeMonth = month || localDate().slice(0, 7);
+    const nextScope = payrollScopeForStaff(person);
+    const dueDate = basis === "monthly"
+      ? payrollDueDateFromSalaryMonth(person, safeMonth)
+      : options.date || `${safeMonth}-01`;
     try {
       const res = await API.post("/hr/payroll/generate", {
-        dueDate: date,
+        dueDate,
         cycleStartDay: staffPayrollCycleDay(person),
         salaryBasis: basis,
         staff: idOf(person),
       });
       mergePayrolls(res.data?.data || []);
+      if (options.syncSelectedDate) {
+        setPayrollScope(nextScope);
+        setPayrollDueDate(normalizePayrollDateForScope(dueDate, nextScope));
+      }
       refreshSummary();
+      return res.data?.data || [];
     } catch {
       // Attendance save should stay successful even if payroll refresh is not due yet.
+      return [];
     }
+  }, [mergePayrolls, refreshSummary]);
+
+  const refreshDuePayrollForStaff = useCallback(async (person, date, options = {}) => {
+    if (!date || date > localDate()) return [];
+    return generatePayrollForStaffMonth(person, date.slice(0, 7), { ...options, date });
+  }, [generatePayrollForStaffMonth]);
+
+  const openDetailTab = (tab) => {
+    if (tab === "payroll" && selectedDetailStaff) {
+      const month = usesSingleDayAttendance(selectedDetailStaff) ? detailDate.slice(0, 7) : detailMonth;
+      changeDetailPayrollMonth(month);
+      generatePayrollForStaffMonth(selectedDetailStaff, month, { date: usesSingleDayAttendance(selectedDetailStaff) ? detailDate : undefined, syncSelectedDate: true });
+    }
+    setDetailTab(tab);
   };
 
   const mergeAttendanceRecord = (record, date) => {
@@ -1084,7 +1280,7 @@ export default function HRPage() {
 
   const deleteStaff = async (person) => {
     const staffId = idOf(person);
-    if (!window.confirm(`Delete ${person.name}? This will also delete their attendance, payroll, and loan records.`)) return;
+    if (!window.confirm(`Delete ${person.name}? This will also delete their attendance, payroll, and advance records.`)) return;
     try {
       await API.delete(`/hr/staff/${staffId}`);
       setStaff((prev) => prev.filter((item) => idOf(item) !== staffId));
@@ -1115,6 +1311,9 @@ export default function HRPage() {
   };
 
   const quickMarkAttendance = async (person, status) => {
+    if (isWeeklyOffForStaff(person, attendanceDate)) {
+      return showNotice("error", "This date is a weekly off. Attendance cannot be marked.");
+    }
     const staffId = idOf(person);
     const shift = person.department?.shift || {};
     const expectedHours = Number(person.expectedHoursPerDay || 8);
@@ -1130,7 +1329,7 @@ export default function HRPage() {
         const exists = prev.some((item) => idOf(item.staff) === staffId);
         return exists ? prev.map((item) => (idOf(item.staff) === staffId ? saved : item)) : [saved, ...prev];
       });
-      await refreshDuePayrollForStaff(person, attendanceDate);
+      await refreshDuePayrollForStaff(person, attendanceDate, { syncSelectedDate: idOf(person) === detailStaffId });
     } catch (error) {
       showNotice("error", error.response?.data?.error || "Could not mark attendance.");
     }
@@ -1154,6 +1353,10 @@ export default function HRPage() {
       ...overrides,
     };
     const status = draft.status || "present";
+    if (isWeeklyOffForStaff(person, date) && (status === "present" || status === "absent")) {
+      showNotice("error", "This date is a weekly off. Present or absent cannot be marked.");
+      return;
+    }
     const shift = person.department?.shift || {};
     const isWorkStatus = status === "present" || status === "half_day" || status === "short_leave";
     const isHourly = normalizeSalaryBasisValue(person.salaryBasis) === "hourly";
@@ -1173,12 +1376,13 @@ export default function HRPage() {
     let workHours = 0;
 
     if (isHourly) {
-      if (status === "present" && (!checkIn || !checkOut)) {
-        showNotice("error", "Enter check-in and check-out for hourly staff.");
+      const draftWorkHours = Number(draft.workHours || 0);
+      if (status === "present" && draftWorkHours <= 0 && (!checkIn || !checkOut)) {
+        showNotice("error", "Enter work hours for hourly staff.");
         setDetailAttendanceDrafts((prev) => ({ ...prev, [date]: { ...draft, status, checkIn, checkOut } }));
         return;
       }
-      workHours = checkIn && checkOut ? calculateWorkHours(checkIn, checkOut) : defaultStatusHours;
+      workHours = draftWorkHours > 0 ? draftWorkHours : checkIn && checkOut ? calculateWorkHours(checkIn, checkOut) : defaultStatusHours;
     } else {
       workHours = defaultStatusHours;
     }
@@ -1194,7 +1398,7 @@ export default function HRPage() {
         note: draft.note || "",
       });
       mergeAttendanceRecord(res.data.data, date);
-      await refreshDuePayrollForStaff(person, date);
+      await refreshDuePayrollForStaff(person, date, { syncSelectedDate: idOf(person) === detailStaffId });
       showNotice("success", "Attendance updated.");
     } catch (error) {
       showNotice("error", error.response?.data?.error || "Could not update attendance.");
@@ -1271,13 +1475,12 @@ export default function HRPage() {
   const openBankPayment = (bank = selectedBankAccount, defaults = {}) => {
     const targetBank = bank || selectedBankAccount || banks[0] || null;
     const staffId = defaults.staff || "";
-    const firstLoan = staffId ? activeLoans.find((loan) => idOf(loan.staff) === staffId) : null;
     const firstPayroll = staffId
       ? payrolls
-        .filter((payroll) => idOf(payroll.staff) === staffId && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0)
+        .filter((payroll) => idOf(payroll.staff) === staffId && payroll.status !== "paid" && isPayrollPayable(payroll) && (Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0 || payrollNeedsLoanSettlement(payroll)))
         .sort((a, b) => new Date(a.periodEnd || a.createdAt || 0) - new Date(b.periodEnd || b.createdAt || 0))[0]
       : null;
-    const purpose = defaults.purpose || (defaults.direction === "in" ? (firstLoan ? "loan" : "general") : "salary");
+    const purpose = defaults.purpose || (defaults.direction === "in" ? "general" : "salary");
     const amount = defaults.amount ?? (purpose === "salary" && firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : "");
     setPayNowBank(targetBank || {});
     setBankPaymentForm({
@@ -1286,8 +1489,9 @@ export default function HRPage() {
       direction: defaults.direction || "out",
       partyType: defaults.partyType || "employee",
       purpose,
+      lockedStaff: Boolean(defaults.lockedStaff),
       staff: staffId,
-      loan: defaults.loan || (purpose === "loan" && firstLoan ? idOf(firstLoan) : ""),
+      loan: defaults.loan || "",
       payroll: defaults.payroll || (purpose === "salary" && firstPayroll ? idOf(firstPayroll) : ""),
       amount,
       issueDate: localDate(),
@@ -1327,38 +1531,26 @@ export default function HRPage() {
     if (!payNowBank) return;
     const bankId = bankPaymentForm.bankId || idOf(selectedPaymentBank);
     if (!bankId) return showNotice("error", "Add or select a bank first.");
-    if (Number(bankPaymentForm.amount || 0) <= 0) return showNotice("error", "Enter an amount greater than zero.");
+    const isZeroSalarySettlement = bankPaymentForm.partyType === "employee"
+      && bankPaymentForm.direction === "out"
+      && bankPaymentForm.purpose === "salary"
+      && bankPaymentForm.payroll
+      && payrollNeedsLoanSettlement(selectedPaymentPayroll);
+    if (Number(bankPaymentForm.amount || 0) <= 0 && !isZeroSalarySettlement) return showNotice("error", "Enter an amount greater than zero.");
     if (bankPaymentForm.partyType === "employee" && !bankPaymentForm.staff) return showNotice("error", "Select an employee.");
     if (
       bankPaymentForm.partyType === "employee"
       && bankPaymentForm.direction === "out"
-      && bankPaymentForm.purpose === "salary"
-      && !bankPaymentForm.payroll
-    ) {
-      return showNotice("error", "Select generated payroll for salary payment.");
-    }
-    if (
-      bankPaymentForm.partyType === "employee"
-      && bankPaymentForm.direction === "out"
-      && ["loan", "advance"].includes(bankPaymentForm.purpose)
-      && Number(bankPaymentForm.emi || 0) <= 0
-    ) {
-      return showNotice("error", "Enter how much should be deducted from salary.");
-    }
-    if (
-      bankPaymentForm.partyType === "employee"
-      && bankPaymentForm.direction === "in"
       && bankPaymentForm.purpose === "loan"
-      && !bankPaymentForm.loan
     ) {
-      return showNotice("error", "Select the employee loan to reduce.");
+      return showNotice("error", "Loan payments are disabled. Use Advance instead.");
     }
     if (bankPaymentForm.partyType === "other" && !bankPaymentForm.beneficiaryName.trim()) {
       return showNotice("error", bankPaymentForm.direction === "in" ? "Sender name is required." : "Receiver name is required.");
     }
     setSaving(true);
     try {
-      if (bankPaymentForm.partyType === "employee" && bankPaymentForm.direction === "out" && bankPaymentForm.purpose === "salary") {
+      if (bankPaymentForm.partyType === "employee" && bankPaymentForm.direction === "out" && bankPaymentForm.purpose === "salary" && bankPaymentForm.payroll) {
         const res = await API.post(`/hr/payroll/${bankPaymentForm.payroll}/pay`, {
           bankId,
           amount: Number(bankPaymentForm.amount || 0),
@@ -1380,7 +1572,8 @@ export default function HRPage() {
         ...bankPaymentForm,
         amount: Number(bankPaymentForm.amount || 0),
         emi: Number(bankPaymentForm.emi || 0),
-        loan: bankPaymentForm.direction === "in" && bankPaymentForm.purpose === "loan" ? bankPaymentForm.loan : "",
+        salaryMonth: localDate().slice(0, 7),
+        loan: "",
       };
       const res = await API.post(`/hr/banks/${bankId}/payment`, payload);
       setBanks((prev) => prev.map((item) => (idOf(item) === idOf(res.data.bank) ? res.data.bank : item)));
@@ -1407,18 +1600,19 @@ export default function HRPage() {
 
   const saveLoan = async (event) => {
     event.preventDefault();
-    if (!loanForm.staff) return showNotice("error", "Select staff for the loan.");
-    if (Number(loanForm.amount || 0) <= 0 || Number(loanForm.emi || 0) <= 0) return showNotice("error", "Loan amount and EMI must be greater than zero.");
+    if (!loanForm.staff) return showNotice("error", "Select staff for the advance.");
+    if (Number(loanForm.amount || 0) <= 0) return showNotice("error", "Advance amount must be greater than zero.");
     setSaving(true);
     try {
-      const res = await API.post("/hr/loans", { ...loanForm, amount: Number(loanForm.amount), emi: Number(loanForm.emi) });
+      const res = await API.post("/hr/loans", { ...loanForm, category: "advance", amount: Number(loanForm.amount), emi: Number(loanForm.amount) });
       setLoans((prev) => [res.data.data, ...prev]);
+      if (res.data.payrolls?.length) mergePayrolls(res.data.payrolls);
       setLoanForm(emptyLoan);
-      showNotice("success", "Loan added. EMI will cut during payroll payment.");
+      showNotice("success", "Advance added. It will cut from the next salary, and any balance carries forward.");
       if (toolsOpen === "loan") setToolsOpen("");
       refreshSummary();
     } catch (error) {
-      showNotice("error", error.response?.data?.error || "Could not save loan.");
+      showNotice("error", error.response?.data?.error || "Could not save advance.");
     } finally {
       setSaving(false);
     }
@@ -1428,10 +1622,10 @@ export default function HRPage() {
     try {
       const res = await API.patch(`/hr/loans/${idOf(loan)}`, { status: "closed", outstanding: 0 });
       setLoans((prev) => prev.map((item) => (idOf(item) === idOf(loan) ? res.data.data : item)));
-      showNotice("success", "Loan closed.");
+      showNotice("success", "Advance closed.");
       refreshSummary();
     } catch (error) {
-      showNotice("error", error.response?.data?.error || "Could not close loan.");
+      showNotice("error", error.response?.data?.error || "Could not close advance.");
     }
   };
 
@@ -1450,6 +1644,19 @@ export default function HRPage() {
 
   const changePayrollDate = (nextDate) => { setPayrollDueDate(normalizePayrollDateForScope(nextDate, payrollScope)); };
   const stepPayrollDate = (direction) => { setPayrollDueDate((current) => movePayrollDate(current || localDate(), payrollScope, direction)); };
+  const changeDetailPayrollMonth = (nextMonth) => {
+    if (!selectedDetailStaff || !nextMonth) return;
+    const nextScope = payrollScopeForStaff(selectedDetailStaff);
+    setPayrollScope(nextScope);
+    setPayrollDueDate(payrollDueDateFromSalaryMonth(selectedDetailStaff, nextMonth));
+    generatePayrollForStaffMonth(selectedDetailStaff, nextMonth, { syncSelectedDate: true });
+  };
+  const stepDetailPayrollMonth = (direction) => {
+    const currentMonth = selectedDetailStaff
+      ? payrollMonthFromDueDateForStaff(selectedDetailStaff, payrollDueDate)
+      : (payrollDueDate || localDate()).slice(0, 7);
+    changeDetailPayrollMonth(shiftMonth(currentMonth, direction));
+  };
 
   const savePayrollSetting = async () => {
     const day = payrollScopeCycleDay(payrollScope, cycleStartDay);
@@ -1474,7 +1681,7 @@ export default function HRPage() {
     try {
       const res = await API.post("/hr/payroll/generate", { dueDate, cycleStartDay: day, salaryBasis: payrollBasis });
       mergePayrolls(res.data?.data || []);
-      showNotice("success", "Payroll generated from attendance, weekly offs, and loan EMI.");
+      showNotice("success", "Payroll generated from attendance, weekly offs, and advance deduction.");
       refreshSummary();
     } catch (error) {
       showNotice("error", error.response?.data?.error || "Could not generate payroll.");
@@ -1483,21 +1690,13 @@ export default function HRPage() {
     }
   };
 
-  function mergePayrolls(items = []) {
-    setPayrolls((prev) => {
-      const payrollKey = (item) => `${idOf(item.staff)}:${item.periodEnd || ""}:${normalizeSalaryBasisValue(item.salaryBasis || item.staff?.salaryBasis)}`;
-      const nextByStaff = new Map(prev.map((item) => [payrollKey(item), item]));
-      items.forEach((item) => nextByStaff.set(payrollKey(item), item));
-      return Array.from(nextByStaff.values());
-    });
-  }
-
   const generatePayrollForStaff = async (person) => {
-    const payrollBasis = payrollScopeBasis(payrollScope);
-    const day = payrollScopeCycleDay(payrollScope, cycleStartDay);
+    const payrollBasis = normalizeSalaryBasisValue(person.salaryBasis);
+    const day = staffPayrollCycleDay(person);
+    const nextScope = payrollScopeForStaff(person);
+    setPayrollScope(nextScope);
     if (payrollBasis === "monthly" && !PAYROLL_CYCLE_OPTIONS.includes(day)) return showNotice("error", "Payroll cycle must be 1 to 1, 7 to 7, or 15 to 15.");
-    if (!payrollScopeMatchesStaff(person, payrollScope)) return showNotice("error", `${person.name} is on ${normalizeSalaryBasisValue(person.salaryBasis)} payroll. Select the matching cycle first.`);
-    const dueDate = normalizePayrollDateForScope(payrollDueDate || localDate(), payrollScope);
+    const dueDate = normalizePayrollDateForScope(payrollDueDate || localDate(), nextScope);
     if (!isPayrollDueOnDate(person, dueDate)) return showNotice("error", `${person.name} does not have payroll due on this date.`);
     setPayrollDueDate(dueDate);
     setSaving(true);
@@ -1557,7 +1756,8 @@ export default function HRPage() {
   const payPayroll = async () => {
     if (!clearDuePayroll) return;
     const bankId = paymentForm.bankId || banks[0]?._id;
-    if (!bankId) return showNotice("error", "Add or select a bank first.");
+    const isZeroSalarySettlement = Number(paymentForm.amount || 0) <= 0 && payrollNeedsLoanSettlement(clearDuePayroll);
+    if (!bankId && !isZeroSalarySettlement) return showNotice("error", "Add or select a bank first.");
     try {
       const res = await API.post(`/hr/payroll/${idOf(clearDuePayroll)}/pay`, {
         bankId,
@@ -1571,7 +1771,7 @@ export default function HRPage() {
       if (res.data.transaction) setBankTransactions((prev) => [res.data.transaction, ...prev]);
       else { const txRes = await API.get("/hr/banks/transactions"); setBankTransactions(txRes.data?.data || []); }
       setClearDuePayroll(null);
-      showNotice("success", "Due cleared and bank balance reduced.");
+      showNotice("success", res.data.bank ? "Due cleared and bank balance reduced." : "Salary deduction settled.");
       refreshSummary();
     } catch (error) {
       showNotice("error", error.response?.data?.error || "Could not pay salary.");
@@ -1586,8 +1786,9 @@ export default function HRPage() {
       partyType: "employee",
       direction: "out",
       purpose: "salary",
-      payroll: payroll && payroll.status !== "paid" ? idOf(payroll) : "",
-      amount: payroll && payroll.status !== "paid" ? (payroll.balanceDue ?? payroll.netPay ?? "") : "",
+      lockedStaff: true,
+      payroll: payroll && payroll.status !== "paid" && isPayrollPayable(payroll) ? idOf(payroll) : "",
+      amount: payroll && payroll.status !== "paid" && isPayrollPayable(payroll) ? (payroll.balanceDue ?? payroll.netPay ?? "") : "",
     });
   };
 
@@ -1690,21 +1891,27 @@ export default function HRPage() {
             ) : (
               attendanceRows.map((person) => {
                 const dueSummary = staffDueSummaryByStaff.get(idOf(person));
+                const accruedSummary = staffAccruedSummaryByStaff.get(idOf(person));
                 const scopedPayroll = payrollByStaff.get(idOf(person));
                 const draft = attendanceDrafts[idOf(person)] || {};
-                const balance = staffBalanceValue(person);
-                const isSettled = balance <= 0;
-                const BalIcon = isSettled ? ArrowDown : ArrowUp;
+                const receivable = staffReceivableSummary(person);
+                const salaryDue = dueSummary
+                  ? Number(dueSummary.amount || 0)
+                  : scopedPayroll?.status !== "paid" && isPayrollPayable(scopedPayroll) ? Number(scopedPayroll?.balanceDue ?? scopedPayroll?.netPay ?? 0) : 0;
+                const salaryAccrued = accruedSummary ? Number(accruedSummary.amount || 0) : 0;
+                const balanceAmount = salaryDue > 0 ? salaryDue : salaryAccrued > 0 ? salaryAccrued : receivable.amount;
+                const balanceIsSalaryDue = salaryDue > 0 || salaryAccrued > 0;
                 const staffBasis = normalizeSalaryBasisValue(person.salaryBasis);
                 const isHourly = staffBasis === "hourly";
                 const isTimeBased = staffBasis === "hourly" || staffBasis === "daily";
                 const selectedDate = attendanceDate || localDate();
+                const weeklyOffToday = isWeeklyOffForStaff(person, selectedDate);
                 const duePayrollForSelectedDate = dueSummary?.payrolls?.find((item) => item.periodEnd === selectedDate)
                   || (scopedPayroll?.periodEnd === selectedDate ? scopedPayroll : null);
                 const payroll = duePayrollForSelectedDate || dueSummary?.payroll || scopedPayroll;
                 const selectedDateIsDue = isPayrollDueOnDate(person, selectedDate);
                 const attendanceMarked = attendanceByStaff.has(idOf(person));
-                const canShowPayrollDue = duePayrollForSelectedDate && duePayrollForSelectedDate.status !== "paid";
+                const canShowPayrollDue = salaryDue > 0;
                 const canGenerateDue = !duePayrollForSelectedDate && selectedDate <= localDate() && selectedDateIsDue && (staffBasis === "monthly" || attendanceMarked);
                 return (
                   <tr key={idOf(person)} className="hr-att-row" onClick={() => openStaffDetail(person)}>
@@ -1716,21 +1923,32 @@ export default function HRPage() {
                     </td>
                     <td>{person.phone || "--"}</td>
                     <td>
-                      {dueSummary ? (
+                      {salaryDue > 0 ? (
                         <span className="hr-staff-cell">
-                          <strong>{formatMoney(dueSummary.amount)}</strong>
-                          {dueSummary.hours > 0 && <small>{dueSummary.hours} work hours</small>}
-                          {dueSummary.count > 1 && <small>{dueSummary.count} unpaid payrolls</small>}
+                          <strong className="hr-payable-amount">{formatMoney(salaryDue)}</strong>
+                          {dueSummary?.hours > 0 && <small>{dueSummary.hours} work hours</small>}
+                          {dueSummary?.count > 1 && <small>{dueSummary.count} unpaid payrolls</small>}
                         </span>
-                      ) : payroll ? formatMoney(payroll.balanceDue ?? payroll.netPay) : "-"}
+                      ) : "-"}
                     </td>
                     <td>
-                      <span className={`hr-balance-chip ${isSettled ? "settled" : "due"}`}>
-                        <BalIcon size={14} /> {formatMoney(balance)}
+                      <span className="hr-balance-stack">
+                        <span className={`hr-balance-chip ${balanceIsSalaryDue ? "due" : "settled"}`}>
+                          {balanceIsSalaryDue ? <ArrowUp size={14} /> : <ArrowDown size={14} />} {formatMoney(balanceAmount)}
+                        </span>
+                        {!balanceIsSalaryDue && receivable.amount > 0 && (
+                          <small>
+                            {[
+                              receivable.advance > 0 ? `Advance ${formatMoney(receivable.advance)}` : "",
+                            ].filter(Boolean).join(" / ")}
+                          </small>
+                        )}
                       </span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      {isTimeBased ? (
+                      {weeklyOffToday ? (
+                        <span className="hr-att-status-pill wo">WO</span>
+                      ) : isTimeBased ? (
                         <div className="hr-hourly-action">
                           <span className={`hr-pill ${isHourly ? "blue" : "amber"}`}>{isHourly ? "Hourly" : "Daily"}</span>
                           <button className="hr-btn hr-btn-ghost compact" onClick={() => openStaffDetail(person)}>
@@ -1755,7 +1973,7 @@ export default function HRPage() {
                     <td onClick={(e) => e.stopPropagation()}>
                       {canShowPayrollDue ? (
                         <button className="hr-btn hr-btn-outline-danger" onClick={() => makeStaffPayment(person)}>
-                          Make Payment
+                          Clear Dues
                         </button>
                       ) : canGenerateDue ? (
                         <button className="hr-btn hr-btn-outline-danger" onClick={() => generateDuePayrollForStaff(person, selectedDate)} disabled={saving}>
@@ -1773,12 +1991,12 @@ export default function HRPage() {
             <tr>
                 <td colSpan={2}><strong>Pending amount</strong></td>
                 <td>
-                  <strong className="hr-overdue">{formatMoney(payrollTotals.dues)} {payrollTotals.dues > 0 && <span className="hr-overdue-label">(overdue)</span>}</strong>
+                  <strong className="hr-overdue">{formatMoney(staffTableTotals.salaryDue)} {staffTableTotals.salaryDue > 0 && <span className="hr-overdue-label">(overdue)</span>}</strong>
                 </td>
                 <td>
-                  <span className={`hr-footer-balance ${summary?.dues > 0 ? "due" : "settled"}`}>
-                    {summary?.dues > 0 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-                    {formatMoney(summary?.dues)}
+                  <span className={`hr-footer-balance ${staffTableTotals.salaryDue > staffTableTotals.receivable ? "due" : "settled"}`}>
+                    {staffTableTotals.salaryDue > staffTableTotals.receivable ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                    {formatMoney(Math.abs(staffTableTotals.salaryDue - staffTableTotals.receivable))}
                   </span>
                 </td>
                 <td colSpan={2}></td>
@@ -1805,18 +2023,18 @@ export default function HRPage() {
           </div>
           <div className="hr-rail-scroll">
             {filteredStaff.map((person) => {
-              const balance = staffBalanceValue(person);
+              const balance = staffBalanceSummary(person);
               const selected = idOf(person) === detailStaffId;
-              const DirIcon = balance <= 0 ? ArrowDown : ArrowUp;
+              const isSalaryBalance = balance.type === "salary_due" || balance.type === "salary_accrued";
               return (
                 <button key={idOf(person)} className={`hr-rail-item ${selected ? "selected" : ""}`} onClick={() => openStaffDetail(person, detailTab)}>
                   <span>
                     <strong>{person.name}</strong>
-                    <small>{person.department?.name || person.phone || "Staff"}</small>
+                    <small className={isSalaryBalance ? "due" : "settled"}>
+                      {isSalaryBalance ? <ArrowUp size={22} /> : <ArrowDown size={22} />}
+                      {formatMoney(balance.amount)}
+                    </small>
                   </span>
-                  <b className={balance <= 0 ? "settled" : "due"}>
-                    <DirIcon size={14} /> {formatMoney(balance)}
-                  </b>
                 </button>
               );
             })}
@@ -1834,20 +2052,37 @@ export default function HRPage() {
               <button className="hr-btn hr-btn-ghost" onClick={() => window.print()}>
                 <Download size={15} /> Download Salary Slip
               </button>
-              <button className="hr-btn hr-btn-primary" onClick={() => makeStaffPayment(selectedDetailStaff)} disabled={saving}>
-                Make Payment
-              </button>
+              <div className="hr-split-action">
+                <button className="hr-btn hr-btn-primary" onClick={() => makeStaffPayment(selectedDetailStaff)} disabled={saving}>
+                  Make Payment
+                </button>
+                <button className="hr-btn hr-btn-primary hr-split-caret" onClick={() => makeStaffPayment(selectedDetailStaff)} disabled={saving} title="Payment options">
+                  <ChevronDown size={18} />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Tabs */}
-          <nav className="hr-detail-tabs">
-            {[{ id: "attendance", label: "Attendance" }, { id: "payroll", label: "Payroll" }, { id: "transactions", label: "Transactions" }, { id: "details", label: "Details" }].map((tab) => (
-              <button key={tab.id} className={detailTab === tab.id ? "active" : ""} onClick={() => setDetailTab(tab.id)}>
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+          <div className="hr-detail-tabbar">
+            <nav className="hr-detail-tabs">
+              {[{ id: "attendance", label: "Attendance" }, { id: "payroll", label: "Payroll" }, { id: "transactions", label: "Transactions" }, { id: "details", label: "Details" }].map((tab) => (
+                <button key={tab.id} className={detailTab === tab.id ? "active" : ""} onClick={() => openDetailTab(tab.id)}>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+            {detailTab === "details" && (
+              <div className="hr-detail-tab-actions">
+                <button className="hr-btn hr-btn-ghost" onClick={() => {
+                  setEditingStaffId(idOf(selectedDetailStaff));
+                  setStaffForm({ employeeCode: selectedDetailStaff.employeeCode || "", name: selectedDetailStaff.name || "", email: selectedDetailStaff.email || "", phone: selectedDetailStaff.phone || "", department: idOf(selectedDetailStaff.department), designation: selectedDetailStaff.designation || "", monthlySalary: selectedDetailStaff.monthlySalary || "", salaryBasis: normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis), expectedHoursPerDay: selectedDetailStaff.expectedHoursPerDay || 8, payrollCycleDay: staffPayrollCycleDay(selectedDetailStaff), joinDate: selectedDetailStaff.joinDate ? selectedDetailStaff.joinDate.slice(0, 10) : localDate(), status: selectedDetailStaff.status || "active" });
+                  setToolsOpen("staff");
+                }}>Edit</button>
+                {selectedDetailStaff.status === "active" && <button className="hr-btn hr-btn-outline-danger" onClick={() => archiveStaff(selectedDetailStaff)}>Delete</button>}
+              </div>
+            )}
+          </div>
 
           <div className="hr-detail-body">
             {detailTab === "attendance" && renderDetailAttendanceTab()}
@@ -1890,8 +2125,6 @@ export default function HRPage() {
               <tr>
                 <th>DATE</th>
                 <th>ATTENDANCE</th>
-                <th>CHECK IN</th>
-                <th>CHECK OUT</th>
                 <th>WORK HOURS</th>
                 <th>MENU</th>
                 <th>SAVE</th>
@@ -1928,6 +2161,10 @@ export default function HRPage() {
                 const overtimeHours = Number(draft.overtimeHours || 0);
                 const fineHours = Number(draft.fineHours || 0);
                 const quickStatus = async (nextStatus) => {
+                  if (weeklyOff) {
+                    showNotice("error", "This date is a weekly off. Present or absent cannot be marked.");
+                    return;
+                  }
                   const overrides = { status: nextStatus };
                   if (nextStatus === "present") {
                     const shiftCheckIn = draft.checkIn || rowShift.start || "09:00";
@@ -1952,8 +2189,8 @@ export default function HRPage() {
                     <td>
                       <div className="hr-detail-att-row">
                         <div className="hr-detail-quick-mark">
-                          <button type="button" className={`hr-att-btn ${status === "present" ? "active" : ""}`} onClick={() => quickStatus("present")} title="Present">P</button>
-                          <button type="button" className={`hr-att-btn ${status === "absent" ? "active-absent" : ""}`} onClick={() => quickStatus("absent")} title="Absent">A</button>
+                          <button type="button" className={`hr-att-btn ${status === "present" ? "active" : ""}`} onClick={() => quickStatus("present")} disabled={weeklyOff} title={weeklyOff ? "Weekly off" : "Present"}>P</button>
+                          <button type="button" className={`hr-att-btn ${status === "absent" ? "active-absent" : ""}`} onClick={() => quickStatus("absent")} disabled={weeklyOff} title={weeklyOff ? "Weekly off" : "Absent"}>A</button>
                         </div>
                         {meta && status !== "present" && status !== "absent" && <span className="hr-att-status-pill" style={{ background: pillBg(meta.tone), color: pillFg(meta.tone) }}>{meta.short}</span>}
                         {weeklyOff && !status && <span className="hr-att-status-pill wo">WO</span>}
@@ -1967,30 +2204,12 @@ export default function HRPage() {
                     </td>
                     <td>
                       <input
-                        className="hr-mini-input hr-time-input"
-                        type="time"
-                        value={draft.checkIn || ""}
-                        disabled={!canEditTime}
-                        onChange={(e) => updateDetailAttendanceDraft(date, "checkIn", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="hr-mini-input hr-time-input"
-                        type="time"
-                        value={draft.checkOut || ""}
-                        disabled={!canEditTime}
-                        onChange={(e) => updateDetailAttendanceDraft(date, "checkOut", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
                         className="hr-mini-input hr-hours-input"
                         type="number"
                         min="0"
                         step="0.25"
                         value={Number(calculatedHours || 0).toFixed(2)}
-                        disabled={!isHourlyStaff || !canEditTime}
+                        disabled={!isHourlyStaff || !canEditTime || weeklyOff}
                         onChange={(e) => {
                           const nextHours = e.target.value;
                           const baseCheckIn = draft.checkIn || rowShift.start || "09:00";
@@ -2013,7 +2232,7 @@ export default function HRPage() {
                       />
                     </td>
                     <td>
-                      <button type="button" className="hr-btn hr-btn-ghost compact" onClick={() => saveDetailAttendanceDraft(selectedDetailStaff, date)}>
+                      <button type="button" className="hr-btn hr-btn-ghost compact" onClick={() => saveDetailAttendanceDraft(selectedDetailStaff, date)} disabled={weeklyOff && !status}>
                         Save
                       </button>
                     </td>
@@ -2031,41 +2250,62 @@ export default function HRPage() {
   const renderDetailPayroll = () => {
     if (!selectedDetailStaff) return null;
     const payroll = selectedPayroll;
-    const salaryBasis = normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis);
+    const payrollMonth = payrollMonthFromDueDateForStaff(selectedDetailStaff, payrollDueDate);
+    const period = buildPayrollPeriodForStaff(selectedDetailStaff, payrollDueDate, staffPayrollCycleDay(selectedDetailStaff));
+    const cycleLabel = `${formatMonthLabel(payrollMonth).split(" ")[0]} (${formatReadableDate(period.periodStart)} - ${formatReadableDate(period.periodEnd)})`;
+    const currentBalance = Number(payroll?.balanceDue ?? payroll?.netPay ?? staffBalanceSummary(selectedDetailStaff).amount ?? 0);
+    const earningsAmount = Number(payroll?.grossSalary ?? payroll?.baseSalary ?? selectedDetailStaff.monthlySalary ?? 0);
+    const weeklyOffAmount = Number(payroll?.paidOffDays || 0) * Number(payroll?.dailyRate || 0);
+    const paymentsAmount = Number(payroll?.totalPaid || 0);
+    const previousBalance = Math.max(0, currentBalance - Number(payroll?.netPay ?? earningsAmount) + paymentsAmount);
     return (
       <div className="hr-detail-payroll">
-        <div className="hr-payroll-toolbar">
-          <select value={payrollScope} onChange={(e) => changePayrollScope(e.target.value)}>
-            {PAYROLL_SCOPE_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <DateNavigator value={payrollDueDate} onChange={changePayrollDate} onPrevious={() => stepPayrollDate(-1)} onNext={() => stepPayrollDate(1)} />
-          <button className="hr-btn hr-btn-primary" onClick={() => generatePayrollForStaff(selectedDetailStaff)} disabled={saving}>
-            <BadgeDollarSign size={15} /> Generate
-          </button>
+        <div className="hr-detail-month-bar payroll-month-bar">
+          <h3>{formatMonthLabel(payrollMonth)}</h3>
+          <div className="hr-month-pill-nav">
+            <button className="hr-icon-btn" onClick={() => stepDetailPayrollMonth(-1)}><ChevronLeft size={18} /></button>
+            <button type="button" className="hr-month-pill" onClick={() => changeDetailPayrollMonth(payrollMonth)}>
+              {formatMonthLabel(payrollMonth).replace(" ", " ")}
+            </button>
+            <button className="hr-icon-btn" onClick={() => stepDetailPayrollMonth(1)}><ChevronRight size={18} /></button>
+          </div>
         </div>
-        <span className="hr-cycle-caption">{payrollCycleCaption(payrollScope, payrollDueDate)}</span>
         {payroll ? (
-          <div className="hr-payroll-detail-grid">
-            <div className="hr-payroll-detail-card">
-              <h4>Attendance</h4>
-              <InfoRow label="Working days" value={salaryBasis === "hourly" ? `${payroll.totalWorkHours || 0} hours` : `${payroll.workingDays || 0} days`} />
-              <InfoRow label="Present / Half / Absent" value={`${payroll.presentDays || 0} / ${payroll.halfDays || 0} / ${payroll.absentDays || 0}`} />
-              <InfoRow label="Paid / Short leave" value={`${payroll.paidLeaveDays || 0} / ${payroll.shortLeaveDays || 0}`} />
+          <div className="hr-payroll-ledger">
+            <div className="hr-payroll-ledger-row cycle">
+              <strong>{cycleLabel}</strong>
+              <b>{formatMoney(currentBalance)}</b>
             </div>
-            <div className="hr-payroll-detail-card">
-              <h4>Salary</h4>
-              <InfoRow label="Gross" value={formatMoney(payroll.grossSalary)} />
-              <InfoRow label="Daily rate" value={formatMoney(payroll.dailyRate || (payroll.workingDays ? Number(payroll.baseSalary || 0) / payroll.workingDays : 0))} />
-              <InfoRow label="Hourly rate" value={formatMoney(payroll.hourlyRate)} />
-              <InfoRow label="Deduction" value={formatMoney(payroll.attendanceDeduction)} />
-              <InfoRow label="Overtime / Fine" value={`${formatMoney(payroll.overtimeAmount)} / ${formatMoney(payroll.fineAmount)}`} />
-              <InfoRow label="Loan / advance deduction" value={formatMoney(payroll.loanDeduction)} />
-              <InfoRow label="Net due" value={formatMoney(payroll.balanceDue ?? payroll.netPay)} strong />
+            <div className="hr-payroll-ledger-row section">
+              <strong>Earnings</strong>
+              <b>{formatMoney(earningsAmount)}</b>
+            </div>
+            <div className="hr-payroll-ledger-row child">
+              <span>Weekly off ({payroll.paidOffDays || 0} Days)</span>
+              <b>{formatMoney(weeklyOffAmount || earningsAmount)}</b>
+            </div>
+            <div className="hr-payroll-ledger-row section">
+              <strong>Payments</strong>
+              <b>{formatMoney(paymentsAmount)}</b>
+            </div>
+            <div className="hr-payroll-ledger-row section">
+              <strong>Previous month balance</strong>
+              <b>{formatMoney(previousBalance)}</b>
             </div>
           </div>
         ) : (
-          <div className="hr-empty-block">No payroll generated for this cycle.</div>
+          <div className="hr-payroll-ledger">
+            <div className="hr-payroll-ledger-row cycle">
+              <strong>{cycleLabel}</strong>
+              <b>{formatMoney(currentBalance)}</b>
+            </div>
+            <div className="hr-empty-block compact">No payroll generated for this cycle.</div>
+            <button className="hr-btn hr-btn-primary hr-generate-inline" onClick={() => generatePayrollForStaff(selectedDetailStaff)} disabled={saving}>
+              <BadgeDollarSign size={15} /> Generate Payroll
+            </button>
+          </div>
         )}
+        <small className="hr-payroll-footnote">*Amount not included in the final balance of the Salary Cycle</small>
       </div>
     );
   };
@@ -2100,7 +2340,7 @@ export default function HRPage() {
                     {t.note && <small>{t.note}</small>}
                     {breakdown && <small>{breakdown}</small>}
                     {emi > 0 && gross > 0 && <small className="hr-emi-line">Deducted {formatMoney(emi)} from salary {formatMoney(gross)}</small>}
-                    {["loan_out", "advance_out", "loan_repayment"].includes(t.type) && <small>Remaining {t.loan?.category === "advance" || t.type === "advance_out" ? "advance" : "loan"} {formatMoney(t.loanOutstandingAfter)}</small>}
+                    {["loan_out", "advance_out", "loan_repayment"].includes(t.type) && <small>Remaining advance {formatMoney(t.loanOutstandingAfter)}</small>}
                     {t.bankBalanceAfter > 0 && <small>Bank balance {formatMoney(t.bankBalanceAfter)}</small>}
                   </td>
                   <td>
@@ -2118,31 +2358,34 @@ export default function HRPage() {
 
   const renderDetailInfo = () => {
     if (!selectedDetailStaff) return null;
+    const salaryBasis = normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis);
+    const cycleDay = staffPayrollCycleDay(selectedDetailStaff);
+    const openingDate = selectedDetailStaff.joinDate ? formatReadableDate(selectedDetailStaff.joinDate.slice(0, 10)) : "--";
     return (
-      <div className="hr-two-col">
-        <div className="hr-mini-card">
-          <h4>Staff Details</h4>
-          <InfoRow label="Employee code" value={selectedDetailStaff.employeeCode || "--"} />
-          <InfoRow label="Mobile" value={selectedDetailStaff.phone || "--"} />
-          <InfoRow label="Email" value={selectedDetailStaff.email || "--"} />
-          <InfoRow label="Department" value={selectedDetailStaff.department?.name || "Unassigned"} />
-          <InfoRow label="Designation" value={selectedDetailStaff.designation || "--"} />
-          <InfoRow label="Joining date" value={selectedDetailStaff.joinDate ? formatReadableDate(selectedDetailStaff.joinDate.slice(0, 10)) : "--"} />
-          <div className="hr-info-actions">
-            <button className="hr-btn hr-btn-ghost" onClick={() => {
-              setEditingStaffId(idOf(selectedDetailStaff));
-              setStaffForm({ employeeCode: selectedDetailStaff.employeeCode || "", name: selectedDetailStaff.name || "", email: selectedDetailStaff.email || "", phone: selectedDetailStaff.phone || "", department: idOf(selectedDetailStaff.department), designation: selectedDetailStaff.designation || "", monthlySalary: selectedDetailStaff.monthlySalary || "", salaryBasis: normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis), expectedHoursPerDay: selectedDetailStaff.expectedHoursPerDay || 8, payrollCycleDay: staffPayrollCycleDay(selectedDetailStaff), joinDate: selectedDetailStaff.joinDate ? selectedDetailStaff.joinDate.slice(0, 10) : localDate(), status: selectedDetailStaff.status || "active" });
-              setToolsOpen("staff");
-            }}><Pencil size={14} /> Edit Staff</button>
-            {selectedDetailStaff.status === "active" && <button className="hr-btn hr-btn-ghost" onClick={() => archiveStaff(selectedDetailStaff)}><Archive size={14} /> Mark Inactive</button>}
-          </div>
+      <div className="hr-staff-info-grid">
+        <div className="hr-staff-info-item">
+          <span>Staff Name</span>
+          <strong>{selectedDetailStaff.name || "--"}</strong>
         </div>
-        <div className="hr-mini-card">
-          <h4>Salary Settings</h4>
-          <InfoRow label="Salary basis" value={normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis)} />
-          <InfoRow label="Salary amount" value={formatMoney(selectedDetailStaff.monthlySalary)} />
-          <InfoRow label="Daily hours" value={`${selectedDetailStaff.expectedHoursPerDay || 8}h`} />
-          <InfoRow label="Status" value={selectedDetailStaff.status || "active"} strong />
+        <div className="hr-staff-info-item">
+          <span>Mobile Number</span>
+          <strong>{selectedDetailStaff.phone || "--"}</strong>
+        </div>
+        <div className="hr-staff-info-item">
+          <span>Opening Balance</span>
+          <strong>{formatMoney(selectedDetailStaff.openingBalance || 0)} On {openingDate}</strong>
+        </div>
+        <div className="hr-staff-info-item">
+          <span>Salary</span>
+          <strong>{formatMoney(selectedDetailStaff.monthlySalary)}</strong>
+        </div>
+        <div className="hr-staff-info-item">
+          <span>Salary Type</span>
+          <strong>{salaryBasis.charAt(0).toUpperCase() + salaryBasis.slice(1)}</strong>
+        </div>
+        <div className="hr-staff-info-item">
+          <span>Salary Cycle</span>
+          <strong>{salaryBasis === "monthly" ? `${cycleDay} To ${cycleDay} Every Month` : "Every Day"}</strong>
         </div>
       </div>
     );
@@ -2267,7 +2510,6 @@ export default function HRPage() {
           <select value={staffForm.salaryBasis} onChange={(e) => setStaffForm({ ...staffForm, salaryBasis: e.target.value, expectedHoursPerDay: staffForm.expectedHoursPerDay || 8 })}>
             <option value="monthly">Monthly</option>
             <option value="daily">Daily</option>
-            <option value="hourly">Hourly</option>
           </select>
         </Field>
         {normalizeSalaryBasisValue(staffForm.salaryBasis) === "monthly" ? (
@@ -2316,10 +2558,10 @@ export default function HRPage() {
   const renderBanksLoans = () => (
     <section className="hr-main-section">
       <div className="hr-section-topbar">
-        <h1>Banks &amp; Loans</h1>
+        <h1>Banks &amp; Advances</h1>
         <div className="hr-topbar-actions">
           <button className="hr-btn hr-btn-ghost" onClick={() => setToolsOpen("bank")}><Plus size={14} /> Add Bank</button>
-          <button className="hr-btn hr-btn-ghost" onClick={() => setToolsOpen("view-loans")}><Wallet size={14} /> View Loans</button>
+          <button className="hr-btn hr-btn-ghost" onClick={() => setToolsOpen("view-loans")}><Wallet size={14} /> View Advances</button>
           <button className="hr-btn hr-btn-primary" onClick={() => openBankPayment(selectedBankAccount)} disabled={banks.length === 0}><CreditCard size={14} /> Make Payment</button>
           <button className="hr-btn hr-btn-ghost" onClick={loadAll}><RefreshCcw size={14} /></button>
         </div>
@@ -2331,7 +2573,7 @@ export default function HRPage() {
             <strong>{formatMoney(summary?.bankBalance)}</strong>
           </div>
           <div className="hr-ledger-balance subtle">
-            <span>Loan / Advance Outstanding:</span>
+            <span>Advance Outstanding:</span>
             <strong>{formatMoney(summary?.loanOutstanding)}</strong>
           </div>
           <div className="hr-ledger-section-title">
@@ -2410,7 +2652,7 @@ export default function HRPage() {
                           {item.note && <small>{item.note}</small>}
                           {item.breakdown && <small>{item.breakdown}</small>}
                           {item.loanDeduction > 0 && <small className="hr-emi-line">Deducted {formatMoney(item.loanDeduction)}</small>}
-                          {item.hasLoanBalance && <small>Remaining {item.loanCategory === "advance" ? "advance" : "loan"} {formatMoney(item.loanOutstandingAfter)}</small>}
+                          {item.hasLoanBalance && <small>Remaining advance {formatMoney(item.loanOutstandingAfter)}</small>}
                         </td>
                         <td>
                           {item.direction === "in" ? <strong className="hr-amount in">{formatMoney(item.amount)}</strong> : <span className="hr-muted">--</span>}
@@ -2451,7 +2693,7 @@ export default function HRPage() {
           { icon: ArrowDown, label: "Money In", value: formatMoney(allBankTransactionTotals.in), tone: "blue" },
           { icon: ArrowUp, label: "Money Out", value: formatMoney(allBankTransactionTotals.out), tone: "rose" },
           { icon: DollarSign, label: "Salary Dues", value: formatMoney(summary?.dues), tone: "amber" },
-          { icon: Wallet, label: "Loan / Advance", value: formatMoney(summary?.loanOutstanding), tone: "violet" },
+          { icon: Wallet, label: "Advance", value: formatMoney(summary?.loanOutstanding), tone: "violet" },
         ].map((m) => (
           <div key={m.label} className={`hr-metric-card ${m.tone}`}>
             <m.icon size={22} />
@@ -2466,14 +2708,13 @@ export default function HRPage() {
           <InfoRow label="Due date" value={payrollDueDate} />
           <InfoRow label="Gross" value={formatMoney(payrollTotals.gross)} />
           <InfoRow label="Attendance deduction" value={formatMoney(payrollTotals.deductions)} />
-          <InfoRow label="Loan / advance deduction" value={formatMoney(payrollTotals.loan)} />
+          <InfoRow label="Advance deduction" value={formatMoney(payrollTotals.loan)} />
           <InfoRow label="Paid" value={formatMoney(payrollTotals.paid)} />
           <InfoRow label="Net dues" value={formatMoney(payrollTotals.dues)} strong />
         </div>
         <div className="hr-mini-card">
-          <h4>Loan / Advance</h4>
+          <h4>Advance</h4>
           <InfoRow label="Active records" value={repaymentBreakdown.count} />
-          <InfoRow label="Loan outstanding" value={formatMoney(repaymentBreakdown.loan)} />
           <InfoRow label="Advance outstanding" value={formatMoney(repaymentBreakdown.advance)} />
           <InfoRow label="Next salary deductions" value={formatMoney(repaymentBreakdown.deduction)} strong />
         </div>
@@ -2506,7 +2747,7 @@ export default function HRPage() {
                     <strong>{item.title}</strong>
                     {item.note && <small>{item.note}</small>}
                     {item.breakdown && <small>{item.breakdown}</small>}
-                    {item.hasLoanBalance && <small>Remaining {item.loanCategory === "advance" ? "advance" : "loan"} {formatMoney(item.loanOutstandingAfter)}</small>}
+                    {item.hasLoanBalance && <small>Remaining advance {formatMoney(item.loanOutstandingAfter)}</small>}
                   </td>
                   <td>{item.source}</td>
                   <td>{item.direction === "in" ? <strong className="hr-amount in">{formatMoney(item.amount)}</strong> : <span className="hr-muted">--</span>}</td>
@@ -2530,7 +2771,7 @@ export default function HRPage() {
 
   const renderToolsModal = () => {
     if (!toolsOpen) return null;
-    const titles = { staff: editingStaffId ? "Edit Staff" : "Add Staff", "attendance-settings": "Attendance Settings", department: editingDepartmentId ? "Edit Department" : "Add Department", bank: "Add Bank", loan: "Add Loan", "view-loans": "Loans" };
+    const titles = { staff: editingStaffId ? "Edit Staff" : "Add Staff", "attendance-settings": "Attendance Settings", department: editingDepartmentId ? "Edit Department" : "Add Department", bank: "Add Bank", loan: "Add Advance", "view-loans": "Advances" };
     const content = {
       staff: renderStaffForm(),
       "attendance-settings": renderAttendanceSettings(),
@@ -2551,22 +2792,22 @@ export default function HRPage() {
         <div className="hr-tools-panel">
           <div className="hr-sub-head-row">
             <div>
-              <h3>Loans</h3>
-              <p className="hr-muted">All staff loans and outstanding balances.</p>
+              <h3>Advances</h3>
+              <p className="hr-muted">All staff advances and outstanding salary adjustments.</p>
             </div>
             <button className="hr-btn hr-btn-primary compact" onClick={() => { setToolsOpen(""); openBankPayment(selectedBankAccount); }} disabled={banks.length === 0}><CreditCard size={14} /> Make Payment</button>
           </div>
           <div className="hr-loans-list">
             {loans.length === 0 ? (
-              <div className="hr-empty-block">No loans yet.</div>
+              <div className="hr-empty-block">No advances yet.</div>
             ) : loans.map((loan) => (
               <div key={idOf(loan)} className="hr-loan-card">
                 <div>
                   <strong>{loan.staff?.name || "Staff"}</strong>
-                  <small>{loan.staff?.department?.name || loan.staff?.designation || "Staff loan"}</small>
+                  <small>{loan.staff?.department?.name || loan.staff?.designation || "Staff advance"}</small>
                 </div>
                 <div><span>{repaymentKindLabel(loan)}</span><strong>{formatMoney(loan.amount)}</strong></div>
-                <div><span>Deduction</span><strong>{formatMoney(loan.emi)}</strong></div>
+                <div><span>Next salary cut</span><strong>{formatMoney(Math.min(Number(loan.emi || 0), Number(loan.outstanding || 0)))}</strong></div>
                 <div><span>Outstanding</span><strong>{formatMoney(loan.outstanding)}</strong></div>
                 <div className="hr-loan-card-actions">
                   <span className={`hr-pill ${loan.status === "active" ? "amber" : "green"}`}>{loan.status}</span>
@@ -2579,7 +2820,7 @@ export default function HRPage() {
       ),
       loan: (
         <div className="hr-tools-panel">
-          <h3>Add Loan</h3>
+          <h3>Add Advance</h3>
           <form className="hr-form-grid-2" onSubmit={saveLoan}>
             <Field label="Staff">
               <select value={loanForm.staff} onChange={(e) => setLoanForm({ ...loanForm, staff: e.target.value })}>
@@ -2587,11 +2828,10 @@ export default function HRPage() {
                 {activeStaff.map((p) => <option key={idOf(p)} value={idOf(p)}>{staffLabel(p)}</option>)}
               </select>
             </Field>
-            <Field label="Loan Amount"><input type="number" min="0" value={loanForm.amount} onChange={(e) => setLoanForm({ ...loanForm, amount: e.target.value })} /></Field>
-            <Field label="Monthly EMI"><input type="number" min="0" value={loanForm.emi} onChange={(e) => setLoanForm({ ...loanForm, emi: e.target.value })} /></Field>
-            <Field label="Issue Date"><input type="date" value={loanForm.issueDate} onChange={(e) => setLoanForm({ ...loanForm, issueDate: e.target.value })} /></Field>
+            <Field label="Advance Amount"><input type="number" min="0" value={loanForm.amount} onChange={(e) => setLoanForm({ ...loanForm, amount: e.target.value, emi: e.target.value })} /></Field>
+            <Field label="Advance Date"><input type="date" value={loanForm.issueDate} onChange={(e) => setLoanForm({ ...loanForm, issueDate: e.target.value })} /></Field>
             <Field label="Note"><input value={loanForm.note} onChange={(e) => setLoanForm({ ...loanForm, note: e.target.value })} placeholder="Optional" /></Field>
-            <div className="hr-span2 hr-form-actions-row"><button type="submit" className="hr-btn hr-btn-primary" disabled={saving}><Plus size={14} /> Add Loan</button></div>
+            <div className="hr-span2 hr-form-actions-row"><button type="submit" className="hr-btn hr-btn-primary" disabled={saving}><Plus size={14} /> Add Advance</button></div>
           </form>
         </div>
       ),
@@ -2731,6 +2971,7 @@ export default function HRPage() {
               <h4>Salary Calculation</h4>
               <InfoRow label="Base salary" value={formatMoney(clearDuePayroll.baseSalary)} />
               <InfoRow label={salaryBasis === "hourly" ? "Work hours" : "Working days"} value={salaryBasis === "hourly" ? `${clearDuePayroll.totalWorkHours || 0} hours` : `${clearDuePayroll.workingDays || 0} days`} />
+              <InfoRow label="Came days" value={`${payrollCameDays(clearDuePayroll)} days`} />
               <InfoRow label="Weekly off days" value={`${clearDuePayroll.paidOffDays || 0} days`} />
               <InfoRow label="Daily rate" value={formatMoney(clearDuePayroll.dailyRate || (clearDuePayroll.workingDays ? Number(clearDuePayroll.baseSalary || 0) / clearDuePayroll.workingDays : 0))} />
               <InfoRow label="Hourly rate" value={formatMoney(hourlyRate)} />
@@ -2739,7 +2980,7 @@ export default function HRPage() {
               <InfoRow label="Unpaid leave" value={`${clearDuePayroll.unpaidLeaveDays || 0} days`} />
               <InfoRow label="Gross salary" value={formatMoney(clearDuePayroll.grossSalary)} />
               <InfoRow label="Attendance deduction" value={formatMoney(clearDuePayroll.attendanceDeduction)} />
-              <InfoRow label="Loan EMI" value={formatMoney(clearDuePayroll.loanDeduction)} />
+              <InfoRow label="Advance deduction" value={formatMoney(clearDuePayroll.loanDeduction)} />
               <InfoRow label="Overtime amount" value={formatMoney(overtimeAmount)} />
               <InfoRow label="Fine amount" value={formatMoney(fineAmount)} />
               <InfoRow label="Net pay" value={formatMoney(clearDuePayroll.netPay)} strong />
@@ -2802,11 +3043,10 @@ export default function HRPage() {
     const isEmployee = bankPaymentForm.partyType === "employee";
     const isOut = bankPaymentForm.direction === "out";
     const isSalaryPayment = isOut && isEmployee && bankPaymentForm.purpose === "salary";
-    const isLoanPayment = isOut && isEmployee && bankPaymentForm.purpose === "loan";
     const isAdvancePayment = isOut && isEmployee && bankPaymentForm.purpose === "advance";
-    const isDeductiblePayment = isLoanPayment || isAdvancePayment;
-    const isLoanRepayment = !isOut && isEmployee && bankPaymentForm.purpose === "loan";
+    const isLoanRepayment = false;
     const selectedStaffLabel = selectedPaymentStaff ? staffLabel(selectedPaymentStaff) : "Select employee";
+    const isLockedEmployeePayment = isEmployee && bankPaymentForm.lockedStaff && Boolean(bankPaymentForm.staff);
     return (
       <div className="hr-modal-backdrop" onClick={() => setPayNowBank(null)}>
         <div className="hr-modal payment-modal" onClick={(e) => e.stopPropagation()}>
@@ -2814,15 +3054,32 @@ export default function HRPage() {
             <h3>Make Payment</h3>
             <button className="hr-icon-btn" onClick={() => setPayNowBank(null)}><X size={16} /></button>
           </div>
-          <div className="hr-payment-mode">
-            <button className={bankPaymentForm.direction === "out" ? "active" : ""} onClick={() => setBankPaymentForm((p) => {
-              const firstPayroll = payrolls.find((payroll) => idOf(payroll.staff) === p.staff && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0);
-              return { ...p, direction: "out", purpose: "salary", payroll: firstPayroll ? idOf(firstPayroll) : "", amount: firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : p.amount, loan: "" };
-            })}><ArrowUp size={14} /> Payment Out</button>
-            <button className={bankPaymentForm.direction === "in" ? "active" : ""} onClick={() => setBankPaymentForm((p) => {
-              const firstLoan = activeLoans.find((loan) => idOf(loan.staff) === p.staff);
-              return { ...p, direction: "in", purpose: firstLoan ? "loan" : "general", loan: firstLoan ? idOf(firstLoan) : "", payroll: "", emi: "" };
-            })}><ArrowDown size={14} /> Payment In</button>
+          <div className="hr-payment-direction">
+            <label className={`hr-payment-choice ${bankPaymentForm.direction === "out" ? "active" : ""}`}>
+              <input
+                type="radio"
+                name="payment_direction"
+                value="out"
+                checked={bankPaymentForm.direction === "out"}
+                onChange={() => setBankPaymentForm((p) => {
+                  const firstPayroll = payrolls.find((payroll) => idOf(payroll.staff) === p.staff && payroll.status !== "paid" && isPayrollPayable(payroll) && (Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0 || payrollNeedsLoanSettlement(payroll)));
+                  return { ...p, direction: "out", purpose: "salary", payroll: firstPayroll ? idOf(firstPayroll) : "", amount: firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : p.amount, loan: "" };
+                })}
+              />
+              <ArrowUp size={14} />
+              Payment Out
+            </label>
+            <label className={`hr-payment-choice ${bankPaymentForm.direction === "in" ? "active" : ""}`}>
+              <input
+                type="radio"
+                name="payment_direction"
+                value="in"
+                checked={bankPaymentForm.direction === "in"}
+                onChange={() => setBankPaymentForm((p) => ({ ...p, direction: "in", purpose: "general", loan: "", payroll: "", emi: "" }))}
+              />
+              <ArrowDown size={14} />
+              Payment In
+            </label>
           </div>
           <div className="hr-form-grid-2 mt12">
             <Field label="Bank Account">
@@ -2831,24 +3088,29 @@ export default function HRPage() {
                 {banks.map((bank) => <option key={idOf(bank)} value={idOf(bank)}>{bank.name} - {formatMoney(bank.balance)}</option>)}
               </select>
             </Field>
-            <Field label="Payee Type">
-              <select value={bankPaymentForm.partyType} onChange={(e) => setBankPaymentForm((p) => ({ ...p, partyType: e.target.value, staff: "", loan: "", beneficiaryName: "", beneficiaryAccount: "" }))}>
-                <option value="employee">Employee</option>
-                <option value="other">Other</option>
-              </select>
-            </Field>
+            {!isLockedEmployeePayment && (
+              <Field label="Payee Type">
+                <select value={bankPaymentForm.partyType} onChange={(e) => setBankPaymentForm((p) => ({ ...p, partyType: e.target.value, lockedStaff: false, staff: "", loan: "", beneficiaryName: "", beneficiaryAccount: "" }))}>
+                  <option value="employee">Employee</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+            )}
 
-            {isEmployee ? (
+            {isLockedEmployeePayment ? (
+              <Field label="Employee">
+                <div className="hr-readonly-field">{selectedStaffLabel}</div>
+              </Field>
+            ) : isEmployee ? (
               <Field label="Employee">
                 <select value={bankPaymentForm.staff} onChange={(e) => {
                   const nextStaff = e.target.value;
-                  const firstLoan = activeLoans.find((loan) => idOf(loan.staff) === nextStaff);
-                  const firstPayroll = payrolls.find((payroll) => idOf(payroll.staff) === nextStaff && payroll.status !== "paid" && Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0);
+                  const firstPayroll = payrolls.find((payroll) => idOf(payroll.staff) === nextStaff && payroll.status !== "paid" && isPayrollPayable(payroll) && (Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0 || payrollNeedsLoanSettlement(payroll)));
                   setBankPaymentForm((p) => ({
                     ...p,
                     staff: nextStaff,
-                    purpose: !isOut && !firstLoan ? "general" : p.purpose,
-                    loan: firstLoan ? idOf(firstLoan) : "",
+                    purpose: !isOut ? "general" : p.purpose,
+                    loan: "",
                     payroll: p.direction === "out" && p.purpose === "salary" && firstPayroll ? idOf(firstPayroll) : "",
                     amount: p.direction === "out" && p.purpose === "salary" && firstPayroll ? (firstPayroll.balanceDue ?? firstPayroll.netPay ?? "") : p.amount,
                   }));
@@ -2869,7 +3131,7 @@ export default function HRPage() {
               </Field>
             )}
 
-            {isOut && isEmployee && (
+            {isOut && isEmployee && !isLockedEmployeePayment && (
               <Field label="Payment Type">
                 <select value={bankPaymentForm.purpose} onChange={(e) => {
                   const nextPurpose = e.target.value;
@@ -2884,7 +3146,6 @@ export default function HRPage() {
                   }));
                 }}>
                   <option value="salary">Salary</option>
-                  <option value="loan">Loan</option>
                   <option value="advance">Advance</option>
                 </select>
               </Field>
@@ -2893,13 +3154,12 @@ export default function HRPage() {
             {!isOut && isEmployee && (
               <Field label="Payment For">
                 <select value={bankPaymentForm.purpose} onChange={(e) => setBankPaymentForm((p) => ({ ...p, purpose: e.target.value, loan: e.target.value === "loan" ? p.loan : "" }))}>
-                  <option value="loan">EMI / advance received</option>
                   <option value="general">General received</option>
                 </select>
               </Field>
             )}
 
-            {isSalaryPayment && (
+            {isSalaryPayment && selectedPaymentPayrolls.length > 0 && (
               <Field label="Generated Payroll">
                 <select value={bankPaymentForm.payroll} onChange={(e) => {
                   const payroll = selectedPaymentPayrolls.find((item) => idOf(item) === e.target.value);
@@ -2916,30 +3176,24 @@ export default function HRPage() {
             )}
 
             {isLoanRepayment && (
-              <Field label="Employee Loan">
+              <Field label="Employee Advance">
                 <select value={bankPaymentForm.loan} onChange={(e) => setBankPaymentForm((p) => ({ ...p, loan: e.target.value }))}>
-                  <option value="">Select loan</option>
+                  <option value="">Select advance</option>
                   {selectedPaymentLoans.map((loan) => (
                     <option key={idOf(loan)} value={idOf(loan)}>
-                      {repaymentKindLabel(loan)} {formatMoney(loan.outstanding)} outstanding | deduct {formatMoney(loan.emi)}
+                      Advance {formatMoney(loan.outstanding)} outstanding
                     </option>
                   ))}
                 </select>
               </Field>
             )}
 
-            <Field label={isLoanPayment ? "Loan Amount" : isSalaryPayment ? "Salary Amount" : isAdvancePayment ? "Advance Amount" : "Amount"}>
+            <Field label={isSalaryPayment ? "Salary Amount" : isAdvancePayment ? "Advance Amount" : "Amount"}>
               <input type="number" min="0" step="0.01" value={bankPaymentForm.amount} onChange={(e) => setBankPaymentForm((p) => ({ ...p, amount: e.target.value }))} />
             </Field>
 
-            {isDeductiblePayment && (
-              <Field label="Deduct From Salary">
-                <input type="number" min="0" step="0.01" value={bankPaymentForm.emi} onChange={(e) => setBankPaymentForm((p) => ({ ...p, emi: e.target.value }))} />
-              </Field>
-            )}
-
-            {(isLoanPayment || isAdvancePayment) && (
-              <Field label={isAdvancePayment ? "Advance Date" : "Issue Date"}>
+            {isAdvancePayment && (
+              <Field label="Advance Date">
                 <input type="date" value={bankPaymentForm.issueDate} onChange={(e) => setBankPaymentForm((p) => ({ ...p, issueDate: e.target.value }))} />
               </Field>
             )}
@@ -2948,13 +3202,13 @@ export default function HRPage() {
               <input value={bankPaymentForm.note} onChange={(e) => setBankPaymentForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional" />
             </Field>
           </div>
-          <div className="hr-payment-preview mt12">
-            <InfoRow label="Bank balance after" value={formatMoney(bankPaymentPreview.nextBankBalance)} strong />
-            {isDeductiblePayment && <InfoRow label="Deduction duration" value={bankPaymentPreview.months ? `${bankPaymentPreview.months} payroll${bankPaymentPreview.months === 1 ? "" : "s"}` : "--"} />}
-            {isSalaryPayment && <InfoRow label="Salary due after" value={formatMoney(bankPaymentPreview.salaryRemaining)} strong />}
-            {isLoanRepayment && <InfoRow label={`Remaining ${selectedPaymentLoan?.category === "advance" ? "advance" : "loan"} for ${selectedStaffLabel}`} value={formatMoney(bankPaymentPreview.loanRemaining)} strong />}
-            {!isOut && isEmployee && !isLoanRepayment && <InfoRow label="Received from" value={selectedStaffLabel} />}
-          </div>
+          {!isSalaryPayment && (isOut || isAdvancePayment || isLoanRepayment) && (
+            <div className="hr-payment-preview mt12">
+              {isOut && <InfoRow label="Bank balance after" value={formatMoney(bankPaymentPreview.nextBankBalance)} strong />}
+              {isAdvancePayment && <InfoRow label="Salary adjustment" value="Cuts from next salary; balance carries forward." />}
+              {isLoanRepayment && <InfoRow label={`Remaining advance for ${selectedStaffLabel}`} value={formatMoney(bankPaymentPreview.loanRemaining)} strong />}
+            </div>
+          )}
           <div className="hr-modal-actions mt12">
             <button className="hr-btn hr-btn-ghost" onClick={() => setPayNowBank(null)}>Cancel</button>
             <button className="hr-btn hr-btn-primary" onClick={payFromBank} disabled={saving}><CreditCard size={14} /> Save Payment</button>
@@ -2965,6 +3219,133 @@ export default function HRPage() {
   };
 
   // ─── MAIN RENDER ──────────────────────────────────────────────────────────────
+  const renderSelfServiceHR = () => {
+    const person = selfHr?.staff;
+    const userPayrolls = selfHr?.payrolls || [];
+    const userAttendance = selfHr?.attendance || [];
+    const latestPayroll = userPayrolls[0] || null;
+    const salaryBasis = normalizeSalaryBasisValue(person?.salaryBasis);
+    const attendanceCounts = userAttendance.reduce((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, { present: 0, absent: 0, half_day: 0, paid_leave: 0, short_leave: 0 });
+    const workingEntries = Number(attendanceCounts.present || 0)
+      + Number(attendanceCounts.half_day || 0)
+      + Number(attendanceCounts.short_leave || 0);
+    const workingValue = latestPayroll
+      ? salaryBasis === "hourly"
+        ? `${latestPayroll.totalWorkHours || 0} hours`
+        : `${payrollCameDays(latestPayroll)} days`
+      : `${workingEntries} days`;
+
+    if (!person) {
+      return (
+        <section className="hr-main-section hr-self-service">
+          <div className="hr-empty-block">
+            No HR profile is linked to your account yet. Ask admin to match your phone or email in Staff.
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section className="hr-main-section hr-self-service">
+        <div className="hr-self-hero">
+          <div className="hr-self-title">
+            <span>Employee HR</span>
+            <h1>{person.name}</h1>
+            <p>{person.department?.name || "Unassigned"}{person.designation ? ` / ${person.designation}` : ""}</p>
+          </div>
+          <div className="hr-self-period">
+            <span>Period</span>
+            <button className="hr-icon-btn" onClick={() => setSelfMonth((month) => shiftMonth(month, -1))}><ChevronLeft size={18} /></button>
+            <input type="month" value={selfMonth} onChange={(e) => setSelfMonth(e.target.value)} />
+            <button className="hr-icon-btn" onClick={() => setSelfMonth((month) => shiftMonth(month, 1))}><ChevronRight size={18} /></button>
+          </div>
+        </div>
+
+        <div className="hr-self-overview">
+          <div className="hr-self-salary-card">
+            <span>Salary</span>
+            <strong>{formatMoney(person.monthlySalary)}</strong>
+            <small>{salaryBasis.charAt(0).toUpperCase() + salaryBasis.slice(1)} salary cycle</small>
+          </div>
+          <div className="hr-self-stat green"><Wallet size={18} /><span>Latest net pay</span><strong>{formatMoney(latestPayroll?.netPay)}</strong></div>
+          <div className="hr-self-stat blue"><ListChecks size={18} /><span>Working</span><strong>{workingValue}</strong></div>
+          <div className="hr-self-stat amber"><BadgeDollarSign size={18} /><span>Balance due</span><strong>{formatMoney(latestPayroll?.balanceDue ?? 0)}</strong></div>
+          <div className="hr-self-stat rose"><AlertCircle size={18} /><span>Absent</span><strong>{attendanceCounts.absent || 0} days</strong></div>
+        </div>
+
+        <div className="hr-self-grid">
+          <div className="hr-mini-card">
+            <div className="hr-self-card-head">
+              <div>
+                <h4>Payroll</h4>
+                <span>{userPayrolls.length} salary cycle{userPayrolls.length === 1 ? "" : "s"}</span>
+              </div>
+            </div>
+            <div className="hr-self-table-scroll">
+              <table className="hr-mini-table hr-self-payroll-table">
+                <thead><tr><th>Period</th><th>Working</th><th>Gross</th><th>Paid</th><th>Due</th><th>Status</th></tr></thead>
+                <tbody>
+                  {userPayrolls.length === 0 ? (
+                    <tr><td colSpan={6} className="hr-empty-cell">No payroll generated yet.</td></tr>
+                  ) : userPayrolls.map((payroll) => (
+                    <tr key={idOf(payroll)}>
+                      <td>{payroll.periodLabel || payroll.periodEnd || "--"}</td>
+                      <td>{normalizeSalaryBasisValue(payroll.salaryBasis) === "hourly" ? `${payroll.totalWorkHours || 0}h` : `${payrollCameDays(payroll)}d`}</td>
+                      <td>{formatMoney(payroll.grossSalary)}</td>
+                      <td>{formatMoney(payroll.totalPaid)}</td>
+                      <td>{formatMoney(payroll.balanceDue ?? payroll.netPay)}</td>
+                      <td><span className={`hr-pill ${payroll.status === "paid" ? "green" : payroll.status === "partial" ? "amber" : "slate"}`}>{payroll.status || "draft"}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="hr-mini-card">
+            <div className="hr-self-card-head">
+              <div>
+                <h4>Attendance</h4>
+                <span>{formatMonthLabel(selfMonth)}</span>
+              </div>
+            </div>
+            <div className="hr-self-table-scroll hr-self-summary-scroll">
+              {renderSummaryStrip({
+                present: attendanceCounts.present || 0,
+                absent: attendanceCounts.absent || 0,
+                half_day: attendanceCounts.half_day || 0,
+                paid_leave: attendanceCounts.paid_leave || 0,
+                weekly_off: 0,
+              })}
+            </div>
+            <div className="hr-self-table-scroll">
+              <table className="hr-mini-table hr-self-attendance-table">
+                <thead><tr><th>Date</th><th>Status</th><th>Hours</th></tr></thead>
+                <tbody>
+                  {userAttendance.length === 0 ? (
+                    <tr><td colSpan={3} className="hr-empty-cell">No attendance marked for this month.</td></tr>
+                  ) : userAttendance.map((item) => {
+                    const meta = ATTENDANCE_STATUS_META[item.status] || { label: item.status || "--", tone: "slate" };
+                    return (
+                      <tr key={idOf(item)}>
+                        <td>{formatReadableDate(item.date, { weekday: "short" })}</td>
+                        <td><span className="hr-att-status-pill" style={{ background: pillBg(meta.tone), color: pillFg(meta.tone) }}>{meta.label}</span></td>
+                        <td>{Number(item.workHours || 0)}h</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
   return (
     <div className="hr-page">
       <style>{hrStyles}</style>
@@ -2978,6 +3359,8 @@ export default function HRPage() {
 
       {loading ? (
         <HRPageSkeleton />
+      ) : isRegularHrUser ? (
+        renderSelfServiceHR()
       ) : (
         <>
           {/* Top tab bar */}
@@ -2998,13 +3381,13 @@ export default function HRPage() {
         </>
       )}
 
-      {renderToolsModal()}
-      {renderOvertimeModal()}
-      {renderFineModal()}
-      {renderClearDueModal()}
-      {renderBankTransactionsModal()}
-      {renderAddBankMoneyModal()}
-      {renderBankPayModal()}
+      {!isRegularHrUser && renderToolsModal()}
+      {!isRegularHrUser && renderOvertimeModal()}
+      {!isRegularHrUser && renderFineModal()}
+      {!isRegularHrUser && renderClearDueModal()}
+      {!isRegularHrUser && renderBankTransactionsModal()}
+      {!isRegularHrUser && renderAddBankMoneyModal()}
+      {!isRegularHrUser && renderBankPayModal()}
     </div>
   );
 }
@@ -3059,7 +3442,7 @@ function HRPageSkeleton() {
         </div>
 
         <div className="hr-summary-strip">
-          {[0, 1, 2, 3, 4].map((item) => (
+          {[0, 1, 2, 3, 4, 5].map((item) => (
             <div key={item} className="hr-summary-cell">
               <SkeletonBlock style={{ width: 74, height: 12, marginBottom: 8 }} />
               <SkeletonBlock style={{ width: 42, height: 22 }} />
@@ -3316,8 +3699,8 @@ const hrStyles = `
   body[data-theme="dark"] .hr-ledger-balance.subtle,
   body[data-theme="dark"] .hr-bank-detail-tabs,
   body[data-theme="dark"] .hr-bank-detail-tabs button,
-  body[data-theme="dark"] .hr-payment-mode,
-  body[data-theme="dark"] .hr-payment-mode button,
+  body[data-theme="dark"] .hr-payment-direction,
+  body[data-theme="dark"] .hr-payment-choice,
   body[data-theme="dark"] .hr-payment-preview,
   body[data-theme="dark"] .ot-total,
   body[data-theme="dark"] .hr-loan-card,
@@ -3480,15 +3863,6 @@ const hrStyles = `
   body[data-theme="dark"] .hr-balance-chip.due,
   body[data-theme="dark"] .hr-rail-item b.due {
     color: #fb7185;
-  }
-
-  body[data-theme="dark"] .hr-payment-mode button + button {
-    border-color: var(--hr-line);
-  }
-
-  body[data-theme="dark"] .hr-payment-mode button.active {
-    background: linear-gradient(135deg, #008069 0%, #00a884 100%);
-    color: #fff;
   }
 
   body[data-theme="dark"] .hr-modal-backdrop {
@@ -3709,6 +4083,34 @@ const hrStyles = `
   }
   .hr-balance-chip.due { color: #e11d48; }
   .hr-balance-chip.settled { color: #16a34a; }
+  .hr-payable-amount {
+    color: #e11d48;
+    font-weight: 700;
+  }
+  .hr-balance-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+  .hr-balance-stack small {
+    color: #16a34a;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .hr-readonly-field {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--hr-line);
+    border-radius: 7px;
+    background: #f8fafc;
+    color: var(--app-text);
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 700;
+  }
   .hr-overdue { color: #e11d48; font-weight: 600; }
   .hr-overdue-label { font-size: 12px; margin-left: 4px; color: #e11d48; }
 
@@ -3735,6 +4137,11 @@ const hrStyles = `
   }
   .hr-att-btn.active { background: #16a34a; border-color: #16a34a; color: #fff; }
   .hr-att-btn.active-absent { background: #e11d48; border-color: #e11d48; color: #fff; }
+  .hr-att-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    background: #f8fafc;
+  }
   .hr-att-more-wrap { position: relative; }
   .hr-att-more-btn {
     width: 28px;
@@ -3803,7 +4210,7 @@ const hrStyles = `
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
   }
   .hr-btn.hr-btn-primary {
-    background: linear-gradient(135deg, #0b6f68 0%, #0d9488 100%);
+    background: linear-gradient(135deg, var(--hr-primary-dark) 0%, var(--hr-primary) 100%);
     border-color: var(--hr-primary);
     color: #fff;
     box-shadow: 0 8px 18px rgba(13,148,136,0.18);
@@ -3842,11 +4249,11 @@ const hrStyles = `
   /* ── Detail layout ── */
   .hr-detail-layout {
     display: grid;
-    grid-template-columns: 320px minmax(0,1fr);
-    border: 1px solid var(--hr-line);
-    border-radius: 10px;
+    grid-template-columns: 398px minmax(0,1fr);
+    border: 1px solid #d8d8de;
+    border-radius: 8px;
     background: var(--hr-bg);
-    min-height: calc(100vh - 148px);
+    min-height: calc(100vh - 118px);
     overflow: visible;
   }
   .hr-detail-rail {
@@ -3854,9 +4261,9 @@ const hrStyles = `
     display: flex;
     flex-direction: column;
     position: sticky;
-    top: 12px;
+    top: 0;
     align-self: start;
-    max-height: calc(100vh - 24px);
+    max-height: calc(100vh - 118px);
     background: var(--hr-bg);
     z-index: 2;
   }
@@ -3864,31 +4271,33 @@ const hrStyles = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: 17px 18px;
     border-bottom: 1px solid var(--hr-line);
   }
-  .hr-rail-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .hr-rail-head h2 { margin: 0; font-size: 20px; font-weight: 500; }
   .hr-rail-scroll { flex: 1; min-height: 0; overflow-y: auto; }
   .hr-rail-item {
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 11px 18px;
     border: 0;
     border-bottom: 1px solid var(--hr-line);
     background: transparent;
     color: var(--app-text);
     text-align: left;
     cursor: pointer;
-    min-height: 70px;
+    min-height: 68px;
   }
-  .hr-rail-item strong { display: block; font-weight: 600; font-size: 14px; }
-  .hr-rail-item small { display: block; font-size: 12px; color: var(--hr-muted); margin-top: 3px; }
-  .hr-rail-item b { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; white-space: nowrap; }
-  .hr-rail-item b.due { color: #e11d48; }
-  .hr-rail-item b.settled { color: #16a34a; }
+  .hr-rail-item strong { display: block; font-weight: 400; font-size: 14px; line-height: 1.25; }
+  .hr-rail-item small { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; color: var(--hr-muted); margin-top: 6px; font-weight: 700; }
+  .hr-rail-item small svg { width: 18px; height: 18px; }
+  .hr-rail-item small.due { color: #0f172a; }
+  .hr-rail-item small.due svg { color: #ef2b3a; stroke-width: 2.3; }
+  .hr-rail-item small.settled { color: #0f172a; }
+  .hr-rail-item small.settled svg { color: #17c63a; stroke-width: 2.3; }
   .hr-rail-item.selected, .hr-rail-item:hover { background: var(--hr-primary-soft); }
 
   /* ── Detail main ── */
@@ -3897,30 +4306,44 @@ const hrStyles = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 20px;
+    padding: 19px 26px;
     border-bottom: 1px solid var(--hr-line);
     gap: 12px;
     flex-wrap: wrap;
   }
   .hr-detail-title { display: flex; align-items: center; gap: 12px; }
-  .hr-detail-title h1 { margin: 0; font-size: 20px; font-weight: 600; }
-  .hr-detail-tabs {
+  .hr-detail-title h1 { margin: 0; font-size: 20px; font-weight: 500; }
+  .hr-split-action { display: inline-flex; align-items: stretch; border-radius: 5px; overflow: hidden; }
+  .hr-split-action .hr-btn { border-radius: 0; min-width: 202px; min-height: 37px; justify-content: center; }
+  .hr-split-action .hr-split-caret { min-width: 39px; width: 39px; padding: 0; border-left-color: rgba(255,255,255,0.55); }
+  .hr-detail-tabbar {
+    min-height: 58px;
     display: flex;
+    align-items: stretch;
+    justify-content: space-between;
     border-bottom: 1px solid var(--hr-line);
   }
+  .hr-detail-tabs {
+    display: flex;
+    align-items: stretch;
+    min-width: min(668px, 100%);
+  }
   .hr-detail-tabs button {
-    flex: 1;
-    min-height: 46px;
+    min-width: 167px;
+    min-height: 58px;
     border: 0;
-    border-bottom: 2.5px solid transparent;
+    border-right: 1px solid var(--hr-line);
+    border-bottom: 2px solid transparent;
     background: transparent;
     color: var(--hr-muted);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 400;
     cursor: pointer;
   }
-  .hr-detail-tabs button.active { color: var(--hr-primary); border-bottom-color: var(--hr-primary); }
-  .hr-detail-body { padding: 20px; flex: 1; overflow: visible; }
+  .hr-detail-tabs button.active { color: var(--hr-primary); border-bottom-color: var(--hr-primary); background: var(--hr-primary-soft); font-weight: 500; }
+  .hr-detail-tab-actions { display: flex; align-items: center; gap: 10px; padding: 10px 31px 10px 10px; }
+  .hr-detail-tab-actions .hr-btn { min-width: 125px; justify-content: center; }
+  .hr-detail-body { padding: 26px 26px 52px; flex: 1; overflow: visible; }
   .hr-detail-month-bar {
     display: flex;
     align-items: center;
@@ -3930,6 +4353,31 @@ const hrStyles = `
     gap: 10px;
   }
   .hr-detail-month-bar h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .payroll-month-bar { margin-bottom: 18px; }
+  .payroll-month-bar h3 { font-size: 17px; font-weight: 400; }
+  .hr-month-pill-nav {
+    width: 320px;
+    min-height: 39px;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    border: 1px solid var(--hr-line);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .hr-month-pill-nav .hr-icon-btn {
+    width: auto;
+    height: 37px;
+    border: 0;
+    border-radius: 0;
+    color: #66839f;
+  }
+  .hr-month-pill {
+    border: 0;
+    background: var(--hr-bg);
+    color: #2d333b;
+    font-size: 14px;
+    cursor: pointer;
+  }
   .hr-month-nav { display: flex; align-items: center; gap: 6px; }
   .hr-month-nav input { min-height: 34px; border: 1.5px solid var(--hr-line); border-radius: 7px; background: var(--hr-bg); color: var(--app-text); padding: 4px 8px; }
 
@@ -3988,7 +4436,7 @@ const hrStyles = `
   }
 
   /* Payroll detail */
-  .hr-detail-payroll { display: flex; flex-direction: column; gap: 14px; }
+  .hr-detail-payroll { display: flex; flex-direction: column; gap: 0; min-height: 630px; position: relative; }
   .hr-payroll-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .hr-payroll-toolbar select { min-height: 36px; border: 1.5px solid var(--hr-line); border-radius: 7px; background: var(--hr-bg); color: var(--app-text); padding: 4px 10px; }
   .hr-cycle-caption { font-size: 12px; color: var(--hr-muted); font-weight: 600; }
@@ -3996,6 +4444,56 @@ const hrStyles = `
   .hr-payroll-detail-card { border: 1px solid var(--hr-line); border-radius: 8px; padding: 14px; }
   .hr-payroll-detail-card h4 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
   .wide-action { width: 100%; margin-top: 12px; justify-content: center; }
+  .hr-payroll-ledger {
+    border: 1px solid var(--hr-line);
+    min-height: 550px;
+    background: var(--hr-bg);
+  }
+  .hr-payroll-ledger-row {
+    min-height: 50px;
+    display: grid;
+    grid-template-columns: 1fr 180px;
+    align-items: center;
+    border-bottom: 1px solid var(--hr-line);
+    padding: 0 22px 0 19px;
+    color: #2d333b;
+    font-size: 14px;
+  }
+  .hr-payroll-ledger-row.cycle {
+    min-height: 51px;
+    background: #fafbff;
+    color: #6784a5;
+  }
+  .hr-payroll-ledger-row strong { font-weight: 600; }
+  .hr-payroll-ledger-row b { justify-self: end; font-weight: 700; }
+  .hr-payroll-ledger-row.child { padding-left: 32px; }
+  .hr-payroll-ledger-row.child span { color: #30343b; }
+  .hr-payroll-footnote {
+    align-self: flex-end;
+    color: #6d87a9;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+  .hr-generate-inline { margin: 18px; }
+  .hr-staff-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 70px;
+    row-gap: 28px;
+    padding: 16px 0 0;
+    max-width: 940px;
+  }
+  .hr-staff-info-item { display: grid; gap: 14px; }
+  .hr-staff-info-item span {
+    color: #55779b;
+    font-size: 14px;
+    font-weight: 400;
+  }
+  .hr-staff-info-item strong {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 400;
+  }
 
   /* ── Noticesssssssssssssssssssssssssssssssssss ── */
   .hr-notice {
@@ -4036,17 +4534,17 @@ const hrStyles = `
   .hr-date-stepper input { min-height: 36px; border: 1.5px solid var(--hr-line); border-radius: 7px; background: var(--hr-bg); color: var(--app-text); padding: 4px 10px; font-size: 13px; }
 
   /* ── Forms ── */
-  .hr-form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .hr-form-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .hr-form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .hr-form-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
   .hr-span2 { grid-column: 1 / -1; }
   .hr-shift-preview {
     display: grid;
     gap: 3px;
     align-self: end;
-    min-height: 58px;
-    padding: 8px 10px;
+    min-height: 48px;
+    padding: 7px 9px;
     border: 1px solid var(--hr-line);
-    border-radius: 8px;
+    border-radius: 7px;
     background: #f8fafc;
   }
   .hr-shift-preview span,
@@ -4058,56 +4556,56 @@ const hrStyles = `
     font-size: 13px;
     font-weight: 600;
   }
-  .hr-field { display: grid; gap: 5px; }
-  .hr-field span { font-size: 12px; font-weight: 600; color: var(--hr-muted); }
+  .hr-field { display: grid; gap: 4px; }
+  .hr-field span { font-size: 11px; font-weight: 600; color: var(--hr-muted); }
   .hr-field input, .hr-field select {
     width: 100%;
-    min-height: 36px;
+    min-height: 32px;
     border: 1.5px solid var(--hr-line);
-    border-radius: 7px;
+    border-radius: 6px;
     background: var(--hr-bg);
     color: var(--app-text);
-    padding: 6px 10px;
+    padding: 5px 9px;
     font-size: 13px;
     outline: none;
     box-sizing: border-box;
   }
-  .hr-field-label { font-size: 12px; font-weight: 600; color: var(--hr-muted); display: block; margin-bottom: 6px; }
+  .hr-field-label { font-size: 11px; font-weight: 600; color: var(--hr-muted); display: block; margin-bottom: 5px; }
   .hr-form-actions-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
   .hr-check-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .hr-day-checks { display: flex; gap: 6px; flex-wrap: wrap; }
-  .hr-day-check { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 10px; border: 1.5px solid var(--hr-line); border-radius: 6px; background: var(--hr-bg); font-size: 13px; cursor: pointer; }
+  .hr-day-check { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1.5px solid var(--hr-line); border-radius: 6px; background: var(--hr-bg); font-size: 12px; cursor: pointer; }
   .hr-day-check.active { border-color: var(--hr-primary); background: rgba(79,70,229,0.08); color: var(--hr-primary); font-weight: 600; }
   .hr-day-check input { display: none; }
   .hr-required { color: #e11d48; }
   .hr-salary-preview {
     border: 1px solid var(--hr-line);
-    border-radius: 8px;
+    border-radius: 7px;
     background: #f8fafc;
-    padding: 10px 12px;
+    padding: 8px 10px;
   }
   .hr-salary-preview > span {
     display: block;
     color: var(--hr-muted);
     font-size: 12px;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .hr-salary-preview div {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
   }
   .hr-salary-preview strong {
     display: inline-flex;
     align-items: center;
-    min-height: 28px;
+    min-height: 24px;
     border: 1px solid var(--hr-line);
     border-radius: 7px;
     background: #fff;
-    padding: 0 10px;
-    font-size: 13px;
+    padding: 0 8px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--app-text);
   }
@@ -4138,14 +4636,142 @@ const hrStyles = `
   .hr-loan-row strong, .hr-loan-row small { display: block; }
   .hr-loan-row small { color: var(--hr-muted); font-size: 12px; }
 
+  /* Self service HR */
+  .hr-self-service { display: flex; flex-direction: column; gap: 16px; padding: 0; overflow: hidden; }
+  .hr-self-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--hr-line);
+    background:
+      linear-gradient(135deg, rgba(13,148,136,0.12) 0%, rgba(13,148,136,0.03) 52%, rgba(255,255,255,0) 100%),
+      var(--hr-bg);
+  }
+  .hr-self-title { display: grid; gap: 4px; }
+  .hr-self-title span,
+  .hr-self-period span,
+  .hr-self-card-head span {
+    color: var(--hr-muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .hr-self-title h1 { margin: 0; color: var(--app-text); font-size: 24px; font-weight: 750; letter-spacing: 0; }
+  .hr-self-title p { margin: 0; color: var(--hr-muted); font-size: 13px; }
+  .hr-self-period {
+    display: grid;
+    grid-template-columns: auto 44px minmax(180px, 220px) 44px;
+    align-items: center;
+    gap: 8px;
+  }
+  .hr-self-period input {
+    min-height: 38px;
+    border: 1.5px solid var(--hr-line);
+    border-radius: 8px;
+    background: var(--hr-bg);
+    color: var(--app-text);
+    padding: 4px 10px;
+    font-size: 14px;
+  }
+  .hr-self-overview {
+    display: grid;
+    grid-template-columns: minmax(240px, 1.35fr) repeat(4, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 0 24px;
+  }
+  .hr-self-salary-card,
+  .hr-self-stat {
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+    background: var(--hr-bg);
+    min-height: 96px;
+  }
+  .hr-self-salary-card {
+    padding: 16px;
+    background: linear-gradient(135deg, var(--hr-primary-dark) 0%, var(--hr-primary) 100%);
+    border-color: transparent;
+    color: #fff;
+  }
+  .hr-self-salary-card span,
+  .hr-self-salary-card small { display: block; color: rgba(255,255,255,0.78); font-size: 12px; font-weight: 700; }
+  .hr-self-salary-card strong { display: block; margin: 8px 0 5px; color: #fff; font-size: 26px; font-weight: 800; }
+  .hr-self-stat {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: 1fr 1fr;
+    align-items: center;
+    column-gap: 10px;
+    padding: 13px;
+  }
+  .hr-self-stat svg {
+    grid-row: 1 / 3;
+    width: 38px;
+    height: 38px;
+    padding: 8px;
+    border-radius: 8px;
+  }
+  .hr-self-stat span { color: var(--hr-muted); font-size: 12px; font-weight: 700; align-self: end; }
+  .hr-self-stat strong { color: var(--app-text); font-size: 18px; font-weight: 800; align-self: start; white-space: nowrap; }
+  .hr-self-stat.green svg { background: #dcfce7; color: #16a34a; }
+  .hr-self-stat.blue svg { background: #dbeafe; color: #1d4ed8; }
+  .hr-self-stat.amber svg { background: #fef3c7; color: #b45309; }
+  .hr-self-stat.rose svg { background: #ffe4e6; color: #be123c; }
+  .hr-self-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    padding: 0 24px 24px;
+  }
+  .hr-self-grid .hr-mini-card {
+    overflow: hidden;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .hr-self-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .hr-self-card-head h4 { margin: 0 0 3px; font-size: 16px; font-weight: 750; }
+  .hr-self-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+  }
+  .hr-self-summary-scroll {
+    margin-bottom: 10px;
+  }
+  .hr-self-table-scroll .hr-mini-table {
+    margin-top: 0;
+  }
+  .hr-self-payroll-table { min-width: 760px; }
+  .hr-self-attendance-table { min-width: 640px; }
+  .hr-self-service .hr-summary-strip {
+    border: 0;
+    border-radius: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+    min-width: 640px;
+  }
+  .hr-self-service .hr-mini-table th,
+  .hr-self-service .hr-mini-table td {
+    white-space: nowrap;
+  }
+
   /* ── Tools panel ── */
-  .hr-tools-panel { padding: 4px 0; }
-  .hr-tools-panel h3 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
-  .hr-tools-panel p { margin: 0 0 14px; font-size: 13px; color: var(--hr-muted); }
+  .hr-tools-panel { padding: 0; }
+  .hr-tools-panel h3 { margin: 0 0 3px; font-size: 15px; font-weight: 600; }
+  .hr-tools-panel p { margin: 0 0 10px; font-size: 12px; color: var(--hr-muted); }
 
   /* ── Department list ── */
-  .hr-dept-list { margin-top: 20px; display: grid; gap: 10px; }
-  .hr-dept-card { border: 1px solid var(--hr-line); border-radius: 8px; padding: 12px; }
+  .hr-dept-list { margin-top: 14px; display: grid; gap: 8px; }
+  .hr-dept-card { border: 1px solid var(--hr-line); border-radius: 7px; padding: 10px; }
   .hr-dept-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
   .hr-dept-card strong { display: block; font-weight: 600; font-size: 14px; }
   .hr-dept-card small { display: block; font-size: 12px; color: var(--hr-muted); margin-top: 2px; }
@@ -4284,6 +4910,11 @@ const hrStyles = `
   .hr-bank-ledger-rail {
     border-right: 1px solid var(--hr-line);
     background: #fff;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow: hidden;
   }
   .hr-ledger-balance {
     display: flex;
@@ -4329,7 +4960,7 @@ const hrStyles = `
   }
   .hr-bank-ledger-list {
     display: grid;
-    max-height: calc(100vh - 420px);
+    max-height: calc(100vh - 204px);
     overflow-y: auto;
   }
   .hr-bank-ledger-item {
@@ -4542,90 +5173,94 @@ const hrStyles = `
     inset: 0;
     z-index: 2000;
     background: rgba(15,23,42,0.5);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     animation: appModalBackdropIn 0.32s ease-out both;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: 10px;
   }
   .hr-modal {
-    width: min(780px, 96vw);
-    max-height: 90vh;
+    width: min(700px, 94vw);
+    max-height: 88vh;
     overflow-y: auto;
-    border-radius: 12px;
+    border-radius: 8px;
     background: var(--hr-bg);
-    box-shadow: 0 24px 60px rgba(15,23,42,0.25);
-    padding: 20px;
+    box-shadow: 0 16px 44px rgba(15,23,42,0.22);
+    padding: 14px;
     animation: appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .hr-modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
   }
-  .hr-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; }
-  .hr-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .small-money-modal { width: min(520px, 96vw); }
-  .payment-modal { width: min(720px, 96vw); }
-  .hr-payment-mode {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    border: 1.5px solid var(--hr-line);
-    border-radius: 8px;
-    overflow: hidden;
-    background: #fff;
+  .hr-modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .hr-modal-actions { display: flex; justify-content: flex-end; gap: 7px; }
+  .small-money-modal { width: min(420px, 94vw); }
+  .payment-modal { width: min(560px, 94vw); }
+  .hr-payment-direction {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
   }
-  .hr-payment-mode button {
+  .hr-payment-choice {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 40px;
-    border: 0;
-    background: #fff;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1.5px solid var(--hr-line);
+    border-radius: 7px;
+    background: var(--hr-bg);
     color: var(--hr-muted);
+    font-size: 13px;
     font-weight: 700;
     cursor: pointer;
   }
-  .hr-payment-mode button + button {
-    border-left: 1px solid var(--hr-line);
+  .hr-payment-choice input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--hr-primary);
   }
-  .hr-payment-mode button.active {
-    background: var(--hr-primary);
-    color: #fff;
+  .hr-payment-choice.active {
+    border-color: var(--hr-primary-border);
+    background: var(--hr-primary-soft);
+    color: var(--hr-primary);
   }
   .hr-payment-preview {
     border: 1px solid var(--hr-line);
-    border-radius: 8px;
+    border-radius: 7px;
     background: #fbfdff;
-    padding: 6px 12px;
+    padding: 4px 10px;
   }
 
   /* ── Overtime modal ── */
-  .ot-modal { width: min(580px, 96vw); }
-  .ot-info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px; border: 1px solid var(--hr-line); border-radius: 8px; margin-bottom: 16px; }
-  .ot-info-row span { display: block; font-size: 12px; color: var(--hr-muted); margin-bottom: 4px; }
-  .ot-info-row strong { font-size: 14px; font-weight: 600; }
-  .ot-type-row { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-  .ot-radio { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+  .ot-modal { width: min(500px, 94vw); }
+  .ot-info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--hr-line); border-radius: 7px; margin-bottom: 10px; }
+  .ot-info-row span { display: block; font-size: 11px; color: var(--hr-muted); margin-bottom: 3px; }
+  .ot-info-row strong { font-size: 13px; font-weight: 600; }
+  .ot-type-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .ot-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
   .ot-radio input { accent-color: var(--hr-primary); }
-  .ot-hours-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .hr-muted-label { font-size: 12px; font-weight: 600; color: var(--hr-muted); display: block; margin-bottom: 6px; }
+  .ot-hours-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .hr-muted-label { font-size: 11px; font-weight: 600; color: var(--hr-muted); display: block; margin-bottom: 5px; }
   .ot-time-input { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-  .ot-hrs-input { width: 60px; min-height: 36px; border: 1.5px solid var(--hr-line); border-radius: 7px; padding: 4px 8px; text-align: center; font-size: 14px; background: var(--hr-bg); color: var(--app-text); }
+  .ot-hrs-input { width: 54px; min-height: 32px; border: 1.5px solid var(--hr-line); border-radius: 6px; padding: 4px 8px; text-align: center; font-size: 13px; background: var(--hr-bg); color: var(--app-text); }
   .ot-colon { font-size: 18px; font-weight: 600; }
-  .ot-time-input select { min-height: 36px; border: 1.5px solid var(--hr-line); border-radius: 7px; padding: 4px 8px; background: var(--hr-bg); color: var(--app-text); }
+  .ot-time-input select { min-height: 32px; border: 1.5px solid var(--hr-line); border-radius: 6px; padding: 4px 8px; background: var(--hr-bg); color: var(--app-text); }
   .ot-rate-input { display: flex; align-items: center; gap: 8px; }
-  .ot-rate-input select { flex: 1; min-height: 36px; border: 1.5px solid var(--hr-line); border-radius: 7px; padding: 4px 8px; background: var(--hr-bg); color: var(--app-text); }
-  .ot-rate-value { font-size: 14px; font-weight: 600; white-space: nowrap; padding: 6px 10px; border: 1.5px solid var(--hr-line); border-radius: 7px; }
-  .ot-fixed-row { margin-bottom: 16px; }
-  .ot-fixed-input { width: 100%; min-height: 36px; border: 1.5px solid var(--hr-line); border-radius: 7px; padding: 4px 10px; background: var(--hr-bg); color: var(--app-text); font-size: 14px; margin-top: 6px; }
-  .ot-total { padding: 12px; background: #f8fafc; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .ot-total span { font-size: 13px; color: var(--hr-muted); }
-  .ot-total strong { font-size: 16px; font-weight: 600; }
+  .ot-rate-input select { flex: 1; min-height: 32px; border: 1.5px solid var(--hr-line); border-radius: 6px; padding: 4px 8px; background: var(--hr-bg); color: var(--app-text); }
+  .ot-rate-value { font-size: 13px; font-weight: 600; white-space: nowrap; padding: 5px 8px; border: 1.5px solid var(--hr-line); border-radius: 6px; }
+  .ot-fixed-row { margin-bottom: 10px; }
+  .ot-fixed-input { width: 100%; min-height: 32px; border: 1.5px solid var(--hr-line); border-radius: 6px; padding: 4px 9px; background: var(--hr-bg); color: var(--app-text); font-size: 13px; margin-top: 5px; }
+  .ot-total { padding: 9px 10px; background: #f8fafc; border-radius: 7px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .ot-total span { font-size: 12px; color: var(--hr-muted); }
+  .ot-total strong { font-size: 14px; font-weight: 600; }
 
   /* ── Misc ── */
   .hr-empty-cell { text-align: center; color: var(--hr-muted) !important; padding: 40px !important; }
@@ -4703,6 +5338,22 @@ const hrStyles = `
     color: var(--hr-text);
   }
 
+  body[data-theme="dark"] .hr-self-hero {
+    background:
+      linear-gradient(135deg, rgba(0,168,132,0.16) 0%, rgba(0,168,132,0.05) 56%, rgba(32,44,51,0) 100%),
+      var(--hr-bg);
+  }
+
+  body[data-theme="dark"] .hr-self-salary-card {
+    background: linear-gradient(135deg, #00715f 0%, #00a884 100%);
+  }
+
+  body[data-theme="dark"] .hr-self-stat,
+  body[data-theme="dark"] .hr-self-grid .hr-mini-card {
+    background: var(--hr-surface-soft);
+    border-color: #334651;
+  }
+
   body[data-theme="dark"] .hr-salary-preview strong {
     background: var(--hr-surface);
     border-color: #334651;
@@ -4720,9 +5371,14 @@ const hrStyles = `
     .hr-summary-strip { grid-template-columns: repeat(3, 1fr); }
     .hr-form-grid-3 { grid-template-columns: 1fr 1fr; }
     .hr-cash-bank-layout { grid-template-columns: 1fr; }
-    .hr-bank-ledger-rail { border-right: 0; border-bottom: 1px solid var(--hr-line); }
+    .hr-bank-ledger-rail { position: static; max-height: none; overflow: visible; border-right: 0; border-bottom: 1px solid var(--hr-line); }
     .hr-bank-ledger-list { max-height: none; }
     .hr-bank-account-summary { grid-template-columns: 1fr; align-items: stretch; }
+    .hr-self-hero { flex-direction: column; align-items: stretch; }
+    .hr-self-period { grid-template-columns: auto 44px minmax(0, 1fr) 44px; }
+    .hr-self-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hr-self-salary-card { grid-column: 1 / -1; }
+    .hr-self-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 640px) {
     .hr-metrics-row, .hr-summary-strip, .hr-finance-strip { grid-template-columns: 1fr; }
@@ -4740,8 +5396,247 @@ const hrStyles = `
     .hr-bank-ledger-item b { grid-column: 2; }
     .hr-bank-detail-tabs { align-items: stretch; flex-direction: column; }
     .hr-bank-detail-tabs .hr-pill { align-self: flex-start; margin: 10px 14px; }
-    .hr-payment-mode { grid-template-columns: 1fr; }
-    .hr-payment-mode button + button { border-left: 0; border-top: 1px solid var(--hr-line); }
+    .hr-payment-direction { align-items: stretch; flex-direction: column; }
+    .hr-payment-choice { width: 100%; }
+    .hr-self-hero { padding: 18px; }
+    .hr-self-overview,
+    .hr-self-grid { padding-left: 14px; padding-right: 14px; }
+    .hr-self-overview { grid-template-columns: 1fr; }
+    .hr-self-period { grid-template-columns: 38px minmax(0, 1fr) 38px; }
+    .hr-self-period span { grid-column: 1 / -1; }
     .hr-att-table-wrap, .hr-detail-att-table-wrap { overflow-x: auto; overflow-y: visible; }
+  }
+
+  @media (max-width: 1280px) {
+    .hr-att-table th,
+    .hr-att-table td,
+    .hr-detail-att-table th,
+    .hr-detail-att-table td {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+    .hr-cash-bank-layout {
+      grid-template-columns: 320px minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 1024px) {
+    .hr-page { min-height: auto; }
+    .hr-nav-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: thin;
+    }
+    .hr-nav-tab {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .hr-nav-tab.ml-auto { margin-left: 0; }
+    .hr-att-table-wrap,
+    .hr-detail-att-table-wrap,
+    .hr-finance-table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .hr-section-topbar,
+    .hr-date-bar,
+    .hr-detail-topbar {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .hr-page { margin-inline: -8px; }
+    .hr-main-section,
+    .hr-detail-layout {
+      border-radius: 0;
+      border-left: 0;
+      border-right: 0;
+    }
+    .hr-section-topbar,
+    .hr-date-bar,
+    .hr-detail-topbar,
+    .hr-detail-month-bar {
+      align-items: stretch;
+    }
+    .hr-section-topbar h1,
+    .hr-detail-title h1 {
+      font-size: 18px;
+      line-height: 1.25;
+    }
+    .hr-topbar-actions,
+    .hr-date-nav-row,
+    .hr-payroll-toolbar,
+    .hr-bank-filter-controls,
+    .hr-bank-filter-totals {
+      width: 100%;
+    }
+    .hr-topbar-actions .hr-btn,
+    .hr-date-nav-row .hr-btn,
+    .hr-payroll-toolbar .hr-btn,
+    .hr-payroll-toolbar select {
+      flex: 1 1 150px;
+      justify-content: center;
+    }
+    .hr-date-stepper {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .hr-date-stepper input,
+    .hr-month-nav input {
+      min-width: 0;
+      width: 100%;
+    }
+    .hr-summary-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .hr-summary-cell {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--hr-line);
+    }
+    .hr-summary-cell:nth-child(2n) { border-right: 0; }
+    .hr-summary-cell:nth-last-child(-n + 2) { border-bottom: 0; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) {
+      min-width: 0;
+      display: block;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) thead {
+      display: none;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tbody,
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tr,
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td {
+      display: block;
+      width: 100%;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tbody {
+      padding: 10px;
+      background: #f8fafc;
+    }
+    body[data-theme="dark"] .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tbody {
+      background: var(--hr-bg);
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tr {
+      border: 1px solid var(--hr-line);
+      border-radius: 8px;
+      background: var(--hr-bg);
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td {
+      min-height: 44px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--hr-line);
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:last-child {
+      border-bottom: 0;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td::before {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--hr-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:nth-child(1)::before { content: "Staff"; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:nth-child(2)::before { content: "Mobile"; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:nth-child(3)::before { content: "Salary due"; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:nth-child(4)::before { content: "Balance"; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:nth-child(5)::before { content: "Attendance"; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) td:nth-child(6)::before { content: "Payroll"; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tfoot,
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tfoot tr,
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tfoot td {
+      display: block;
+      width: 100%;
+    }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tfoot td {
+      border: 0;
+      padding: 8px 12px;
+    }
+    .hr-inline-att,
+    .hr-hourly-action {
+      justify-content: flex-start;
+    }
+    .hr-detail-body { padding: 14px; }
+    .hr-detail-tabs { overflow-x: auto; }
+    .hr-detail-tabs button {
+      flex: 0 0 auto;
+      min-width: 126px;
+      padding: 0 12px;
+    }
+    .hr-modal-backdrop {
+      align-items: flex-end;
+      padding: 0;
+    }
+    .hr-modal,
+    .payment-modal,
+    .small-money-modal,
+    .ot-modal,
+    .bank-tx-modal {
+      width: 100vw;
+      max-height: 92vh;
+      border-radius: 14px 14px 0 0;
+      padding: 16px;
+    }
+    .hr-modal-actions { flex-wrap: wrap; }
+    .hr-modal-actions .hr-btn {
+      flex: 1 1 130px;
+      justify-content: center;
+    }
+    .hr-bank-account-actions,
+    .hr-finance-card-actions {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .hr-metrics-row, .hr-finance-strip { grid-template-columns: 1fr; }
+    .hr-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bank-tx-modal { width: 100vw; padding: 14px; }
+  }
+
+  @media (max-width: 420px) {
+    .hr-page { margin-inline: -12px; }
+    .hr-nav-tab {
+      min-height: 38px;
+      padding: 0 11px;
+      font-size: 12px;
+    }
+    .hr-nav-tab svg {
+      width: 14px;
+      height: 14px;
+    }
+    .hr-section-topbar,
+    .hr-date-bar,
+    .hr-detail-topbar {
+      padding: 12px;
+    }
+    .hr-summary-strip {
+      grid-template-columns: 1fr;
+    }
+    .hr-summary-cell,
+    .hr-summary-cell:nth-last-child(-n + 2) {
+      border-right: 0;
+      border-bottom: 1px solid var(--hr-line);
+    }
+    .hr-summary-cell:last-child { border-bottom: 0; }
+    .hr-att-table:not(.bank-tx-table):not(.hr-skeleton-table) tbody {
+      padding: 8px;
+    }
+    .hr-btn { min-height: 38px; }
+    .hr-date-stepper .hr-icon-btn {
+      width: 32px;
+      height: 32px;
+    }
+    .hr-date-stepper input {
+      padding-inline: 6px;
+      font-size: 12px;
+    }
+    .hr-modal { padding: 14px; }
   }
 `;

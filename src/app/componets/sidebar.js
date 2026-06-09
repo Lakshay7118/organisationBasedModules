@@ -25,7 +25,7 @@ const allNavItems = [
     label: "HR",
     path: "/HR",
     icon: Briefcase,
-    allowedRoles: ["super_admin", "manager"],
+    allowedRoles: ["super_admin", "manager", "user"],
   },
   {
     id: "campaigns",
