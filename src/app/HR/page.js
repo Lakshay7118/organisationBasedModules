@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowDown,
@@ -29,6 +30,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { Country, State, City } from "country-state-city";
 import API from "../utils/api";
 
 const DAY_OPTIONS = [
@@ -59,11 +61,13 @@ const ATTENDANCE_STATUS_META = {
   half_day: { label: "Half Day", short: "HD", tone: "amber" },
   paid_leave: { label: "Paid Leave", short: "PL", tone: "blue" },
   short_leave: { label: "Short Leave", short: "SL", tone: "violet" },
+  weekly_off: { label: "Weekly Off", short: "WO", tone: "slate" },
 };
 const ATTENDANCE_MARK_OPTIONS = [
   ["present", "P"],
   ["absent", "A"],
 ];
+const COUNTRY_OPTIONS = Country.getAllCountries();
 
 const emptyDepartment = {
   name: "",
@@ -78,6 +82,16 @@ const emptyStaff = {
   name: "",
   email: "",
   phone: "",
+  addressCountry: "IN",
+  addressState: "",
+  addressCity: "",
+  houseAddress: "",
+  bankName: "",
+  accountHolderName: "",
+  accountNumber: "",
+  ifscCode: "",
+  branch: "",
+  upiId: "",
   department: "",
   designation: "",
   monthlySalary: "",
@@ -446,6 +460,11 @@ function staffLabel(staff) {
   return [staff.name, staff.employeeCode].filter(Boolean).join(" - ");
 }
 
+function staffHasBankDetails(staff) {
+  return ["bankName", "accountHolderName", "accountNumber", "ifscCode", "branch", "upiId"]
+    .some((field) => String(staff?.[field] || "").trim());
+}
+
 function formatReadableDate(value, options = {}) {
   if (!value) return "--";
   return parseDateValue(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", ...options });
@@ -518,6 +537,7 @@ function estimateHourlyRateForStaff(person, referenceDate = localDate()) {
 }
 
 export default function HRPage() {
+  const router = useRouter();
   const [currentUserRole] = useState(() => {
     if (typeof window === "undefined") return "";
     try {
@@ -580,6 +600,7 @@ export default function HRPage() {
   const [departmentForm, setDepartmentForm] = useState(emptyDepartment);
   const [editingDepartmentId, setEditingDepartmentId] = useState("");
   const [staffForm, setStaffForm] = useState(emptyStaff);
+  const [staffBankDetailsOpen, setStaffBankDetailsOpen] = useState(false);
   const [editingStaffId, setEditingStaffId] = useState("");
   const [bankForm, setBankForm] = useState(emptyBank);
   const [loanForm, setLoanForm] = useState(emptyLoan);
@@ -622,10 +643,10 @@ export default function HRPage() {
       else if (record?.status === "half_day") counts.half_day += 1;
       else if (record?.status === "paid_leave") counts.paid_leave += 1;
       else if (record?.status === "short_leave") counts.short_leave += 1;
-      else if (isWeeklyOffForStaff(person, attendanceDate)) counts.weekly_off += 1;
+      else if (record?.status === "weekly_off") counts.weekly_off += 1;
     });
     return counts;
-  }, [activeStaff, attendanceByStaff, attendanceDate]);
+  }, [activeStaff, attendanceByStaff]);
 
   const attendanceRows = useMemo(
     () => activeStaff
@@ -748,7 +769,7 @@ export default function HRPage() {
       else if (record?.status === "half_day") counts.half_day += 1;
       else if (record?.status === "paid_leave") counts.paid_leave += 1;
       else if (record?.status === "short_leave") counts.short_leave += 1;
-      else if (isWeeklyOffForStaff(selectedDetailStaff, date)) counts.weekly_off += 1;
+      else if (record?.status === "weekly_off") counts.weekly_off += 1;
     });
     return counts;
   }, [detailAttendanceByDate, detailDate, detailMonth, selectedDetailStaff, selectedDetailUsesSingleDay]);
@@ -923,6 +944,28 @@ export default function HRPage() {
   const selectedStaffFormDepartment = useMemo(
     () => departments.find((department) => idOf(department) === staffForm.department) || null,
     [departments, staffForm.department]
+  );
+  const staffAddressStates = useMemo(
+    () => State.getStatesOfCountry(staffForm.addressCountry || ""),
+    [staffForm.addressCountry]
+  );
+  const staffAddressCities = useMemo(
+    () => (staffForm.addressCountry && staffForm.addressState
+      ? City.getCitiesOfState(staffForm.addressCountry, staffForm.addressState)
+      : []),
+    [staffForm.addressCountry, staffForm.addressState]
+  );
+  const selectedAddressCountry = useMemo(
+    () => COUNTRY_OPTIONS.find((country) => country.isoCode === staffForm.addressCountry) || null,
+    [staffForm.addressCountry]
+  );
+  const selectedAddressState = useMemo(
+    () => staffAddressStates.find((state) => state.isoCode === staffForm.addressState) || null,
+    [staffAddressStates, staffForm.addressState]
+  );
+  const selectedAddressCity = useMemo(
+    () => staffAddressCities.find((city) => city.name === staffForm.addressCity) || null,
+    [staffAddressCities, staffForm.addressCity]
   );
 
   const staffSalaryPreview = useMemo(() => {
@@ -1251,11 +1294,20 @@ export default function HRPage() {
         salaryBasis: normalizeSalaryBasisValue(staffForm.salaryBasis),
         expectedHoursPerDay: Number(staffForm.expectedHoursPerDay || 8),
         payrollCycleDay: normalizePayrollCycleDay(staffForm.payrollCycleDay),
+        address: {
+          countryCode: staffForm.addressCountry || "",
+          countryName: selectedAddressCountry?.name || "",
+          stateCode: staffForm.addressState || "",
+          stateName: selectedAddressState?.name || "",
+          cityName: selectedAddressCity?.name || staffForm.addressCity || "",
+          houseAddress: staffForm.houseAddress || "",
+        },
       };
       const res = editingStaffId ? await API.patch(`/hr/staff/${editingStaffId}`, payload) : await API.post("/hr/staff", payload);
       const saved = res.data.data;
       setStaff((prev) => editingStaffId ? prev.map((item) => (idOf(item) === editingStaffId ? saved : item)) : [saved, ...prev]);
       setStaffForm({ ...emptyStaff, payrollCycleDay: cycleStartDay });
+      setStaffBankDetailsOpen(false);
       setEditingStaffId("");
       showNotice("success", editingStaffId ? "Staff updated." : "Staff added.");
       if (toolsOpen === "staff") setToolsOpen("");
@@ -1288,7 +1340,7 @@ export default function HRPage() {
       setPayrolls((prev) => prev.filter((item) => idOf(item.staff) !== staffId));
       setBankTransactions((prev) => prev.filter((item) => idOf(item.staff) !== staffId));
       setLoans((prev) => prev.filter((item) => idOf(item.staff) !== staffId));
-      if (editingStaffId === staffId) { setEditingStaffId(""); setStaffForm(emptyStaff); }
+      if (editingStaffId === staffId) { setEditingStaffId(""); setStaffForm(emptyStaff); setStaffBankDetailsOpen(false); }
       showNotice("success", "Staff deleted.");
       refreshSummary();
     } catch (error) {
@@ -1311,7 +1363,7 @@ export default function HRPage() {
   };
 
   const quickMarkAttendance = async (person, status) => {
-    if (isWeeklyOffForStaff(person, attendanceDate)) {
+    if (isWeeklyOffForStaff(person, attendanceDate) && status !== "weekly_off") {
       return showNotice("error", "This date is a weekly off. Attendance cannot be marked.");
     }
     const staffId = idOf(person);
@@ -1418,12 +1470,11 @@ export default function HRPage() {
       setFineForm({ hours: existing.fineHours ?? "", note: existing.note || "" });
       return;
     }
-    if (action === "weekly_off") {
-      showNotice("error", "Weekly off comes from the staff department settings.");
-      return;
-    }
     updateDetailAttendanceDraft(date, "status", action);
-    await saveDetailAttendanceDraft(person, date, { status: action });
+    await saveDetailAttendanceDraft(person, date, {
+      status: action,
+      ...(action === "weekly_off" ? { checkIn: "", checkOut: "", workHours: 0 } : {}),
+    });
   };
 
   const saveOvertime = async () => {
@@ -1854,7 +1905,7 @@ export default function HRPage() {
           <button className="hr-btn hr-btn-ghost" onClick={() => { setEditingDepartmentId(""); setDepartmentForm(emptyDepartment); setToolsOpen("department"); }}>
             <Building2 size={15} /> Add Department
           </button>
-          <button className="hr-btn hr-btn-primary" onClick={() => { setEditingStaffId(""); setStaffForm({ ...emptyStaff, payrollCycleDay: cycleStartDay }); setToolsOpen("staff"); }}>
+          <button className="hr-btn hr-btn-primary" onClick={() => router.push("/HR/staff")}>
             <UserPlus size={15} /> + Add Staff
           </button>
         </div>
@@ -1946,8 +1997,12 @@ export default function HRPage() {
                       </span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      {weeklyOffToday ? (
+                      {weeklyOffToday && draft.status === "weekly_off" ? (
                         <span className="hr-att-status-pill wo">WO</span>
+                      ) : weeklyOffToday ? (
+                        <button className="hr-btn hr-btn-ghost compact" onClick={() => quickMarkAttendance(person, "weekly_off")}>
+                          Mark WO
+                        </button>
                       ) : isTimeBased ? (
                         <div className="hr-hourly-action">
                           <span className={`hr-pill ${isHourly ? "blue" : "amber"}`}>{isHourly ? "Hourly" : "Daily"}</span>
@@ -2017,7 +2072,7 @@ export default function HRPage() {
         <aside className="hr-detail-rail">
           <div className="hr-rail-head">
             <h2>Staff</h2>
-            <button className="hr-btn hr-btn-primary compact" onClick={() => { setEditingStaffId(""); setStaffForm({ ...emptyStaff, payrollCycleDay: cycleStartDay }); setToolsOpen("staff"); }}>
+            <button className="hr-btn hr-btn-primary compact" onClick={() => router.push("/HR/staff")}>
               + Add Staff
             </button>
           </div>
@@ -2074,11 +2129,7 @@ export default function HRPage() {
             </nav>
             {detailTab === "details" && (
               <div className="hr-detail-tab-actions">
-                <button className="hr-btn hr-btn-ghost" onClick={() => {
-                  setEditingStaffId(idOf(selectedDetailStaff));
-                  setStaffForm({ employeeCode: selectedDetailStaff.employeeCode || "", name: selectedDetailStaff.name || "", email: selectedDetailStaff.email || "", phone: selectedDetailStaff.phone || "", department: idOf(selectedDetailStaff.department), designation: selectedDetailStaff.designation || "", monthlySalary: selectedDetailStaff.monthlySalary || "", salaryBasis: normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis), expectedHoursPerDay: selectedDetailStaff.expectedHoursPerDay || 8, payrollCycleDay: staffPayrollCycleDay(selectedDetailStaff), joinDate: selectedDetailStaff.joinDate ? selectedDetailStaff.joinDate.slice(0, 10) : localDate(), status: selectedDetailStaff.status || "active" });
-                  setToolsOpen("staff");
-                }}>Edit</button>
+                <button className="hr-btn hr-btn-ghost" onClick={() => router.push(`/HR/staff?id=${idOf(selectedDetailStaff)}`)}>Edit</button>
                 {selectedDetailStaff.status === "active" && <button className="hr-btn hr-btn-outline-danger" onClick={() => archiveStaff(selectedDetailStaff)}>Delete</button>}
               </div>
             )}
@@ -2193,8 +2244,7 @@ export default function HRPage() {
                           <button type="button" className={`hr-att-btn ${status === "absent" ? "active-absent" : ""}`} onClick={() => quickStatus("absent")} disabled={weeklyOff} title={weeklyOff ? "Weekly off" : "Absent"}>A</button>
                         </div>
                         {meta && status !== "present" && status !== "absent" && <span className="hr-att-status-pill" style={{ background: pillBg(meta.tone), color: pillFg(meta.tone) }}>{meta.short}</span>}
-                        {weeklyOff && !status && <span className="hr-att-status-pill wo">WO</span>}
-                        {!status && !weeklyOff && <span className="hr-muted">Unmarked</span>}
+                        {!status && <span className="hr-muted">Unmarked</span>}
                         {(overtimeHours > 0 || fineHours > 0) && (
                           <small className="hr-att-adjustment-note">
                             OT {overtimeHours}h / Fine {fineHours}h
@@ -2255,7 +2305,12 @@ export default function HRPage() {
     const cycleLabel = `${formatMonthLabel(payrollMonth).split(" ")[0]} (${formatReadableDate(period.periodStart)} - ${formatReadableDate(period.periodEnd)})`;
     const currentBalance = Number(payroll?.balanceDue ?? payroll?.netPay ?? staffBalanceSummary(selectedDetailStaff).amount ?? 0);
     const earningsAmount = Number(payroll?.grossSalary ?? payroll?.baseSalary ?? selectedDetailStaff.monthlySalary ?? 0);
-    const weeklyOffAmount = Number(payroll?.paidOffDays || 0) * Number(payroll?.dailyRate || 0);
+    const markedWeeklyOffDays = Math.max(0, Number(payroll?.payableDays || 0)
+      - Number(payroll?.presentDays || 0)
+      - (Number(payroll?.halfDays || 0) * 0.5)
+      - Number(payroll?.paidLeaveDays || 0)
+      - Number(payroll?.shortLeaveDays || 0));
+    const weeklyOffAmount = markedWeeklyOffDays * Number(payroll?.dailyRate || 0);
     const paymentsAmount = Number(payroll?.totalPaid || 0);
     const previousBalance = Math.max(0, currentBalance - Number(payroll?.netPay ?? earningsAmount) + paymentsAmount);
     return (
@@ -2280,10 +2335,12 @@ export default function HRPage() {
               <strong>Earnings</strong>
               <b>{formatMoney(earningsAmount)}</b>
             </div>
-            <div className="hr-payroll-ledger-row child">
-              <span>Weekly off ({payroll.paidOffDays || 0} Days)</span>
-              <b>{formatMoney(weeklyOffAmount || earningsAmount)}</b>
-            </div>
+            {markedWeeklyOffDays > 0 && (
+              <div className="hr-payroll-ledger-row child">
+                <span>Marked weekly off ({markedWeeklyOffDays} Days)</span>
+                <b>{formatMoney(weeklyOffAmount)}</b>
+              </div>
+            )}
             <div className="hr-payroll-ledger-row section">
               <strong>Payments</strong>
               <b>{formatMoney(paymentsAmount)}</b>
@@ -2361,6 +2418,9 @@ export default function HRPage() {
     const salaryBasis = normalizeSalaryBasisValue(selectedDetailStaff.salaryBasis);
     const cycleDay = staffPayrollCycleDay(selectedDetailStaff);
     const openingDate = selectedDetailStaff.joinDate ? formatReadableDate(selectedDetailStaff.joinDate.slice(0, 10)) : "--";
+    const address = selectedDetailStaff.address || {};
+    const addressLocation = [address.cityName, address.stateName, address.countryName].filter(Boolean).join(", ");
+    const addressText = [address.houseAddress, addressLocation].filter(Boolean).join(", ");
     return (
       <div className="hr-staff-info-grid">
         <div className="hr-staff-info-item">
@@ -2370,6 +2430,10 @@ export default function HRPage() {
         <div className="hr-staff-info-item">
           <span>Mobile Number</span>
           <strong>{selectedDetailStaff.phone || "--"}</strong>
+        </div>
+        <div className="hr-staff-info-item">
+          <span>Address</span>
+          <strong>{addressText || "--"}</strong>
         </div>
         <div className="hr-staff-info-item">
           <span>Opening Balance</span>
@@ -2492,6 +2556,42 @@ export default function HRPage() {
         <Field label="Name"><input value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="Full name" /></Field>
         <Field label="Phone"><input value={staffForm.phone} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} placeholder="Mobile" /></Field>
         <Field label="Email"><input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} placeholder="email@example.com" /></Field>
+        <Field label="Country">
+          <select value={staffForm.addressCountry} onChange={(e) => setStaffForm({ ...staffForm, addressCountry: e.target.value, addressState: "", addressCity: "" })}>
+            <option value="">Select country</option>
+            {COUNTRY_OPTIONS.map((country) => <option key={country.isoCode} value={country.isoCode}>{country.name}</option>)}
+          </select>
+        </Field>
+        <Field label="State">
+          <select value={staffForm.addressState} onChange={(e) => setStaffForm({ ...staffForm, addressState: e.target.value, addressCity: "" })} disabled={!staffForm.addressCountry}>
+            <option value="">Select state</option>
+            {staffAddressStates.map((state) => <option key={state.isoCode} value={state.isoCode}>{state.name}</option>)}
+          </select>
+        </Field>
+        <Field label="City">
+          <select value={staffForm.addressCity} onChange={(e) => setStaffForm({ ...staffForm, addressCity: e.target.value })} disabled={!staffForm.addressState}>
+            <option value="">Select city</option>
+            {staffAddressCities.map((city) => <option key={`${city.name}-${city.latitude}-${city.longitude}`} value={city.name}>{city.name}</option>)}
+          </select>
+        </Field>
+        <Field label="House / Street Address" className="hr-span2">
+          <textarea value={staffForm.houseAddress} onChange={(e) => setStaffForm({ ...staffForm, houseAddress: e.target.value })} placeholder="House number, street, landmark" rows={3} />
+        </Field>
+        <div className="hr-span2 hr-bank-details-toggle">
+          <button type="button" className="hr-btn hr-btn-ghost" onClick={() => setStaffBankDetailsOpen((open) => !open)}>
+            <CreditCard size={14} /> {staffBankDetailsOpen ? "Hide Bank Detail" : "Add Bank Detail"}
+          </button>
+        </div>
+        {staffBankDetailsOpen && (
+          <>
+            <Field label="Bank Name"><input value={staffForm.bankName} onChange={(e) => setStaffForm({ ...staffForm, bankName: e.target.value })} placeholder="e.g. State Bank of India" /></Field>
+            <Field label="Account Holder Name"><input value={staffForm.accountHolderName} onChange={(e) => setStaffForm({ ...staffForm, accountHolderName: e.target.value })} placeholder="Account holder name" /></Field>
+            <Field label="Account Number"><input value={staffForm.accountNumber} onChange={(e) => setStaffForm({ ...staffForm, accountNumber: e.target.value })} placeholder="Account No" /></Field>
+            <Field label="IFSC Code"><input value={staffForm.ifscCode} onChange={(e) => setStaffForm({ ...staffForm, ifscCode: e.target.value.toUpperCase() })} placeholder="IFSC" /></Field>
+            <Field label="Branch"><input value={staffForm.branch} onChange={(e) => setStaffForm({ ...staffForm, branch: e.target.value })} placeholder="Branch name" /></Field>
+            <Field label="UPI ID"><input value={staffForm.upiId} onChange={(e) => setStaffForm({ ...staffForm, upiId: e.target.value })} placeholder="UPI ID" /></Field>
+          </>
+        )}
         <Field label="Department">
           <select value={staffForm.department} onChange={(e) => setStaffForm({ ...staffForm, department: e.target.value })}>
             <option value="">Select department</option>
@@ -2548,7 +2648,7 @@ export default function HRPage() {
           </select>
         </Field>
         <div className="hr-span2 hr-form-actions-row">
-          {editingStaffId && <button type="button" className="hr-btn hr-btn-ghost" onClick={() => { setEditingStaffId(""); setStaffForm({ ...emptyStaff, payrollCycleDay: cycleStartDay }); }}>Cancel</button>}
+          {editingStaffId && <button type="button" className="hr-btn hr-btn-ghost" onClick={() => { setEditingStaffId(""); setStaffForm({ ...emptyStaff, payrollCycleDay: cycleStartDay }); setStaffBankDetailsOpen(false); }}>Cancel</button>}
           <button type="submit" className="hr-btn hr-btn-primary" disabled={saving}><Save size={14} /> {editingStaffId ? "Update Staff" : "Add Staff"}</button>
         </div>
       </form>
@@ -2957,6 +3057,11 @@ export default function HRPage() {
     const overtimeAmount = Number(clearDuePayroll.overtimeAmount || 0);
     const fineAmount = Number(clearDuePayroll.fineAmount || 0);
     const currentDue = Number(clearDuePayroll.balanceDue ?? clearDuePayroll.netPay ?? 0);
+    const markedWeeklyOffDays = Math.max(0, Number(clearDuePayroll.payableDays || 0)
+      - Number(clearDuePayroll.presentDays || 0)
+      - (Number(clearDuePayroll.halfDays || 0) * 0.5)
+      - Number(clearDuePayroll.paidLeaveDays || 0)
+      - Number(clearDuePayroll.shortLeaveDays || 0));
 
     return (
       <div className="hr-modal-backdrop" onClick={() => setClearDuePayroll(null)}>
@@ -2972,7 +3077,7 @@ export default function HRPage() {
               <InfoRow label="Base salary" value={formatMoney(clearDuePayroll.baseSalary)} />
               <InfoRow label={salaryBasis === "hourly" ? "Work hours" : "Working days"} value={salaryBasis === "hourly" ? `${clearDuePayroll.totalWorkHours || 0} hours` : `${clearDuePayroll.workingDays || 0} days`} />
               <InfoRow label="Came days" value={`${payrollCameDays(clearDuePayroll)} days`} />
-              <InfoRow label="Weekly off days" value={`${clearDuePayroll.paidOffDays || 0} days`} />
+              <InfoRow label="Marked weekly off" value={`${markedWeeklyOffDays} days`} />
               <InfoRow label="Daily rate" value={formatMoney(clearDuePayroll.dailyRate || (clearDuePayroll.workingDays ? Number(clearDuePayroll.baseSalary || 0) / clearDuePayroll.workingDays : 0))} />
               <InfoRow label="Hourly rate" value={formatMoney(hourlyRate)} />
               <InfoRow label="Present / Half / Absent" value={`${clearDuePayroll.presentDays || 0} / ${clearDuePayroll.halfDays || 0} / ${clearDuePayroll.absentDays || 0}`} />
@@ -3228,7 +3333,7 @@ export default function HRPage() {
     const attendanceCounts = userAttendance.reduce((acc, item) => {
       acc[item.status] = (acc[item.status] || 0) + 1;
       return acc;
-    }, { present: 0, absent: 0, half_day: 0, paid_leave: 0, short_leave: 0 });
+    }, { present: 0, absent: 0, half_day: 0, paid_leave: 0, short_leave: 0, weekly_off: 0 });
     const workingEntries = Number(attendanceCounts.present || 0)
       + Number(attendanceCounts.half_day || 0)
       + Number(attendanceCounts.short_leave || 0);
@@ -3318,7 +3423,7 @@ export default function HRPage() {
                 absent: attendanceCounts.absent || 0,
                 half_day: attendanceCounts.half_day || 0,
                 paid_leave: attendanceCounts.paid_leave || 0,
-                weekly_off: 0,
+                weekly_off: attendanceCounts.weekly_off || 0,
               })}
             </div>
             <div className="hr-self-table-scroll">
@@ -3526,6 +3631,7 @@ function AttendanceRowMenu({ open, onToggle, onAction }) {
     { id: "half_day", label: "Half Day" },
     { id: "paid_leave", label: "Paid Leave" },
     { id: "short_leave", label: "Short Leave" },
+    { id: "weekly_off", label: "Week Off" },
     { id: "overtime", label: "Add Overtime" },
     { id: "fine", label: "Add Fine" },
   ];
@@ -4537,6 +4643,7 @@ const hrStyles = `
   .hr-form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
   .hr-form-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
   .hr-span2 { grid-column: 1 / -1; }
+  .hr-bank-details-toggle { display: flex; align-items: center; justify-content: flex-start; }
   .hr-shift-preview {
     display: grid;
     gap: 3px;
@@ -4558,7 +4665,7 @@ const hrStyles = `
   }
   .hr-field { display: grid; gap: 4px; }
   .hr-field span { font-size: 11px; font-weight: 600; color: var(--hr-muted); }
-  .hr-field input, .hr-field select {
+  .hr-field input, .hr-field select, .hr-field textarea {
     width: 100%;
     min-height: 32px;
     border: 1.5px solid var(--hr-line);
@@ -4569,6 +4676,11 @@ const hrStyles = `
     font-size: 13px;
     outline: none;
     box-sizing: border-box;
+  }
+  .hr-field textarea {
+    min-height: 74px;
+    resize: vertical;
+    line-height: 1.35;
   }
   .hr-field-label { font-size: 11px; font-weight: 600; color: var(--hr-muted); display: block; margin-bottom: 5px; }
   .hr-form-actions-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
