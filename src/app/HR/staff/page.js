@@ -215,7 +215,7 @@ function StaffFormRoute() {
   };
 
   if (loading) {
-    return <div className="staff-form-page"><div className="staff-form-loading">Loading staff form...</div><StaffFormStyles /></div>;
+    return <StaffFormSkeleton />;
   }
 
   return (
@@ -358,6 +358,44 @@ function Field({ label, children, className = "" }) {
   );
 }
 
+function SkeletonLine({ className = "" }) {
+  return <span className={`staff-skeleton-line ${className}`} />;
+}
+
+function StaffFormSkeleton() {
+  return (
+    <main className="staff-form-page">
+      <div className="staff-form-topbar staff-skeleton-topbar">
+        <SkeletonLine className="button" />
+        <div>
+          <SkeletonLine className="title" />
+          <SkeletonLine className="subtitle" />
+        </div>
+        <SkeletonLine className="button save" />
+      </div>
+      <div className="staff-form-layout">
+        {[3, 2, 2].map((rows, sectionIndex) => (
+          <section className="staff-form-section" key={sectionIndex}>
+            <div className="staff-section-title">
+              <SkeletonLine className="icon" />
+              <SkeletonLine className="section-title" />
+            </div>
+            <div className="staff-grid">
+              {Array.from({ length: rows * 3 }).map((_, index) => (
+                <label className={`staff-field ${sectionIndex === 1 && index === 3 ? "span-all" : ""}`} key={index}>
+                  <SkeletonLine className="label" />
+                  <SkeletonLine className={sectionIndex === 1 && index === 3 ? "textarea" : "input"} />
+                </label>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+      <StaffFormStyles />
+    </main>
+  );
+}
+
 function StaffFormStyles() {
   return (
     <style jsx global>{`
@@ -369,13 +407,16 @@ function StaffFormStyles() {
         --staff-text: #1f2c34;
         --staff-bg: #f3f6f8;
         min-height: 100vh;
-        padding: 22px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 20px;
         background: var(--staff-bg);
         color: var(--staff-text);
       }
       .staff-form-topbar {
-        max-width: 1180px;
-        margin: 0 auto 14px;
+        width: 100%;
+        max-width: none;
+        margin: 0 0 14px;
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
@@ -422,8 +463,9 @@ function StaffFormStyles() {
       .staff-form-layout,
       .staff-notice,
       .staff-form-loading {
-        max-width: 1180px;
-        margin: 0 auto;
+        width: 100%;
+        max-width: none;
+        margin: 0;
       }
       .staff-form-layout {
         display: grid;
@@ -553,6 +595,57 @@ function StaffFormStyles() {
         color: var(--staff-muted);
         font-size: 14px;
       }
+      .staff-skeleton-topbar {
+        min-height: 56px;
+      }
+      .staff-skeleton-line {
+        display: block;
+        border-radius: 7px;
+        background: linear-gradient(90deg, #edf2f5 25%, #f8fafc 37%, #edf2f5 63%);
+        background-size: 400% 100%;
+        animation: staffSkeletonPulse 1.25s ease-in-out infinite;
+      }
+      .staff-skeleton-line.button {
+        width: 104px;
+        height: 46px;
+      }
+      .staff-skeleton-line.button.save {
+        width: 144px;
+      }
+      .staff-skeleton-line.title {
+        width: 220px;
+        height: 28px;
+        margin-bottom: 10px;
+      }
+      .staff-skeleton-line.subtitle {
+        width: min(420px, 70vw);
+        height: 14px;
+      }
+      .staff-skeleton-line.icon {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+      }
+      .staff-skeleton-line.section-title {
+        width: 120px;
+        height: 18px;
+      }
+      .staff-skeleton-line.label {
+        width: 92px;
+        height: 11px;
+      }
+      .staff-skeleton-line.input {
+        width: 100%;
+        height: 48px;
+      }
+      .staff-skeleton-line.textarea {
+        width: 100%;
+        height: 114px;
+      }
+      @keyframes staffSkeletonPulse {
+        0% { background-position: 100% 50%; }
+        100% { background-position: 0 50%; }
+      }
       body[data-theme="dark"] .staff-form-page {
         --staff-bg: #111b21;
         --staff-text: #e9edef;
@@ -575,6 +668,10 @@ function StaffFormStyles() {
       body[data-theme="dark"] .staff-readonly-box {
         background: #111b21;
         border-color: var(--staff-line);
+      }
+      body[data-theme="dark"] .staff-skeleton-line {
+        background: linear-gradient(90deg, #22323b 25%, #2a3942 37%, #22323b 63%);
+        background-size: 400% 100%;
       }
       @media (max-width: 900px) {
         .staff-form-topbar {
@@ -612,7 +709,7 @@ function StaffFormStyles() {
 
 export default function StaffPage() {
   return (
-    <Suspense fallback={<div className="staff-form-page"><div className="staff-form-loading">Loading staff form...</div><StaffFormStyles /></div>}>
+    <Suspense fallback={<StaffFormSkeleton />}>
       <StaffFormRoute />
     </Suspense>
   );
