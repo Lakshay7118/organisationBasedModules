@@ -25,7 +25,6 @@ import {
   Search,
   Settings,
   Trash2,
-  UserPlus,
   Users,
   Wallet,
   X,
@@ -1048,9 +1047,11 @@ export default function HRPage() {
       if (data?.month && data.month !== selfMonth) setSelfMonth(data.month);
       setStaff(data?.staff ? [data.staff] : []);
       setPayrolls(data?.payrolls || []);
+      setBankTransactions(data?.bankTransactions || []);
       setDetailAttendance(data?.attendance || []);
     } catch (error) {
       setSelfHr(null);
+      setBankTransactions([]);
       showNotice("error", error.response?.data?.error || "Could not load your HR details.");
     } finally {
       setLoading(false);
@@ -1905,9 +1906,10 @@ export default function HRPage() {
           <button className="hr-btn hr-btn-ghost" onClick={() => { setEditingDepartmentId(""); setDepartmentForm(emptyDepartment); setToolsOpen("department"); }}>
             <Building2 size={15} /> Add Department
           </button>
-          <button className="hr-btn hr-btn-primary" onClick={() => router.push("/HR/staff")}>
-            <UserPlus size={15} /> + Add Staff
-          </button>
+          {/* Add Staff is now handled from the Contacts page. */}
+          {/* <button className="hr-btn hr-btn-primary" onClick={() => router.push("/HR/onboard")}>
+            + Add Staff
+          </button> */}
         </div>
       </div>
 
@@ -2072,9 +2074,10 @@ export default function HRPage() {
         <aside className="hr-detail-rail">
           <div className="hr-rail-head">
             <h2>Staff</h2>
-            <button className="hr-btn hr-btn-primary compact" onClick={() => router.push("/HR/staff")}>
+            {/* Add Staff is now handled from the Contacts page. */}
+            {/* <button className="hr-btn hr-btn-primary compact" onClick={() => router.push("/HR/onboard")}>
               + Add Staff
-            </button>
+            </button> */}
           </div>
           <div className="hr-rail-scroll">
             {filteredStaff.map((person) => {
@@ -3328,6 +3331,7 @@ export default function HRPage() {
     const person = selfHr?.staff;
     const userPayrolls = selfHr?.payrolls || [];
     const userAttendance = selfHr?.attendance || [];
+    const userTransactions = selfHr?.bankTransactions || [];
     const latestPayroll = userPayrolls[0] || null;
     const salaryBasis = normalizeSalaryBasisValue(person?.salaryBasis);
     const attendanceCounts = userAttendance.reduce((acc, item) => {
@@ -3439,6 +3443,36 @@ export default function HRPage() {
                         <td>{formatReadableDate(item.date, { weekday: "short" })}</td>
                         <td><span className="hr-att-status-pill" style={{ background: pillBg(meta.tone), color: pillFg(meta.tone) }}>{meta.label}</span></td>
                         <td>{Number(item.workHours || 0)}h</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="hr-mini-card">
+            <div className="hr-self-card-head">
+              <div>
+                <h4>Bank Transactions</h4>
+                <span>{userTransactions.length} transaction{userTransactions.length === 1 ? "" : "s"}</span>
+              </div>
+            </div>
+            <div className="hr-self-table-scroll">
+              <table className="hr-mini-table hr-self-transactions-table">
+                <thead><tr><th>Date</th><th>Type</th><th>Bank</th><th>Amount</th><th>Note</th></tr></thead>
+                <tbody>
+                  {userTransactions.length === 0 ? (
+                    <tr><td colSpan={5} className="hr-empty-cell">No bank transactions for this month.</td></tr>
+                  ) : userTransactions.map((item) => {
+                    const isIn = transactionDirection(item) === "in";
+                    return (
+                      <tr key={idOf(item) || `${idOf(item.bank)}-${item.paidAt}`}>
+                        <td>{formatReadableDate(item.paidAt)}</td>
+                        <td>{transactionTitle(item)}</td>
+                        <td>{item.bank?.name || "--"}</td>
+                        <td className={isIn ? "text-green" : "text-rose"}>{isIn ? "+" : "-"}{formatMoney(item.amount)}</td>
+                        <td>{item.note || transactionPeriodLabel(item) || "--"}</td>
                       </tr>
                     );
                   })}

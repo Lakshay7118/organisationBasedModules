@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { MessageSquare, CheckSquare, Users, Settings } from "lucide-react";
+import { Briefcase, MessageSquare, CheckSquare, Users, Settings } from "lucide-react";
 
 const tabs = [
-  { id: "live-chat", label: "Live Chat", icon: MessageSquare, path: "/live-chat" },
+  { id: "live-chat", label: "Live Chat", icon: MessageSquare, path: "/live-chat", module: "chat" },
   { id: "contacts",  label: "Contacts",  icon: Users,         path: "/contacts"  },
-  { id: "task",      label: "Task",      icon: CheckSquare,   path: "/task"      },
+  { id: "task",      label: "Task",      icon: CheckSquare,   path: "/task", module: "task" },
+  { id: "hr",        label: "HR",        icon: Briefcase,     path: "/HR", module: "hr", selfAccessRoles: ["user"] },
   { id: "settings",  label: "Settings",  icon: Settings,      path: "/Settings"  },
 ];
 
@@ -15,12 +16,34 @@ export default function BottomTabs({ hidden = false }) {
   const router   = useRouter();
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
+  const [allowedModules, setAllowedModules] = useState([]);
+  const [userRole, setUserRole] = useState("");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 820);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const user = JSON.parse(localStorage.getItem("user") || "{}");
+        setUserRole(user.role || localStorage.getItem("role") || "");
+        setAllowedModules(Array.isArray(user.allowedModules) ? user.allowedModules : []);
+      } catch {
+        setUserRole("");
+        setAllowedModules([]);
+      }
+    };
+    sync();
+    window.addEventListener("loginStatusChanged", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("loginStatusChanged", sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   if (!isMobile || hidden) return null;
@@ -40,7 +63,9 @@ export default function BottomTabs({ hidden = false }) {
         boxShadow: "0 -2px 12px rgba(0,0,0,0.07)",
       }}
     >
-      {tabs.map((tab) => {
+      {tabs
+        .filter((tab) => !tab.module || userRole === "super_to_super_admin" || tab.selfAccessRoles?.includes(userRole) || allowedModules.includes(tab.module))
+        .map((tab) => {
         const Icon     = tab.icon;
         const isActive = pathname === tab.path;
         return (

@@ -54,8 +54,9 @@ const emptyProfile = {
   role: "user",
 };
 
-const roleLabel = (role) => (role === "super_admin" ? "Admin" : role || "User");
-const canSaveDirectly = (role) => role === "super_admin";
+const roleLabel = (role) =>
+  role === "super_to_super_admin" ? "Owner" : role === "super_admin" ? "Admin" : role || "User";
+const canSaveDirectly = (role) => ["super_to_super_admin", "super_admin"].includes(role);
 const initials = (name = "") => (name.trim().charAt(0) || "U").toUpperCase();
 const normalizeTheme = (value) => (value === "dark" ? "dark" : "light");
 const syncThemePreference = (nextTheme, persist = true) => {
@@ -159,7 +160,7 @@ export default function SettingsPage() {
 
   const isDark = theme === "dark";
   const admin = canSaveDirectly(profile.role);
-  const supportStaff = ["super_admin", "manager"].includes(profile.role);
+  const supportStaff = ["super_to_super_admin", "super_admin", "manager"].includes(profile.role);
   const hasChanges = JSON.stringify({
     name: draft.name,
     email: draft.email,
@@ -305,6 +306,22 @@ export default function SettingsPage() {
     setTheme(savedTheme);
     setThemeReady(true);
     setLastSeenSupportReplyAt(Number(localStorage.getItem("supportLastSeenReplyAt") || 0));
+  }, []);
+
+  useEffect(() => {
+    const openSupportChat = () => {
+      setActive("support");
+      setSupportOpen(true);
+    };
+
+    window.addEventListener("openSupportChat", openSupportChat);
+
+    if (new URLSearchParams(window.location.search).get("openSupport") === "1") {
+      openSupportChat();
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
+    return () => window.removeEventListener("openSupportChat", openSupportChat);
   }, []);
 
   useEffect(() => {
@@ -992,7 +1009,7 @@ export default function SettingsPage() {
           border: "none",
           background: "#14b87a",
           color: "#fff",
-          display: supportOpen ? "none" : "flex",
+          display: "none",
           alignItems: "center",
           justifyContent: "center",
           boxShadow: "0 18px 38px rgba(20,184,122,0.32)",

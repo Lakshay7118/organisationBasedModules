@@ -1063,8 +1063,8 @@ export default function TemplatesPage() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const isSuperAdmin     = userRole === "super_admin";
-  const isManagerOrAbove = userRole === "super_admin" || userRole === "manager";
+  const isSuperAdmin     = userRole === "super_to_super_admin" || userRole === "super_admin";
+  const isManagerOrAbove = isSuperAdmin || userRole === "manager";
 
   const isExploreTab = activeTab === "Explore";
   const isPendingTab = activeTab === "PendingApprovals";

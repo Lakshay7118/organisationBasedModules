@@ -1769,6 +1769,11 @@ const filteredChats = useMemo(() => {
     return () => ctx.revert();
   }, [isLoading]);
 
+  useEffect(() => {
+    window.dispatchEvent(new Event(selectedChat ? "detailViewOpen" : "detailViewClose"));
+    return () => window.dispatchEvent(new Event("detailViewClose"));
+  }, [selectedChat]);
+
   // ── 6. Handlers ───────────────────────────────
   const getTimeNow = () =>
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

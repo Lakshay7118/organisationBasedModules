@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -20,6 +20,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { Country, State, City } from "country-state-city";
 import API from "../utils/api";
 
 const ROLE_FILTERS = [
@@ -31,6 +32,39 @@ const ROLE_FILTERS = [
 
 const getContactRole = (contact) =>
   contact.loginUser?.role || contact.role || contact.createdBy?.role || "";
+
+const isVisibleContact = (contact) =>
+  getContactRole(contact) !== "super_to_super_admin";
+
+const isTopAdminRole = (role) =>
+  role === "super_to_super_admin" || role === "super_admin";
+
+const PAYROLL_CYCLE_OPTIONS = [1, 7, 15];
+const COUNTRY_OPTIONS = Country.getAllCountries();
+
+const localDate = (date = new Date()) => {
+  const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return adjusted.toISOString().slice(0, 10);
+};
+
+const idOf = (item) => (item?._id || item?.id || "").toString();
+
+const DEFAULT_WORK_DAYS_PER_MONTH = 26;
+
+const monthDates = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const count = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: count }, (_, index) => new Date(year, month, index + 1));
+};
+
+const workingDaysForDepartment = (department) => {
+  const offDays = Array.isArray(department?.weeklyOffDays)
+    ? department.weeklyOffDays.map(Number)
+    : [0];
+  const count = monthDates().filter((date) => !offDays.includes(date.getDay())).length;
+  return count || DEFAULT_WORK_DAYS_PER_MONTH;
+};
 
 /* ---------- Utility: pageWrapper style ---------- */
 const pageWrapStyle = (mobile) => ({
@@ -257,7 +291,16 @@ function ContactsDarkStyles() {
 }
 
 /* ---------- AddContactModal ---------- */
-function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
+function AddContactModal({
+  onClose,
+  onAdd,
+  onAddStaff,
+  availableTags,
+  departments,
+  defaultPayrollCycleDay,
+  isSuperAdmin,
+  hasHrAccess,
+}) {
   const [form, setForm] = useState({
     name: "",
     mobile: "",
@@ -265,16 +308,180 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
     password: "",
     tagId: "",
     role: "user",
+    employeeCode: "",
+    department: "",
+    designation: "",
+    salaryBasis: "monthly",
+    monthlySalary: "",
+    expectedHoursPerDay: 8,
+    payrollCycleDay: defaultPayrollCycleDay || 1,
+    joinDate: localDate(),
+    status: "active",
+    addressCountry: "IN",
+    addressState: "",
+    addressCity: "",
+    houseAddress: "",
+    addBankDetails: "no",
+    bankName: "",
+    accountHolderName: "",
+    accountNumber: "",
+    ifscCode: "",
+    branch: "",
+    upiId: "",
   });
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState("contact");
+  const [saving, setSaving] = useState(false);
 
-  const handle = (key) => (e) =>
-    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  const states = useMemo(
+    () => State.getStatesOfCountry(form.addressCountry || ""),
+    [form.addressCountry]
+  );
+  const cities = useMemo(
+    () =>
+      form.addressCountry && form.addressState
+        ? City.getCitiesOfState(form.addressCountry, form.addressState)
+        : [],
+    [form.addressCountry, form.addressState]
+  );
+  const selectedCountry = useMemo(
+    () => COUNTRY_OPTIONS.find((country) => country.isoCode === form.addressCountry),
+    [form.addressCountry]
+  );
+  const selectedState = useMemo(
+    () => states.find((state) => state.isoCode === form.addressState),
+    [states, form.addressState]
+  );
+  const selectedCity = useMemo(
+    () => cities.find((city) => city.name === form.addressCity),
+    [cities, form.addressCity]
+  );
 
-  const submit = () => {
+  const salaryLabel =
+    form.salaryBasis === "hourly"
+      ? "Hourly Rate"
+      : form.salaryBasis === "daily"
+        ? "Daily Salary"
+        : "Monthly Salary";
+  const salaryPreview = useMemo(() => {
+    const amount = Math.max(0, Number(form.monthlySalary || 0));
+    const hours = Math.max(0, Number(form.expectedHoursPerDay || 0)) || 8;
+    const cycleDay = Number(form.payrollCycleDay || 1);
+    const selectedDepartment = departments.find((department) => idOf(department) === form.department);
+    const monthDayCount = monthDates().length;
+    const workingDayCount = workingDaysForDepartment(selectedDepartment);
+    const currency = new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    });
+
+    if (form.salaryBasis === "hourly") {
+      const daily = amount * hours;
+      const monthly = daily * workingDayCount;
+      return {
+        title: "Hourly salary preview",
+        helper: `Based on ${hours} hrs/day and ${workingDayCount} working days.`,
+        items: [
+          { label: "Hourly salary", value: currency.format(amount) },
+          { label: "Daily estimate", value: currency.format(daily) },
+          { label: "Monthly estimate", value: currency.format(monthly) },
+        ],
+      };
+    }
+
+    if (form.salaryBasis === "daily") {
+      const hourly = hours > 0 ? amount / hours : 0;
+      const monthly = amount * workingDayCount;
+      return {
+        title: "Daily salary preview",
+        helper: `Based on ${hours} hrs/day and ${workingDayCount} working days.`,
+        items: [
+          { label: "Daily salary", value: currency.format(amount) },
+          { label: "Hourly estimate", value: currency.format(hourly) },
+          { label: "Monthly estimate", value: currency.format(monthly) },
+        ],
+      };
+    }
+
+    const daily = monthDayCount > 0 ? amount / monthDayCount : 0;
+    const hourly = hours > 0 ? daily / hours : 0;
+    return {
+      title: "Monthly salary preview",
+      helper: `Payroll cycle ${cycleDay} to ${cycleDay}; ${monthDayCount} salary days this month.`,
+      items: [
+        { label: "Monthly salary", value: currency.format(amount) },
+        { label: "Daily estimate", value: currency.format(daily) },
+        { label: "Hourly estimate", value: currency.format(hourly) },
+      ],
+    };
+  }, [departments, form.department, form.expectedHoursPerDay, form.monthlySalary, form.payrollCycleDay, form.salaryBasis]);
+
+  const setFieldValue = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+  const handle = (key) => (e) => setFieldValue(key, e.target.value);
+  const contactColumns = hasHrAccess ? 2 : 1;
+  const contactInputStyle = hasHrAccess ? compactInputStyle : inputStyle;
+  const modalWidth = hasHrAccess && step === "staff" ? 920 : hasHrAccess ? 760 : 440;
+
+  const validateContactStep = () => {
+    const nextErrors = {};
     const cleanMobile = form.mobile.replace(/\s/g, "").trim();
-    if (!cleanMobile) return setError("Mobile number is required.");
+    const cleanName = form.name.trim();
+    const cleanEmail = form.email.trim();
+
+    if (!cleanName) nextErrors.name = "Name is required.";
+    else if (!/^[a-zA-Z\s.'-]{2,60}$/.test(cleanName)) nextErrors.name = "Enter a valid name.";
+    if (!cleanMobile) nextErrors.mobile = "Mobile number is required.";
+    else if (!/^\d{10,15}$/.test(cleanMobile)) nextErrors.mobile = "Enter a valid mobile number with 10 to 15 digits.";
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) nextErrors.email = "Enter a valid email address.";
+    if (isSuperAdmin && cleanEmail && !form.password) nextErrors.password = "Password is required when email is provided.";
+    else if (form.password && form.password.length < 6) nextErrors.password = "Password must be at least 6 characters.";
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const validateStaffStep = () => {
+    const nextErrors = {};
+    const salaryAmount = Number(form.monthlySalary || 0);
+    const dailyHours = Number(form.expectedHoursPerDay || 0);
+
+    if (!form.employeeCode.trim()) nextErrors.employeeCode = "Employee code is required.";
+    else if (!/^[a-zA-Z0-9-_/]{2,30}$/.test(form.employeeCode.trim())) {
+      nextErrors.employeeCode = "Use letters, numbers, dash, slash, or underscore.";
+    }
+    if (!form.department) nextErrors.department = "Select a department.";
+    if (salaryAmount <= 0) nextErrors.monthlySalary = `${salaryLabel} must be greater than 0.`;
+    if (dailyHours <= 0) nextErrors.expectedHoursPerDay = "Daily work hours must be greater than 0.";
+    if (!form.addressState) nextErrors.addressState = "Select a state.";
+    if (!form.addressCity) nextErrors.addressCity = "Select a city.";
+    if (!form.houseAddress.trim()) nextErrors.houseAddress = "House / street address is required.";
+    else if (form.houseAddress.trim().length < 5) nextErrors.houseAddress = "Enter a complete address.";
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const submit = async () => {
+    if (step === "contact" && !validateContactStep()) {
+      setError("");
+      return;
+    }
+    if (hasHrAccess && step === "staff" && !validateStaffStep()) {
+      setError("");
+      return;
+    }
+    const cleanMobile = form.mobile.replace(/\s/g, "").trim();
     if (!/^\d{10,15}$/.test(cleanMobile))
       return setError("Enter a valid mobile number (10–15 digits).");
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
@@ -284,37 +491,88 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
     if (form.password && form.password.length < 6)
       return setError("Password must be at least 6 characters.");
     setError("");
-    onAdd({
-      name: form.name.trim() || "UNKNOWN",
+    const contact = {
+      name: form.name.trim(),
       mobile: cleanMobile,
       email: form.email.trim() || null,
       password: form.password || undefined,
       tags: form.tagId ? [form.tagId] : [],
       role: form.role,
-    });
-    onClose();
+    };
+
+    if (hasHrAccess && step === "contact") {
+      setFieldErrors({});
+      setStep("staff");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (hasHrAccess) {
+        await onAddStaff({
+          contact,
+          staff: {
+            employeeCode: form.employeeCode,
+            name: contact.name,
+            phone: contact.mobile,
+            email: contact.email || "",
+            department: form.department || null,
+            designation: form.designation,
+            salaryBasis: form.salaryBasis,
+            monthlySalary: Number(form.monthlySalary || 0),
+            expectedHoursPerDay: Number(form.expectedHoursPerDay || 8),
+            payrollCycleDay: Number(form.payrollCycleDay || 1),
+            joinDate: form.joinDate || localDate(),
+            status: form.status,
+            address: {
+              countryCode: form.addressCountry || "",
+              countryName: selectedCountry?.name || "",
+              stateCode: form.addressState || "",
+              stateName: selectedState?.name || "",
+              cityName: selectedCity?.name || form.addressCity || "",
+              houseAddress: form.houseAddress || "",
+            },
+            bankName: form.addBankDetails === "yes" ? form.bankName : "",
+            accountHolderName: form.addBankDetails === "yes" ? form.accountHolderName : "",
+            accountNumber: form.addBankDetails === "yes" ? form.accountNumber : "",
+            ifscCode: form.addBankDetails === "yes" ? form.ifscCode : "",
+            branch: form.addBankDetails === "yes" ? form.branch : "",
+            upiId: form.addBankDetails === "yes" ? form.upiId : "",
+          },
+        });
+      } else {
+        await onAdd(contact);
+      }
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || "Failed to save contact.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div style={overlay}>
-      <div style={{ ...modalBox, maxHeight: "90vh", overflowY: "auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>
-            Add Contact
-          </h2>
+      <div style={modalShell(modalWidth)}>
+        <div style={modalHeader}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>
+              {step === "staff" ? "Add Staff Details" : "Add Contact"}
+            </h2>
+            {hasHrAccess && (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <span style={stepPill(step === "contact")}>1 Contact</span>
+                <span style={stepPill(step === "staff")}>2 Staff</span>
+              </div>
+            )}
+          </div>
           <button onClick={onClose} style={closeBtn} aria-label="Close">
             <X size={17} />
             ✕
           </button>
         </div>
 
+        <div style={modalBody}>
         {error && (
           <p
             style={{
@@ -347,117 +605,292 @@ function AddContactModal({ onClose, onAdd, availableTags, isSuperAdmin }) {
           </div>
         )}
 
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Name</label>
-          <input
-            value={form.name}
-            onChange={handle("name")}
-            placeholder="Full name (optional)"
-            style={inputStyle}
-          />
-        </div>
-
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Mobile Number *</label>
-          <input
-            value={form.mobile}
-            onChange={handle("mobile")}
-            placeholder="e.g. 919876543210"
-            style={inputStyle}
-          />
-        </div>
-
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>
-            Email Address
-            {isSuperAdmin && (
-              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>
-                (used for login)
-              </span>
-            )}
-          </label>
-          <input
-            value={form.email}
-            onChange={handle("email")}
-            placeholder="e.g. john@example.com"
-            type="email"
-            style={inputStyle}
-          />
-        </div>
-
-        {isSuperAdmin && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>
-              Password
-              <span style={{ fontWeight: 400, color: "#6b7280", marginLeft: 6, fontSize: 12 }}>
-                (required if email is set)
-              </span>
-            </label>
-            <div style={{ position: "relative" }}>
+        {step === "contact" && (
+          <div style={formGrid(contactColumns)}>
+            <FormField label="Name" error={fieldErrors.name}>
               <input
-                value={form.password}
-                onChange={handle("password")}
-                placeholder="Min. 6 characters"
-                type={showPassword ? "text" : "password"}
-                style={{ ...inputStyle, paddingRight: 40 }}
+                value={form.name}
+                onChange={handle("name")}
+                placeholder="Full name (optional)"
+                style={contactInputStyle}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((p) => !p)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#9ca3af",
-                  fontSize: 0,
-                  padding: 0,
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-              </button>
-            </div>
+            </FormField>
+
+            <FormField label="Mobile Number *" error={fieldErrors.mobile}>
+              <input
+                value={form.mobile}
+                onChange={handle("mobile")}
+                placeholder="e.g. 919876543210"
+                style={contactInputStyle}
+              />
+            </FormField>
+
+            <FormField label="Email Address" hint={isSuperAdmin ? "(used for login)" : ""} error={fieldErrors.email}>
+              <input
+                value={form.email}
+                onChange={handle("email")}
+                placeholder="e.g. john@example.com"
+                type="email"
+                style={contactInputStyle}
+              />
+            </FormField>
+
+            {isSuperAdmin && (
+              <FormField label="Password" hint="(required if email is set)" error={fieldErrors.password}>
+                <div style={{ position: "relative" }}>
+                  <input
+                    value={form.password}
+                    onChange={handle("password")}
+                    placeholder="Min. 6 characters"
+                    type={showPassword ? "text" : "password"}
+                    style={{ ...contactInputStyle, paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((p) => !p)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#9ca3af",
+                      fontSize: 0,
+                      padding: 0,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </div>
+              </FormField>
+            )}
+
+            <FormField label="Tag">
+              <select value={form.tagId} onChange={handle("tagId")} style={contactInputStyle}>
+                <option value="">Select a tag</option>
+                {availableTags.map((tag) => (
+                  <option key={tag._id} value={tag._id}>
+                    {tag.name || tag.tagName}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            {isSuperAdmin && (
+              <FormField label="Role">
+                <select value={form.role} onChange={handle("role")} style={contactInputStyle}>
+                  <option value="user">User</option>
+                  {hasHrAccess && <option value="hr">HR</option>}
+                  <option value="manager">Manager</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+              </FormField>
+            )}
           </div>
         )}
 
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Tag</label>
-          <select value={form.tagId} onChange={handle("tagId")} style={inputStyle}>
-            <option value="">Select a tag</option>
-            {availableTags.map((tag) => (
-              <option key={tag._id} value={tag._id}>
-                {tag.name || tag.tagName}
-              </option>
-            ))}
-          </select>
+        {hasHrAccess && step === "staff" && (
+          <div style={formGrid(3)}>
+            <FormField label="Employee Code" error={fieldErrors.employeeCode}>
+              <input value={form.employeeCode} onChange={handle("employeeCode")} placeholder="EMP-001" style={compactInputStyle} />
+            </FormField>
+            <FormField label="Department" error={fieldErrors.department}>
+              <select value={form.department} onChange={handle("department")} style={compactInputStyle}>
+                <option value="">Select department</option>
+                {departments.map((department) => (
+                  <option key={idOf(department)} value={idOf(department)}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Designation">
+              <input value={form.designation} onChange={handle("designation")} placeholder="Executive" style={compactInputStyle} />
+            </FormField>
+            <FormField label="Salary Basis">
+              <select value={form.salaryBasis} onChange={handle("salaryBasis")} style={compactInputStyle}>
+                <option value="monthly">Monthly</option>
+                <option value="daily">Daily</option>
+                <option value="hourly">Hourly</option>
+              </select>
+            </FormField>
+            <FormField label={salaryLabel} error={fieldErrors.monthlySalary}>
+              <input type="number" min="0" value={form.monthlySalary} onChange={handle("monthlySalary")} placeholder="30000" style={compactInputStyle} />
+            </FormField>
+            <FormField label="Daily Work Hours" error={fieldErrors.expectedHoursPerDay}>
+              <input type="number" min="0" step="0.5" value={form.expectedHoursPerDay} onChange={handle("expectedHoursPerDay")} style={compactInputStyle} />
+            </FormField>
+            {form.salaryBasis === "monthly" && (
+              <FormField label="Payroll Cycle">
+                <select value={form.payrollCycleDay} onChange={handle("payrollCycleDay")} style={compactInputStyle}>
+                  {PAYROLL_CYCLE_OPTIONS.map((day) => (
+                    <option key={day} value={day}>
+                      {day} to {day}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            )}
+            <FormField label="Joining Date">
+              <input type="date" value={form.joinDate} onChange={handle("joinDate")} style={compactInputStyle} />
+            </FormField>
+            <FormField label="Status">
+              <select value={form.status} onChange={handle("status")} style={compactInputStyle}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="resigned">Resigned</option>
+              </select>
+            </FormField>
+            <div style={salaryPreviewCard}>
+              <div style={previewHeader}>
+                <span style={previewEyebrow}>{salaryPreview.title}</span>
+                <span style={previewMuted}>{salaryPreview.helper}</span>
+              </div>
+              {salaryPreview.items.map((item) => (
+                <div key={item.label} style={previewTile}>
+                  <strong style={previewValue}>{item.value}</strong>
+                  <span style={previewMuted}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+            <FormField label="Country">
+              <select
+                value={form.addressCountry}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, addressCountry: e.target.value, addressState: "", addressCity: "" }));
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.addressState;
+                    delete next.addressCity;
+                    return next;
+                  });
+                }}
+                style={compactInputStyle}
+              >
+                <option value="">Select country</option>
+                {COUNTRY_OPTIONS.map((country) => (
+                  <option key={country.isoCode} value={country.isoCode}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="State" error={fieldErrors.addressState}>
+              <select
+                value={form.addressState}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, addressState: e.target.value, addressCity: "" }));
+                  setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.addressState;
+                    delete next.addressCity;
+                    return next;
+                  });
+                }}
+                style={compactInputStyle}
+              >
+                <option value="">Select state</option>
+                {states.map((state) => (
+                  <option key={state.isoCode} value={state.isoCode}>
+                    {state.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="City" error={fieldErrors.addressCity}>
+              <select value={form.addressCity} onChange={handle("addressCity")} style={compactInputStyle}>
+                <option value="">Select city</option>
+                {cities.map((city) => (
+                  <option key={`${city.name}-${city.latitude}`} value={city.name}>
+                    {city.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="House / Street" wide error={fieldErrors.houseAddress}>
+              <textarea value={form.houseAddress} onChange={handle("houseAddress")} rows={2} placeholder="Address" style={compactTextareaStyle} />
+            </FormField>
+            <div style={{ ...checkboxRow, gridColumn: "1 / -1" }}>
+              <input
+                id="add-bank-details"
+                type="checkbox"
+                checked={form.addBankDetails === "yes"}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    addBankDetails: e.target.checked ? "yes" : "no",
+                  }))
+                }
+                style={checkboxInput}
+              />
+              <label htmlFor="add-bank-details" style={checkboxLabel}>
+                Add bank details
+              </label>
+            </div>
+            {form.addBankDetails === "yes" && (
+              <>
+                <FormField label="Bank Name">
+                  <input value={form.bankName} onChange={handle("bankName")} placeholder="Bank name" style={compactInputStyle} />
+                </FormField>
+                <FormField label="Account Holder">
+                  <input value={form.accountHolderName} onChange={handle("accountHolderName")} placeholder="Account holder" style={compactInputStyle} />
+                </FormField>
+                <FormField label="Account Number">
+                  <input value={form.accountNumber} onChange={handle("accountNumber")} placeholder="Account number" style={compactInputStyle} />
+                </FormField>
+                <FormField label="IFSC Code">
+                  <input
+                    value={form.ifscCode}
+                    onChange={(e) => setForm((prev) => ({ ...prev, ifscCode: e.target.value.toUpperCase() }))}
+                    placeholder="IFSC"
+                    style={compactInputStyle}
+                  />
+                </FormField>
+                <FormField label="Branch">
+                  <input value={form.branch} onChange={handle("branch")} placeholder="Branch" style={compactInputStyle} />
+                </FormField>
+                <FormField label="UPI ID">
+                  <input value={form.upiId} onChange={handle("upiId")} placeholder="name@upi" style={compactInputStyle} />
+                </FormField>
+              </>
+            )}
+          </div>
+        )}
         </div>
 
-        {isSuperAdmin && (
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Role</label>
-            <select value={form.role} onChange={handle("role")} style={inputStyle}>
-              <option value="user">User</option>
-              <option value="manager">Manager</option>
-              <option value="super_admin">Super Admin</option>
-            </select>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={secondaryBtn}>
-            Cancel
+        <div style={modalFooter}>
+          <button onClick={step === "staff" ? () => setStep("contact") : onClose} style={secondaryBtn} disabled={saving}>
+            {step === "staff" ? "Back" : "Cancel"}
           </button>
-          <button onClick={submit} style={primaryBtn}>
-            Add Contact
+          <button onClick={submit} style={primaryBtn} disabled={saving}>
+            {saving
+              ? "Saving..."
+              : hasHrAccess && step === "contact"
+                ? "Next: Staff Details"
+                : hasHrAccess
+                  ? "Save Contact & Staff"
+                  : "Add Contact"}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FormField({ label, children, hint = "", error = "", wide = false }) {
+  return (
+    <div style={{ marginBottom: 10, gridColumn: wide ? "1 / -1" : undefined }}>
+      <label style={labelStyle}>
+        {label}
+        {hint && <span style={fieldHintStyle}>{hint}</span>}
+      </label>
+      {children}
+      {error && <div style={fieldErrorStyle}>{error}</div>}
     </div>
   );
 }
@@ -498,15 +931,8 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
 
   return (
     <div style={overlay}>
-      <div style={{ ...modalBox, maxHeight: "90vh", overflowY: "auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
+      <div style={modalShell(440)}>
+        <div style={modalHeader}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2233" }}>
             Edit Contact
           </h2>
@@ -516,6 +942,7 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
           </button>
         </div>
 
+        <div style={modalBody}>
         {error && (
           <p
             style={{
@@ -638,8 +1065,9 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
             ))}
           </select>
         </div>
+        </div>
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <div style={modalFooter}>
           <button onClick={onClose} style={secondaryBtn}>
             Cancel
           </button>
@@ -918,22 +1346,34 @@ export default function ContactsPage() {
   const [adminView, setAdminView] = useState("all");
   const [selectedManager, setSelectedManager] = useState(null);
   const [userRole, setUserRole] = useState("");
+  const [allowedModules, setAllowedModules] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [defaultPayrollCycleDay, setDefaultPayrollCycleDay] = useState(1);
   const PER_PAGE = 25;
 
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const role = localStorage.getItem("role");
-    setUserRole(role || "");
+    let storedUser = {};
+    try {
+      storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    } catch {
+      storedUser = {};
+    }
+    const role = localStorage.getItem("role") || storedUser.role || "";
+    setUserRole(role);
+    setAllowedModules(Array.isArray(storedUser.allowedModules) ? storedUser.allowedModules : []);
     const check = () => setIsMobile(window.innerWidth <= 820);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const isSuperAdmin = userRole === "super_admin";
+  const isSuperAdmin = isTopAdminRole(userRole);
   const isManager = userRole === "manager";
   const isManagerOrAbove = isSuperAdmin || isManager;
+  const hasHrAccess =
+    userRole === "super_to_super_admin" || allowedModules.includes("hr");
 
   const fetchContacts = async () => {
     try {
@@ -948,10 +1388,10 @@ export default function ContactsPage() {
       if (filterTagId) url += (url.includes("?") ? "&" : "?") + `tag=${filterTagId}`;
       const res = await API.get(url);
       if (adminView === "pending") {
-        setPendingContacts(res.data);
+        setPendingContacts((Array.isArray(res.data) ? res.data : []).filter(isVisibleContact));
       } else {
         const data = Array.isArray(res.data) ? res.data : res.data.contacts || [];
-        setContacts(data);
+        setContacts(data.filter(isVisibleContact));
       }
     } catch (err) {
       console.error("Failed to fetch contacts:", err);
@@ -981,9 +1421,25 @@ export default function ContactsPage() {
     }
   };
 
+  const fetchHrMeta = async () => {
+    if (!hasHrAccess) return;
+    try {
+      const [departmentRes, settingsRes] = await Promise.all([
+        API.get("/hr/departments"),
+        API.get("/hr/payroll/settings"),
+      ]);
+      const cycleDay = Number(settingsRes.data?.data?.cycleStartDay || 1);
+      setDepartments(departmentRes.data?.data || []);
+      setDefaultPayrollCycleDay(PAYROLL_CYCLE_OPTIONS.includes(cycleDay) ? cycleDay : 1);
+    } catch (err) {
+      console.error("Failed to fetch HR form data:", err);
+    }
+  };
+
   useEffect(() => {
     if (userRole) {
       fetchTags();
+      fetchHrMeta();
       if (isSuperAdmin) fetchManagers();
     }
   }, [userRole]);
@@ -1004,8 +1460,21 @@ export default function ContactsPage() {
         alert("Contact added successfully.");
       }
       setContacts((prev) => [res.data, ...prev]);
+      return res.data;
     } catch (err) {
-      alert(err.response?.data?.error || "Failed to create contact");
+      throw err;
+    }
+  };
+
+  const addContactStaff = async (payload) => {
+    try {
+      const res = await API.post("/hr/contact-staff", payload);
+      const contact = res.data?.data?.contact;
+      if (contact) setContacts((prev) => [contact, ...prev]);
+      alert("Contact and staff details added successfully.");
+      return res.data?.data;
+    } catch (err) {
+      throw err;
     }
   };
 
@@ -1084,6 +1553,7 @@ export default function ContactsPage() {
   };
 
   const filtered = contacts.filter((c) => {
+    if (!isVisibleContact(c)) return false;
     const tagNames = (c.tags || []).map(getTagName).join(" ");
     const matchesSearch =
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -1754,8 +2224,12 @@ export default function ContactsPage() {
         <AddContactModal
           onClose={() => setShowAddModal(false)}
           onAdd={addContact}
+          onAddStaff={addContactStaff}
           availableTags={tags}
+          departments={departments}
+          defaultPayrollCycleDay={defaultPayrollCycleDay}
           isSuperAdmin={isSuperAdmin}
+          hasHrAccess={hasHrAccess}
         />
       )}
       {editingContact && (
@@ -1787,12 +2261,182 @@ const inputStyle = {
   boxShadow: "0 2px 8px rgba(15,23,42,0.04)",
 };
 
+const compactInputStyle = {
+  ...inputStyle,
+  height: 36,
+  padding: "0 10px",
+  borderRadius: 10,
+  fontSize: 12,
+  boxShadow: "0 1px 4px rgba(15,23,42,0.035)",
+};
+
+const textareaStyle = {
+  ...inputStyle,
+  height: "auto",
+  minHeight: 76,
+  paddingTop: 10,
+  resize: "vertical",
+};
+
+const compactTextareaStyle = {
+  ...compactInputStyle,
+  height: "auto",
+  minHeight: 58,
+  paddingTop: 8,
+  resize: "vertical",
+};
+
+const formGrid = (columns = 2) => ({
+  display: "grid",
+  gridTemplateColumns: columns === 1 ? "1fr" : `repeat(${columns}, minmax(0, 1fr))`,
+  gap: "0 12px",
+});
+
+const fieldHintStyle = {
+  marginLeft: 6,
+  color: "#64748b",
+  fontSize: 11,
+  fontWeight: 500,
+};
+
+const fieldErrorStyle = {
+  color: "#dc2626",
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1.25,
+  marginTop: 4,
+};
+
+const stepPill = (active) => ({
+  border: `1px solid ${active ? "#0d9488" : "#dbe3eb"}`,
+  background: active ? "#ecfdf5" : "#f8fafc",
+  color: active ? "#0f766e" : "#64748b",
+  borderRadius: 999,
+  padding: "4px 10px",
+  fontSize: 11,
+  fontWeight: 800,
+});
+
+const checkboxRow = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 9,
+  minHeight: 34,
+  marginBottom: 10,
+};
+
+const checkboxInput = {
+  width: 16,
+  height: 16,
+  accentColor: "#0d9488",
+  cursor: "pointer",
+};
+
+const checkboxLabel = {
+  color: "#334155",
+  fontSize: 13,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const modalShell = (width = 440) => ({
+  ...modalBox,
+  width,
+  maxHeight: "90vh",
+  padding: 0,
+  overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
+});
+
+const modalHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  padding: "22px 32px 14px",
+  borderBottom: "1px solid #eef2f7",
+  background: "#fff",
+  flexShrink: 0,
+};
+
+const modalBody = {
+  padding: "16px 32px 12px",
+  overflowY: "auto",
+  minHeight: 0,
+  flex: 1,
+};
+
+const modalFooter = {
+  display: "flex",
+  gap: 10,
+  justifyContent: "flex-end",
+  background: "#fff",
+  padding: "14px 32px 20px",
+  borderTop: "1px solid #eef2f7",
+  flexShrink: 0,
+};
+
+const salaryPreviewCard = {
+  gridColumn: "1 / -1",
+  display: "grid",
+  gridTemplateColumns: "1.25fr repeat(3, minmax(0, 1fr))",
+  gap: 10,
+  alignItems: "stretch",
+  border: "1px solid #dbe3eb",
+  borderRadius: 10,
+  background: "#f8fafc",
+  padding: 10,
+  margin: "0 0 10px",
+};
+
+const previewHeader = {
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  minWidth: 0,
+};
+
+const previewTile = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 8,
+  background: "#fff",
+  padding: "8px 10px",
+  minWidth: 0,
+};
+
+const previewEyebrow = {
+  display: "block",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#64748b",
+  textTransform: "uppercase",
+  marginBottom: 3,
+};
+
+const previewValue = {
+  display: "block",
+  fontSize: 15,
+  lineHeight: 1.15,
+  color: "#0f172a",
+  fontWeight: 900,
+  marginBottom: 3,
+};
+
+const previewMuted = {
+  display: "block",
+  fontSize: 11,
+  lineHeight: 1.25,
+  color: "#64748b",
+  fontWeight: 700,
+};
+
 const labelStyle = {
   display: "block",
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 600,
   color: "#374151",
-  marginBottom: 5,
+  marginBottom: 4,
 };
 
 const primaryBtn = {

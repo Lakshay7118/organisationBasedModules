@@ -969,7 +969,7 @@ export default function CampaignsPage() {
     }
   }, []);
 
-  const isSuperAdmin = userRole === "super_admin";
+  const isSuperAdmin = userRole === "super_to_super_admin" || userRole === "super_admin";
   const isManager = userRole === "manager";
   const isManagerOrAbove = isSuperAdmin || isManager;
 

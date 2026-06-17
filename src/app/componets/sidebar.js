@@ -6,6 +6,7 @@ import { gsap } from "gsap";
 import { motion } from "framer-motion";
 import {
   Briefcase,
+  Building2,
   CheckSquare,
   FileText,
   LayoutDashboard,
@@ -17,35 +18,46 @@ import {
 
 const allNavItems = [
   { id: "dashboard", label: "Dashboard", path: "/", icon: LayoutDashboard },
-  { id: "live-chat", label: "Live Chat", path: "/live-chat", icon: MessageCircleMore },
-  { id: "task", label: "Task", path: "/task", icon: CheckSquare },
+  {
+    id: "organizations",
+    label: "Orgs",
+    path: "/organizations",
+    icon: Building2,
+    allowedRoles: ["super_to_super_admin"],
+  },
+  { id: "live-chat", label: "Live Chat", path: "/live-chat", icon: MessageCircleMore, module: "chat" },
+  { id: "task", label: "Task", path: "/task", icon: CheckSquare, module: "task" },
   { id: "contacts", label: "Contacts", path: "/contacts", icon: Users },
   {
     id: "hr",
     label: "HR",
     path: "/HR",
     icon: Briefcase,
-    allowedRoles: ["super_admin", "manager", "user"],
+    allowedRoles: ["super_to_super_admin", "super_admin", "manager", "hr", "user"],
+    module: "hr",
+    selfAccessRoles: ["user"],
   },
   {
     id: "campaigns",
     label: "Campaigns",
     path: "/Campaigns",
     icon: Megaphone,
-    allowedRoles: ["super_admin", "manager"],
+    allowedRoles: ["super_to_super_admin", "super_admin", "manager"],
+    module: "chat",
   },
   {
     id: "Template",
     label: "Template",
     path: "/Template",
     icon: FileText,
-    allowedRoles: ["super_admin", "manager"],
+    allowedRoles: ["super_to_super_admin", "super_admin", "manager"],
+    module: "chat",
   },
   { id: "settings", label: "Settings", path: "/Settings", icon: Settings },
 ];
 
 const readStoredUser = () => {
-  if (typeof window === "undefined") return { name: "", role: "" };
+  if (typeof window === "undefined") return { name: "", role: "", allowedModules: [] };
 
   try {
     const role = localStorage.getItem("role");
@@ -54,10 +66,18 @@ const readStoredUser = () => {
     return {
       name: user.name || user.phone || "",
       role: role || user.role || "",
+      allowedModules: Array.isArray(user.allowedModules) ? user.allowedModules : [],
     };
   } catch {
-    return { name: "", role: "" };
+    return { name: "", role: "", allowedModules: [] };
   }
+};
+
+const canUseModule = (item, userRole, allowedModules) => {
+  if (!item.module) return true;
+  if (userRole === "super_to_super_admin") return true;
+  if (item.selfAccessRoles?.includes(userRole)) return true;
+  return allowedModules.includes(item.module);
 };
 
 export default function Sidebar({ isOpen, setIsOpen }) {
@@ -67,6 +87,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
   const [hoveredIcon, setHoveredIcon] = useState(null);
   const [userRole, setUserRole] = useState(() => readStoredUser().role);
   const [userName, setUserName] = useState(() => readStoredUser().name);
+  const [allowedModules, setAllowedModules] = useState(() => readStoredUser().allowedModules);
 
   const sidebarRef = useRef(null);
   const logoRef = useRef(null);
@@ -77,6 +98,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
     const stored = readStoredUser();
     setUserName(stored.name);
     setUserRole(stored.role);
+    setAllowedModules(stored.allowedModules);
   }, []);
 
   useEffect(() => {
@@ -99,27 +121,31 @@ export default function Sidebar({ isOpen, setIsOpen }) {
   }, []);
 
   const sidebarItems = allNavItems.filter(
-    (item) => !item.allowedRoles || item.allowedRoles.includes(userRole)
+    (item) => (!item.allowedRoles || item.allowedRoles.includes(userRole)) &&
+      canUseModule(item, userRole, allowedModules)
   );
 
   const renderSidebarContent = () => (
     <aside
       ref={sidebarRef}
+      className="app-sidebar-shell"
       style={{
         width: "84px",
-        height: "calc(100vh - 24px)",
+        height: "calc(100dvh - 32px)",
+        maxHeight: "calc(100dvh - 32px)",
         background: "linear-gradient(180deg, #083c43 0%, #0b535d 100%)",
         borderRadius: "22px",
         border: "1px solid rgba(255,255,255,0.08)",
         boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
         alignItems: "center",
-        padding: "14px 8px",
+        padding: "12px 8px",
+        overflow: "hidden",
+        boxSizing: "border-box",
       }}
     >
-      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", minHeight: 0, flex: 1 }}>
         <motion.div
           ref={logoRef}
           whileHover={{ scale: 1.05 }}
@@ -135,16 +161,33 @@ export default function Sidebar({ isOpen, setIsOpen }) {
             color: "#fff",
             fontWeight: 700,
             fontSize: "15px",
-            marginBottom: "12px",
+            marginBottom: "10px",
             boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+            flexShrink: 0,
           }}
         >
           W
         </motion.div>
 
-        <div style={{ width: "34px", height: "1px", background: "rgba(255,255,255,0.14)", marginBottom: "10px" }} />
+        <div style={{ width: "34px", height: "1px", background: "rgba(255,255,255,0.14)", marginBottom: "8px", flexShrink: 0 }} />
 
-        <nav style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+        <nav
+          className="app-sidebar-nav"
+          style={{
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "3px",
+            overflowY: "auto",
+            overflowX: "hidden",
+            minHeight: 0,
+            flex: 1,
+            paddingRight: 0,
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
           {sidebarItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = pathname === item.path;
@@ -161,9 +204,9 @@ export default function Sidebar({ isOpen, setIsOpen }) {
                 title={item.label}
                 style={{
                   width: "64px",
-                  minHeight: "58px",
+                  minHeight: "52px",
                   border: "none",
-                  borderRadius: "16px",
+                  borderRadius: "14px",
                   background: isActive ? "rgba(255,255,255,0.12)" : "transparent",
                   color: "#fff",
                   cursor: "pointer",
@@ -182,8 +225,8 @@ export default function Sidebar({ isOpen, setIsOpen }) {
                     style={{
                       position: "absolute",
                       left: 0,
-                      top: "12px",
-                      bottom: "12px",
+                      top: "10px",
+                      bottom: "10px",
                       width: "3px",
                       borderRadius: "0 4px 4px 0",
                       background: "#ffffff",
@@ -202,7 +245,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
                 </motion.div>
                 <span
                   style={{
-                    fontSize: "8.5px",
+                    fontSize: "8px",
                     fontWeight: isActive ? 700 : 500,
                     lineHeight: 1.1,
                     textAlign: "center",
@@ -218,7 +261,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
         </nav>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0, paddingTop: 8 }}>
         {userRole && (
           <span
             style={{
@@ -230,7 +273,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
               textAlign: "center",
             }}
           >
-            {userRole === "super_admin" ? "Admin" : userRole}
+              {userRole === "super_to_super_admin" ? "Owner" : userRole === "super_admin" ? "Admin" : userRole}
           </span>
         )}
         <motion.div
@@ -238,8 +281,8 @@ export default function Sidebar({ isOpen, setIsOpen }) {
           whileHover={{ scale: 1.05 }}
           transition={{ duration: 0.2 }}
           style={{
-            width: "38px",
-            height: "38px",
+            width: "36px",
+            height: "36px",
             borderRadius: "50%",
             background: "#f3f4f6",
             color: "#0b4b53",
@@ -260,6 +303,11 @@ export default function Sidebar({ isOpen, setIsOpen }) {
 
   return (
     <>
+      <style>{`
+        .app-sidebar-nav::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       <div className="hidden md:block" style={{ position: "fixed", top: 12, left: 12, zIndex: 1000 }}>
         {renderSidebarContent()}
       </div>

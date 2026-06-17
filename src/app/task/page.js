@@ -110,7 +110,7 @@ const STATUS = {
 const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 const STATUS_ORDER = { in_progress: 0, pending: 1, completed: 2 };
 
-const isAdmin = (u) => u?.role === "super_admin";
+const isAdmin = (u) => ["super_to_super_admin", "super_admin"].includes(u?.role);
 const isManager = (u) => u?.role === "manager";
 const isUser = (u) => u?.role === "user";
 
@@ -392,7 +392,7 @@ function UserDetailModal({ user, allTasks, currentUser, userTaskStatuses, onClos
               <div style={{ width: 52, height: 52, borderRadius: "50%", background: u.color + "22", color: u.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem", fontWeight: 800, border: `3px solid ${u.color}55` }}>{u.initial}</div>
               <div>
                 <div style={{ fontSize: "1rem", fontWeight: 800, color: "#111827" }}>{u.name}</div>
-                <span style={{ background: u.color + "22", color: u.color, padding: "2px 8px", borderRadius: 20, fontWeight: 600, fontSize: "0.72rem" }}>{u.role === "super_admin" ? "Admin" : u.role === "manager" ? "Manager" : "User"}</span>
+                <span style={{ background: u.color + "22", color: u.color, padding: "2px 8px", borderRadius: 20, fontWeight: 600, fontSize: "0.72rem" }}>{isAdmin(u) ? "Admin" : u.role === "manager" ? "Manager" : "User"}</span>
               </div>
             </div>
             <button onClick={onClose} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}><FiX size={14} /></button>
@@ -844,7 +844,7 @@ function CreateTaskModal({ onClose, onCreate, onUpdate, currentUser, users, task
   const assignableList = useMemo(() => {
     if (assignFilter === "tag") return contactsWithUsers(tagContacts).filter(({ contact }) => !assignSearch || contact.name?.toLowerCase().includes(assignSearch.toLowerCase()));
     if (assignFilter === "manager_contacts") return contactsWithUsers(mgrContacts).filter(({ contact }) => !assignSearch || contact.name?.toLowerCase().includes(assignSearch.toLowerCase()));
-    return users.filter(u => { if (isCurrentAssignableUser(u)) return false; if (u.role === "super_admin") return false; if (assignFilter === "user" && u.role !== "user") return false; if (assignFilter === "manager" && u.role !== "manager") return false; if (assignSearch && !u.name?.toLowerCase().includes(assignSearch.toLowerCase())) return false; return true; }).map(u => ({ contact: null, user: u }));
+    return users.filter(u => { if (isCurrentAssignableUser(u)) return false; if (isAdmin(u)) return false; if (assignFilter === "user" && u.role !== "user") return false; if (assignFilter === "manager" && u.role !== "manager") return false; if (assignSearch && !u.name?.toLowerCase().includes(assignSearch.toLowerCase())) return false; return true; }).map(u => ({ contact: null, user: u }));
   }, [assignFilter, users, tagContacts, mgrContacts, assignSearch, contactsWithUsers, isCurrentAssignableUser]);
   const assignableIds = useMemo(() => [...new Set(assignableList.map(({ user }) => user?.id || user?._id?.toString()).filter(Boolean))], [assignableList]);
   const allFilteredSelected = assignableIds.length > 0 && assignableIds.every(id => form.assignedTo.includes(id));

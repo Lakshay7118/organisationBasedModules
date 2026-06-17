@@ -1,11 +1,13 @@
 "use client";
 
 import "./globals.css";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./componets/sidebar";
 import Topbar from "./componets/Topbar";
 import BottomTabs from "./componets/BottomTabs";
+import { Bot, Send, X } from "lucide-react";
+import API from "./utils/api";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const PALETTE = [
@@ -21,11 +23,250 @@ const enrichUser  = (u) => {
   return { ...u, id, initial: userInitial(u.name), color: userColor(id) };
 };
 
+const SUPPORT_ISSUES = [
+  { id: "forgot_password", label: "Forgot password", priority: "high" },
+  { id: "login", label: "Login issue", priority: "high" },
+  { id: "messages", label: "Messages not sending", priority: "medium" },
+  { id: "calls", label: "Call not connecting", priority: "high" },
+  { id: "billing", label: "Billing or plan", priority: "medium" },
+  { id: "other", label: "Other issue", priority: "medium" },
+];
+
+function GlobalSupportPanel({ open, onClose, user }) {
+  const [tickets, setTickets] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [guestMessages, setGuestMessages] = useState([]);
+
+  const userId = (user?._id || user?.id || "").toString();
+  const canUseSupportApi = Boolean(userId);
+  const activeTicket = tickets
+    .filter((ticket) => ticket.status !== "ended")
+    .find((ticket) => {
+      const ticketUserId = (ticket.user?._id || ticket.user?.id || ticket.user || "").toString();
+      return !userId || !ticketUserId || ticketUserId === userId;
+    });
+
+  const loadTickets = useCallback(async () => {
+    if (!open || !canUseSupportApi) return;
+    setLoading(true);
+    try {
+      const res = await API.get("/users/support-tickets");
+      setTickets(res.data?.data || []);
+    } catch (error) {
+      console.error("Could not load support tickets:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [canUseSupportApi, open]);
+
+  useEffect(() => {
+    loadTickets();
+  }, [loadTickets]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const timer = window.setInterval(loadTickets, 8000);
+    return () => window.clearInterval(timer);
+  }, [loadTickets, open]);
+
+  const messages = useMemo(() => {
+    const intro = [{
+      by: "bot",
+      text: canUseSupportApi
+        ? `Hi ${user?.name || "there"}, how can support help?`
+        : "Hi there, how can I help with login or account access?",
+    }];
+    if (!canUseSupportApi) return [...intro, ...guestMessages];
+    if (!activeTicket) return intro;
+
+    const ticketMessages = [
+      { by: "user", text: activeTicket.subject, meta: new Date(activeTicket.createdAt).toLocaleString() },
+      { by: "bot", text: `Ticket is ${activeTicket.status?.replace("_", " ") || "open"}. Replies will appear here.` },
+      ...(activeTicket.replies || []).map((reply) => {
+        const senderId = (reply.sender?._id || reply.sender?.id || reply.sender || "").toString();
+        return {
+          by: senderId && senderId === userId ? "user" : "bot",
+          text: reply.message,
+          meta: reply.sender?.name || reply.senderRole || "",
+        };
+      }),
+    ];
+
+    return [...intro, ...ticketMessages];
+  }, [activeTicket, canUseSupportApi, guestMessages, user?.name, userId]);
+
+  const sendMessage = async (text = input, issue = null) => {
+    const message = text.trim();
+    if (!message || sending) return;
+
+    setSending(true);
+    try {
+      if (!canUseSupportApi) {
+        setGuestMessages((prev) => [
+          ...prev,
+          { by: "user", text: message },
+          {
+            by: "bot",
+            text: "For account-specific support, please log in first. If you cannot log in, share this issue with an admin or manager so they can reset your access.",
+          },
+        ]);
+        setInput("");
+      } else if (activeTicket) {
+        await API.post(`/users/support-tickets/${activeTicket._id}/user-replies`, { message });
+      } else {
+        await API.post("/users/support-tickets", {
+          category: issue?.id || "other",
+          subject: message.slice(0, 70),
+          message,
+          priority: issue?.priority || "medium",
+        });
+      }
+      setInput("");
+      await loadTickets();
+    } catch (error) {
+      console.error("Could not send support message:", error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <>
+      <style>{`
+        @keyframes supportPanelOpen {
+          from {
+            opacity: 0;
+            transform: translateY(18px) scale(0.94);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
+      <div
+        style={{
+          position: "fixed",
+          right: 24,
+          bottom: 24,
+          width: "min(440px, calc(100vw - 28px))",
+          maxHeight: "min(680px, calc(100vh - 40px))",
+          background: "var(--app-surface)",
+          color: "var(--app-text)",
+          border: "1px solid var(--app-border)",
+          borderRadius: 16,
+          boxShadow: "0 26px 70px rgba(15,23,42,0.22)",
+          zIndex: 90,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          transformOrigin: "bottom right",
+          animation: "supportPanelOpen 220ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        }}
+      >
+      <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--app-border)" }}>
+        <span style={{ width: 36, height: 36, borderRadius: "50%", background: "#00a884", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Bot size={19} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800 }}>Customer Support</div>
+          <div style={{ color: "var(--app-text-muted)", fontSize: 12 }}>{!canUseSupportApi ? "Login help" : activeTicket ? "Replying in your active ticket" : "Create a support ticket"}</div>
+        </div>
+        <button type="button" onClick={onClose} style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--app-border)", background: "var(--app-surface-2)", color: "var(--app-text)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 220, overflowY: "auto", padding: 14, background: "var(--app-surface-2)", display: "flex", flexDirection: "column", gap: 9 }}>
+        {loading && messages.length <= 1 ? (
+          <div style={{ color: "var(--app-text-muted)", textAlign: "center", marginTop: 32 }}>Loading support chat...</div>
+        ) : (
+          messages.map((msg, index) => (
+            <div key={`${msg.by}-${index}`} style={{ display: "flex", justifyContent: msg.by === "user" ? "flex-end" : "flex-start" }}>
+              <div style={{ maxWidth: "84%", borderRadius: msg.by === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", background: msg.by === "user" ? "#d9fdd3" : "var(--app-surface)", border: "1px solid var(--app-border)", padding: "9px 11px", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                {msg.text}
+                {msg.meta && <div style={{ color: "var(--app-text-muted)", fontSize: 11, marginTop: 4 }}>{msg.meta}</div>}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div style={{ padding: 14, display: "grid", gap: 10 }}>
+        {!activeTicket && (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            {SUPPORT_ISSUES.map((issue) => (
+              <button key={issue.id} type="button" disabled={sending} onClick={() => sendMessage(issue.label, issue)} style={{ border: "1px solid var(--app-border)", borderRadius: 999, background: "var(--app-surface-2)", color: "var(--app-text)", padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: sending ? "not-allowed" : "pointer" }}>
+                {issue.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={input}
+            disabled={sending}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendMessage();
+            }}
+            placeholder={canUseSupportApi ? (activeTicket ? "Reply to support..." : "Type your issue...") : "Type your login issue..."}
+            style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid var(--app-border)", background: "var(--input-bg)", color: "var(--app-text)", padding: "0 14px", outline: "none" }}
+          />
+          <button type="button" disabled={sending || !input.trim()} onClick={() => sendMessage()} style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: "#00a884", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: sending || !input.trim() ? "not-allowed" : "pointer", opacity: sending || !input.trim() ? 0.65 : 1 }}>
+            <Send size={17} />
+          </button>
+        </div>
+      </div>
+      </div>
+    </>
+  );
+}
+
+function ChatbotLauncher({ isMobile, isLoggedIn, hidden = false, onOpen }) {
+  const buttonSize = isMobile ? 36 : 40;
+
+  if (hidden) return null;
+
+  return (
+    <button
+      type="button"
+      aria-label="Open chatbot"
+      title="Chatbot"
+      onClick={onOpen}
+      style={{
+        position: "fixed",
+        right: isMobile ? 14 : 20,
+        bottom: isLoggedIn && isMobile ? 86 : 18,
+        width: buttonSize,
+        height: buttonSize,
+        borderRadius: "50%",
+        border: "1px solid rgba(255,255,255,0.38)",
+        background: "linear-gradient(135deg, #0f5f64 0%, #15a878 100%)",
+        color: "#fff",
+        boxShadow: "0 12px 26px rgba(15,95,100,0.22)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        zIndex: 60,
+      }}
+    >
+      <Bot size={isMobile ? 16 : 18} strokeWidth={2.4} />
+    </button>
+  );
+}
+
 export default function RootLayout({ children }) {
   const [isLoggedIn, setIsLoggedIn]     = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile]         = useState(false);
   const [chatOpen, setChatOpen]         = useState(false);
+  const [supportOpen, setSupportOpen]   = useState(false);
   const [currentUser, setCurrentUser]   = useState(null);
   const [theme, setTheme]               = useState("light");
 
@@ -33,6 +274,7 @@ export default function RootLayout({ children }) {
   const router   = useRouter();
   const activeTab = pathname?.split("/")[1] || "dashboard";
   const isHrPage = pathname?.toLowerCase() === "/hr";
+  const isLiveChatPage = pathname?.toLowerCase() === "/live-chat";
 
   const checkLoginStatus = useCallback(() => {
     const user = localStorage.getItem("user");
@@ -113,11 +355,9 @@ export default function RootLayout({ children }) {
 
 useEffect(() => {
   const onOpen  = () => {
-    console.log("detailViewOpen fired"); // ✅ add this to confirm event fires
     setChatOpen(true);
   };
   const onClose = () => {
-    console.log("detailViewClose fired");
     setChatOpen(false);
   };
   window.addEventListener("detailViewOpen",  onOpen);
@@ -130,6 +370,7 @@ useEffect(() => {
 
   // ✅ Both Topbar and BottomTabs use this same value
   const hideChrome = isMobile && chatOpen;
+  const hideChatbotLauncher = supportOpen || (isLiveChatPage && chatOpen);
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -139,8 +380,13 @@ useEffect(() => {
     window.dispatchEvent(new Event("loginStatusChanged"));
   };
 
+  const openChatbot = useCallback(() => {
+    setSupportOpen(true);
+  }, []);
+
   const titleMap = {
     dashboard:      "Dashboard",
+    organizations:  "Organizations",
     "live-chat":    "Live Chat",
     history:        "History",
     contacts:       "Contacts",
@@ -299,6 +545,8 @@ useEffect(() => {
 
         {/* ✅ hidden prop keeps BottomTabs in sync with Topbar */}
         <BottomTabs hidden={hideChrome} />
+        <ChatbotLauncher isMobile={isMobile} isLoggedIn hidden={hideChatbotLauncher} onOpen={openChatbot} />
+        <GlobalSupportPanel open={supportOpen} onClose={() => setSupportOpen(false)} user={currentUser} />
       </body>
     </html>
   );
