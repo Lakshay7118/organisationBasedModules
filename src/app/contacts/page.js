@@ -300,6 +300,7 @@ function AddContactModal({
   defaultPayrollCycleDay,
   isSuperAdmin,
   hasHrAccess,
+  userRole,
 }) {
   const [form, setForm] = useState({
     name: "",
@@ -432,6 +433,27 @@ function AddContactModal({
   const contactColumns = hasHrAccess ? 2 : 1;
   const contactInputStyle = hasHrAccess ? compactInputStyle : inputStyle;
   const modalWidth = hasHrAccess && step === "staff" ? 920 : hasHrAccess ? 760 : 440;
+  const roleOptions = useMemo(() => {
+    if (userRole === "manager") {
+      return [
+        { value: "user", label: "User" },
+        { value: "hr", label: "HR" },
+      ];
+    }
+    if (userRole === "hr") {
+      return [{ value: "user", label: "User" }];
+    }
+    if (isSuperAdmin) {
+      return [
+        { value: "user", label: "User" },
+        ...(hasHrAccess ? [{ value: "hr", label: "HR" }] : []),
+        { value: "manager", label: "Manager" },
+        { value: "super_admin", label: "Super Admin" },
+      ];
+    }
+    return [];
+  }, [hasHrAccess, isSuperAdmin, userRole]);
+  const canChooseRole = roleOptions.length > 1 || ["manager", "hr"].includes(userRole);
 
   const validateContactStep = () => {
     const nextErrors = {};
@@ -681,13 +703,14 @@ function AddContactModal({
               </select>
             </FormField>
 
-            {isSuperAdmin && (
+            {canChooseRole && (
               <FormField label="Role">
                 <select value={form.role} onChange={handle("role")} style={contactInputStyle}>
-                  <option value="user">User</option>
-                  {hasHrAccess && <option value="hr">HR</option>}
-                  <option value="manager">Manager</option>
-                  <option value="super_admin">Super Admin</option>
+                  {roleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </FormField>
             )}
@@ -1372,8 +1395,10 @@ export default function ContactsPage() {
   const isSuperAdmin = isTopAdminRole(userRole);
   const isManager = userRole === "manager";
   const isManagerOrAbove = isSuperAdmin || isManager;
-  const hasHrAccess =
-    userRole === "super_to_super_admin" || allowedModules.includes("hr");
+  const canManageHr =
+    userRole === "super_to_super_admin" ||
+    (allowedModules.includes("hr") && ["super_admin", "manager", "hr"].includes(userRole));
+  const hasHrAccess = canManageHr;
 
   const fetchContacts = async () => {
     try {
@@ -2230,6 +2255,7 @@ export default function ContactsPage() {
           defaultPayrollCycleDay={defaultPayrollCycleDay}
           isSuperAdmin={isSuperAdmin}
           hasHrAccess={hasHrAccess}
+          userRole={userRole}
         />
       )}
       {editingContact && (

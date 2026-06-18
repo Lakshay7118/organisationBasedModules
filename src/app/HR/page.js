@@ -822,26 +822,6 @@ export default function HRPage() {
     selectedPaymentPayrolls.find((payroll) => idOf(payroll) === bankPaymentForm.payroll) || null
   ), [bankPaymentForm.payroll, selectedPaymentPayrolls]);
 
-  const bankPaymentPreview = useMemo(() => {
-    const amount = Number(bankPaymentForm.amount || 0);
-    const emi = Number(bankPaymentForm.emi || 0);
-    const bankBalance = Number(selectedPaymentBank?.balance || 0);
-    const direction = bankPaymentForm.direction;
-    const nextBankBalance = direction === "in" ? bankBalance + amount : bankBalance - amount;
-    const selectedLoanOutstanding = Number(selectedPaymentLoan?.outstanding || 0);
-    const loanRemaining = selectedPaymentLoan ? Math.max(0, selectedLoanOutstanding - amount) : 0;
-    const selectedPayrollDue = Number(selectedPaymentPayroll?.balanceDue ?? selectedPaymentPayroll?.netPay ?? 0);
-    const salaryRemaining = selectedPaymentPayroll ? Math.max(0, selectedPayrollDue - amount) : 0;
-    return {
-      amount,
-      emi,
-      months: amount > 0 && emi > 0 ? Math.ceil(amount / emi) : 0,
-      nextBankBalance,
-      loanRemaining,
-      salaryRemaining,
-    };
-  }, [bankPaymentForm.amount, bankPaymentForm.direction, bankPaymentForm.emi, selectedPaymentBank, selectedPaymentLoan, selectedPaymentPayroll]);
-
   const bankTransactionRows = useMemo(
     () => bankTransactions
       .map((t) => ({
@@ -887,6 +867,17 @@ export default function HRPage() {
     [activeLoans]
   );
 
+  const pendingAdvanceDeductionsByStaff = useMemo(() => {
+    const map = new Map();
+    payrolls.forEach((payroll) => {
+      const deduction = Number(payroll.loanDeduction || 0);
+      if (deduction <= 0 || payroll.loanRepaymentApplied) return;
+      const staffId = idOf(payroll.staff);
+      map.set(staffId, Number(map.get(staffId) || 0) + deduction);
+    });
+    return map;
+  }, [payrolls]);
+
   const receivableByStaff = useMemo(() => {
     const map = new Map();
     activeLoans.forEach((item) => {
@@ -898,8 +889,14 @@ export default function HRPage() {
       current.count += 1;
       map.set(staffId, current);
     });
+    map.forEach((summary, staffId) => {
+      const pendingDeduction = Number(pendingAdvanceDeductionsByStaff.get(staffId) || 0);
+      summary.pendingDeduction = pendingDeduction;
+      summary.amount = Math.max(0, Number(summary.amount || 0) - pendingDeduction);
+      summary.advance = Math.max(0, Number(summary.advance || 0) - pendingDeduction);
+    });
     return map;
-  }, [activeLoans]);
+  }, [activeLoans, pendingAdvanceDeductionsByStaff]);
 
   const staffTableTotals = useMemo(() => {
     return activeStaff.reduce((acc, person) => {
@@ -1527,6 +1524,7 @@ export default function HRPage() {
   const openBankPayment = (bank = selectedBankAccount, defaults = {}) => {
     const targetBank = bank || selectedBankAccount || banks[0] || null;
     const staffId = defaults.staff || "";
+    const lockedStaff = Boolean(defaults.lockedStaff || staffId);
     const firstPayroll = staffId
       ? payrolls
         .filter((payroll) => idOf(payroll.staff) === staffId && payroll.status !== "paid" && isPayrollPayable(payroll) && (Number(payroll.balanceDue ?? payroll.netPay ?? 0) > 0 || payrollNeedsLoanSettlement(payroll)))
@@ -1539,9 +1537,9 @@ export default function HRPage() {
       ...emptyBankPayment,
       bankId: idOf(targetBank) || idOf(banks[0]) || "",
       direction: defaults.direction || "out",
-      partyType: defaults.partyType || "employee",
+      partyType: staffId ? "employee" : defaults.partyType || "employee",
       purpose,
-      lockedStaff: Boolean(defaults.lockedStaff),
+      lockedStaff,
       staff: staffId,
       loan: defaults.loan || "",
       payroll: defaults.payroll || (purpose === "salary" && firstPayroll ? idOf(firstPayroll) : ""),
@@ -1600,6 +1598,14 @@ export default function HRPage() {
     if (bankPaymentForm.partyType === "other" && !bankPaymentForm.beneficiaryName.trim()) {
       return showNotice("error", bankPaymentForm.direction === "in" ? "Sender name is required." : "Receiver name is required.");
     }
+    if (
+      bankPaymentForm.partyType === "employee"
+      && bankPaymentForm.direction === "in"
+      && bankPaymentForm.purpose === "advance_repayment"
+      && !bankPaymentForm.loan
+    ) {
+      return showNotice("error", "Select the advance being returned.");
+    }
     setSaving(true);
     try {
       if (bankPaymentForm.partyType === "employee" && bankPaymentForm.direction === "out" && bankPaymentForm.purpose === "salary" && bankPaymentForm.payroll) {
@@ -1625,7 +1631,9 @@ export default function HRPage() {
         amount: Number(bankPaymentForm.amount || 0),
         emi: Number(bankPaymentForm.emi || 0),
         salaryMonth: localDate().slice(0, 7),
-        loan: "",
+        loan: bankPaymentForm.direction === "in" && bankPaymentForm.purpose === "advance_repayment"
+          ? bankPaymentForm.loan
+          : "",
       };
       const res = await API.post(`/hr/banks/${bankId}/payment`, payload);
       setBanks((prev) => prev.map((item) => (idOf(item) === idOf(res.data.bank) ? res.data.bank : item)));
@@ -1989,10 +1997,11 @@ export default function HRPage() {
                         <span className={`hr-balance-chip ${balanceIsSalaryDue ? "due" : "settled"}`}>
                           {balanceIsSalaryDue ? <ArrowUp size={14} /> : <ArrowDown size={14} />} {formatMoney(balanceAmount)}
                         </span>
-                        {!balanceIsSalaryDue && receivable.amount > 0 && (
+                        {!balanceIsSalaryDue && (receivable.amount > 0 || receivable.pendingDeduction > 0) && (
                           <small>
                             {[
                               receivable.advance > 0 ? `Advance ${formatMoney(receivable.advance)}` : "",
+                              receivable.pendingDeduction > 0 ? `Cut ${formatMoney(receivable.pendingDeduction)}` : "",
                             ].filter(Boolean).join(" / ")}
                           </small>
                         )}
@@ -3148,11 +3157,11 @@ export default function HRPage() {
 
   const renderBankPayModal = () => {
     if (!payNowBank) return null;
-    const isEmployee = bankPaymentForm.partyType === "employee";
+    const isEmployee = bankPaymentForm.partyType === "employee" || (bankPaymentForm.lockedStaff && Boolean(bankPaymentForm.staff));
     const isOut = bankPaymentForm.direction === "out";
     const isSalaryPayment = isOut && isEmployee && bankPaymentForm.purpose === "salary";
     const isAdvancePayment = isOut && isEmployee && bankPaymentForm.purpose === "advance";
-    const isLoanRepayment = false;
+    const isLoanRepayment = !isOut && isEmployee && bankPaymentForm.purpose === "advance_repayment";
     const selectedStaffLabel = selectedPaymentStaff ? staffLabel(selectedPaymentStaff) : "Select employee";
     const isLockedEmployeePayment = isEmployee && bankPaymentForm.lockedStaff && Boolean(bankPaymentForm.staff);
     return (
@@ -3183,7 +3192,18 @@ export default function HRPage() {
                 name="payment_direction"
                 value="in"
                 checked={bankPaymentForm.direction === "in"}
-                onChange={() => setBankPaymentForm((p) => ({ ...p, direction: "in", purpose: "general", loan: "", payroll: "", emi: "" }))}
+                onChange={() => setBankPaymentForm((p) => {
+                  const firstAdvance = selectedPaymentLoans[0];
+                  return {
+                    ...p,
+                    direction: "in",
+                    purpose: firstAdvance ? "advance_repayment" : "general",
+                    loan: firstAdvance ? idOf(firstAdvance) : "",
+                    amount: firstAdvance ? Number(firstAdvance.outstanding || 0) : p.amount,
+                    payroll: "",
+                    emi: "",
+                  };
+                })}
               />
               <ArrowDown size={14} />
               Payment In
@@ -3196,15 +3216,6 @@ export default function HRPage() {
                 {banks.map((bank) => <option key={idOf(bank)} value={idOf(bank)}>{bank.name} - {formatMoney(bank.balance)}</option>)}
               </select>
             </Field>
-            {!isLockedEmployeePayment && (
-              <Field label="Payee Type">
-                <select value={bankPaymentForm.partyType} onChange={(e) => setBankPaymentForm((p) => ({ ...p, partyType: e.target.value, lockedStaff: false, staff: "", loan: "", beneficiaryName: "", beneficiaryAccount: "" }))}>
-                  <option value="employee">Employee</option>
-                  <option value="other">Other</option>
-                </select>
-              </Field>
-            )}
-
             {isLockedEmployeePayment ? (
               <Field label="Employee">
                 <div className="hr-readonly-field">{selectedStaffLabel}</div>
@@ -3239,7 +3250,7 @@ export default function HRPage() {
               </Field>
             )}
 
-            {isOut && isEmployee && !isLockedEmployeePayment && (
+            {isOut && isEmployee && (
               <Field label="Payment Type">
                 <select value={bankPaymentForm.purpose} onChange={(e) => {
                   const nextPurpose = e.target.value;
@@ -3261,8 +3272,18 @@ export default function HRPage() {
 
             {!isOut && isEmployee && (
               <Field label="Payment For">
-                <select value={bankPaymentForm.purpose} onChange={(e) => setBankPaymentForm((p) => ({ ...p, purpose: e.target.value, loan: e.target.value === "loan" ? p.loan : "" }))}>
+                <select value={bankPaymentForm.purpose} onChange={(e) => {
+                  const nextPurpose = e.target.value;
+                  const firstAdvance = selectedPaymentLoans[0];
+                  setBankPaymentForm((p) => ({
+                    ...p,
+                    purpose: nextPurpose,
+                    loan: nextPurpose === "advance_repayment" && firstAdvance ? idOf(firstAdvance) : "",
+                    amount: nextPurpose === "advance_repayment" && firstAdvance ? Number(firstAdvance.outstanding || 0) : "",
+                  }));
+                }}>
                   <option value="general">General received</option>
+                  <option value="advance_repayment">Advance money</option>
                 </select>
               </Field>
             )}
@@ -3285,7 +3306,14 @@ export default function HRPage() {
 
             {isLoanRepayment && (
               <Field label="Employee Advance">
-                <select value={bankPaymentForm.loan} onChange={(e) => setBankPaymentForm((p) => ({ ...p, loan: e.target.value }))}>
+                <select value={bankPaymentForm.loan} onChange={(e) => {
+                  const loan = selectedPaymentLoans.find((item) => idOf(item) === e.target.value);
+                  setBankPaymentForm((p) => ({
+                    ...p,
+                    loan: e.target.value,
+                    amount: loan ? Number(loan.outstanding || 0) : p.amount,
+                  }));
+                }}>
                   <option value="">Select advance</option>
                   {selectedPaymentLoans.map((loan) => (
                     <option key={idOf(loan)} value={idOf(loan)}>
@@ -3296,7 +3324,7 @@ export default function HRPage() {
               </Field>
             )}
 
-            <Field label={isSalaryPayment ? "Salary Amount" : isAdvancePayment ? "Advance Amount" : "Amount"}>
+            <Field label={isSalaryPayment ? "Salary Amount" : isAdvancePayment ? "Advance Amount" : isLoanRepayment ? "Advance Return Amount" : "Amount"}>
               <input type="number" min="0" step="0.01" value={bankPaymentForm.amount} onChange={(e) => setBankPaymentForm((p) => ({ ...p, amount: e.target.value }))} />
             </Field>
 
@@ -3310,13 +3338,6 @@ export default function HRPage() {
               <input value={bankPaymentForm.note} onChange={(e) => setBankPaymentForm((p) => ({ ...p, note: e.target.value }))} placeholder="Optional" />
             </Field>
           </div>
-          {!isSalaryPayment && (isOut || isAdvancePayment || isLoanRepayment) && (
-            <div className="hr-payment-preview mt12">
-              {isOut && <InfoRow label="Bank balance after" value={formatMoney(bankPaymentPreview.nextBankBalance)} strong />}
-              {isAdvancePayment && <InfoRow label="Salary adjustment" value="Cuts from next salary; balance carries forward." />}
-              {isLoanRepayment && <InfoRow label={`Remaining advance for ${selectedStaffLabel}`} value={formatMoney(bankPaymentPreview.loanRemaining)} strong />}
-            </div>
-          )}
           <div className="hr-modal-actions mt12">
             <button className="hr-btn hr-btn-ghost" onClick={() => setPayNowBank(null)}>Cancel</button>
             <button className="hr-btn hr-btn-primary" onClick={payFromBank} disabled={saving}><CreditCard size={14} /> Save Payment</button>
