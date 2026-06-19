@@ -18,6 +18,12 @@ export default function Page() {
       localStorage.removeItem("serviceUnavailableMessage");
     }
 
+    const moduleMessage = sessionStorage.getItem("moduleAccessMessage");
+    if (moduleMessage) {
+      setError(moduleMessage);
+      sessionStorage.removeItem("moduleAccessMessage");
+    }
+
     const storedUser = localStorage.getItem("user");
     if (storedUser) setUser(JSON.parse(storedUser));
   }, []);

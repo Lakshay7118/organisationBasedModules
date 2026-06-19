@@ -32,8 +32,17 @@ export function getSocket() {
       transports: ["websocket"],
       withCredentials: true,
       autoConnect: false,
+      auth: {
+        token: typeof window !== "undefined" ? localStorage.getItem("token") : "",
+      },
     });
   }
+
+  socket.auth = {
+    ...(socket.auth || {}),
+    token: typeof window !== "undefined" ? localStorage.getItem("token") : "",
+  };
+
   return socket;
 }
 export function disconnectSocket() {

@@ -10,6 +10,27 @@ import { Bot, Send, X } from "lucide-react";
 import API from "./utils/api";
 import "bootstrap/dist/css/bootstrap.min.css";
 
+const ROUTE_MODULES = [
+  { prefix: "/live-chat", module: "chat" },
+  { prefix: "/campaigns", module: "chat" },
+  { prefix: "/template", module: "chat" },
+  { prefix: "/task", module: "task" },
+  { prefix: "/hr", module: "hr", selfAccessRoles: ["user"] },
+];
+
+const getRouteModule = (pathname = "") => {
+  const path = pathname.toLowerCase();
+  return ROUTE_MODULES.find((item) => path === item.prefix || path.startsWith(`${item.prefix}/`));
+};
+
+const canAccessRoute = (user, pathname = "") => {
+  const routeModule = getRouteModule(pathname);
+  if (!routeModule) return true;
+  if (user?.role === "super_to_super_admin") return true;
+  if (routeModule.selfAccessRoles?.includes(user?.role)) return true;
+  return Array.isArray(user?.allowedModules) && user.allowedModules.includes(routeModule.module);
+};
+
 const PALETTE = [
   "#6366f1","#f43f5e","#f59e0b","#10b981","#3b82f6",
   "#8b5cf6","#ec4899","#06b6d4"
@@ -286,10 +307,48 @@ export default function RootLayout({ children }) {
       try {
         const parsed = JSON.parse(user);
         setCurrentUser(enrichUser(parsed));
+        if (!canAccessRoute(parsed, pathname)) {
+          sessionStorage.setItem(
+            "moduleAccessMessage",
+            `Your organization does not have access to the ${getRouteModule(pathname)?.module || "requested"} module.`
+          );
+          router.replace("/");
+        }
       } catch {
         setCurrentUser({ name: "User", initial: "?", color: "#6b7280" });
       }
       setIsLoggedIn(true);
+    }
+  }, [pathname, router]);
+
+  const refreshCurrentUser = useCallback(async () => {
+    if (!localStorage.getItem("token")) return;
+
+    try {
+      const res = await API.get("/users/me");
+      const freshUser = res.data?.data;
+      if (!freshUser) return;
+
+      const previous = JSON.parse(localStorage.getItem("user") || "{}");
+      const mergedUser = {
+        ...previous,
+        ...freshUser,
+        id: freshUser._id || freshUser.id || previous.id,
+      };
+
+      localStorage.setItem("user", JSON.stringify(mergedUser));
+      localStorage.setItem("role", mergedUser.role || "");
+      setCurrentUser(enrichUser(mergedUser));
+
+      if (!canAccessRoute(mergedUser, pathname)) {
+        sessionStorage.setItem(
+          "moduleAccessMessage",
+          `Your organization does not have access to the ${getRouteModule(pathname)?.module || "requested"} module.`
+        );
+        router.replace("/");
+      }
+    } catch (error) {
+      console.error("Could not refresh current user:", error);
     }
   }, [pathname, router]);
 
@@ -330,6 +389,14 @@ export default function RootLayout({ children }) {
       window.removeEventListener("loginStatusChanged", checkLoginStatus);
     };
   }, [checkLoginStatus]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const timer = window.setTimeout(() => {
+      refreshCurrentUser();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isLoggedIn, refreshCurrentUser]);
 
   useEffect(() => {
     const interval = setInterval(() => {
