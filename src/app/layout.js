@@ -339,6 +339,7 @@ export default function RootLayout({ children }) {
       localStorage.setItem("user", JSON.stringify(mergedUser));
       localStorage.setItem("role", mergedUser.role || "");
       setCurrentUser(enrichUser(mergedUser));
+      window.dispatchEvent(new Event("loginStatusChanged"));
 
       if (!canAccessRoute(mergedUser, pathname)) {
         sessionStorage.setItem(

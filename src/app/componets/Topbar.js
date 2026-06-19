@@ -34,8 +34,8 @@ const NOTIF_META = {
   profile_approval_requested:  { icon: <Shield    size={13} />, color: "#14b8a6", bg: "#ccfbf1", label: "Profile",       path: "/Settings"  },
   profile_approved:            { icon: <Shield    size={13} />, color: "#059669", bg: "#d1fae5", label: "Profile",       path: "/Settings"  },
   profile_rejected:            { icon: <Shield    size={13} />, color: "#ef4444", bg: "#fee2e2", label: "Profile",       path: "/Settings"  },
-  support_ticket_created:      { icon: <Bell      size={13} />, color: "#06b6d4", bg: "#cffafe", label: "Support",       path: "/Settings"  },
-  support_ticket_replied:      { icon: <Bell      size={13} />, color: "#3b82f6", bg: "#dbeafe", label: "Support",       path: "/Settings"  },
+  support_ticket_created:      { icon: <Bell      size={13} />, color: "#06b6d4", bg: "#cffafe", label: "Support",       path: "/Settings?openSupport=1"  },
+  support_ticket_replied:      { icon: <Bell      size={13} />, color: "#3b82f6", bg: "#dbeafe", label: "Support",       path: "/Settings?openSupport=1"  },
 };
 
 const getMeta = (type) =>
@@ -498,6 +498,9 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const handleNavigate = useCallback((path) => {
     setShowDropdown(false);
     setShowAllModal(false);
+    if (path?.startsWith("/Settings?openSupport=1")) {
+      window.dispatchEvent(new Event("openSupportChat"));
+    }
     router.push(path);
   }, [router]);
 

@@ -104,7 +104,7 @@ export default function SupportTicketsPage() {
     cursor: "pointer",
   };
 
-  const supportStaff = ["super_admin", "manager"].includes(profile?.role);
+  const supportStaff = ["super_to_super_admin", "super_admin", "manager"].includes(profile?.role);
   const activeTickets = useMemo(() => tickets.filter((ticket) => ticket.status !== "ended"), [tickets]);
   const endedTickets = useMemo(() => tickets.filter((ticket) => ticket.status === "ended"), [tickets]);
   const selectedTicket = useMemo(
@@ -462,7 +462,7 @@ export default function SupportTicketsPage() {
       ) : !supportStaff ? (
         <div style={{ ...emptyStateStyle(colors), margin: 20 }}>
           <Ticket size={28} />
-          Only admins and managers can open the support ticket desk.
+          Only owners, admins, and managers can open the support ticket desk.
         </div>
       ) : tickets.length === 0 ? (
         <div style={{ ...emptyStateStyle(colors), margin: 20 }}>
