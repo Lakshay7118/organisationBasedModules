@@ -454,6 +454,7 @@ function AddContactModal({
     return [];
   }, [hasHrAccess, isSuperAdmin, userRole]);
   const canChooseRole = roleOptions.length > 1 || ["manager", "hr"].includes(userRole);
+  const canSetPassword = isSuperAdmin || ["manager", "hr"].includes(userRole);
 
   const validateContactStep = () => {
     const nextErrors = {};
@@ -466,7 +467,7 @@ function AddContactModal({
     if (!cleanMobile) nextErrors.mobile = "Mobile number is required.";
     else if (!/^\d{10,15}$/.test(cleanMobile)) nextErrors.mobile = "Enter a valid mobile number with 10 to 15 digits.";
     if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) nextErrors.email = "Enter a valid email address.";
-    if (isSuperAdmin && cleanEmail && !form.password) nextErrors.password = "Password is required when email is provided.";
+    if (canSetPassword && cleanEmail && !form.password) nextErrors.password = "Password is required when email is provided.";
     else if (form.password && form.password.length < 6) nextErrors.password = "Password must be at least 6 characters.";
 
     setFieldErrors(nextErrors);
@@ -508,7 +509,7 @@ function AddContactModal({
       return setError("Enter a valid mobile number (10–15 digits).");
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       return setError("Enter a valid email address.");
-    if (isSuperAdmin && form.email && !form.password)
+    if (canSetPassword && form.email && !form.password)
       return setError("Password is required when email is provided.");
     if (form.password && form.password.length < 6)
       return setError("Password must be at least 6 characters.");
@@ -647,7 +648,7 @@ function AddContactModal({
               />
             </FormField>
 
-            <FormField label="Email Address" hint={isSuperAdmin ? "(used for login)" : ""} error={fieldErrors.email}>
+            <FormField label="Email Address" hint={canSetPassword ? "(used for login)" : ""} error={fieldErrors.email}>
               <input
                 value={form.email}
                 onChange={handle("email")}
@@ -657,7 +658,7 @@ function AddContactModal({
               />
             </FormField>
 
-            {isSuperAdmin && (
+            {canSetPassword && (
               <FormField label="Password" hint="(required if email is set)" error={fieldErrors.password}>
                 <div style={{ position: "relative" }}>
                   <input
@@ -1655,7 +1656,7 @@ export default function ContactsPage() {
                 setLoading(true);
               }}
               style={tabBtn}
-            >
+            >  
               <Globe2 size={15} />
               All Contacts
             </button>

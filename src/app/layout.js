@@ -373,7 +373,10 @@ useEffect(() => {
   const hideChatbotLauncher = supportOpen || (isLiveChatPage && chatOpen);
 
   const handleLogout = () => {
+    localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("role");
+    localStorage.removeItem("ownerSession");
     setIsLoggedIn(false);
     setCurrentUser(null);
     router.push("/");

@@ -12,6 +12,12 @@ export default function Page() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
+    const serviceMessage = localStorage.getItem("serviceUnavailableMessage");
+    if (serviceMessage) {
+      setError(serviceMessage);
+      localStorage.removeItem("serviceUnavailableMessage");
+    }
+
     const storedUser = localStorage.getItem("user");
     if (storedUser) setUser(JSON.parse(storedUser));
   }, []);

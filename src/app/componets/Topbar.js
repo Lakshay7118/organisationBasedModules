@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   Menu, Search, LogOut, Bell, X, CheckCheck,
   ChevronRight, Clock, Shield, Users, Megaphone,
-  FileText, ListTodo,
+  FileText, ListTodo, RotateCcw,
 } from "lucide-react";
 import { getSocket, disconnectSocket } from "../lib/socket";
 import API from "../utils/api";
@@ -491,6 +491,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const [showAllModal,    setShowAllModal]    = useState(false);
   const [notifications,   setNotifications]   = useState([]);
   const [toastNotif,      setToastNotif]      = useState(null);
+  const [hasOwnerSession, setHasOwnerSession] = useState(false);
 
   const closeToast = useCallback(() => setToastNotif(null), []);
 
@@ -508,6 +509,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
         setUserId((u.id || u._id || "").toString());
         setUserPhone(u.phone || "");
         setUserRole(u.role || "");
+        setHasOwnerSession(Boolean(localStorage.getItem("ownerSession")));
       } catch {}
     };
     load();
@@ -600,6 +602,25 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
   const unreadCount   = notifications.filter(n => !n.read).length;
   const avatarInitial = userName?.charAt(0)?.toUpperCase() || "?";
 
+  const handleBackToOwner = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ownerSession") || "{}");
+      if (!saved.token || !saved.user) return;
+
+      localStorage.setItem("token", saved.token);
+      localStorage.setItem("user", saved.user);
+      if (saved.role) localStorage.setItem("role", saved.role);
+      else localStorage.removeItem("role");
+      localStorage.removeItem("ownerSession");
+      window.dispatchEvent(new Event("loginStatusChanged"));
+      router.push("/organizations");
+      window.location.reload();
+    } catch {
+      localStorage.removeItem("ownerSession");
+      setHasOwnerSession(false);
+    }
+  };
+
   const handleLogout   = ()  => setShowLogoutPopup(true);
   const confirmLogout  = ()  => { setShowLogoutPopup(false); disconnectSocket(); if (onLogout) onLogout(); };
   const cancelLogout   = ()  => setShowLogoutPopup(false);
@@ -673,6 +694,18 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
             </AnimatePresence>
           </div>
 
+          {hasOwnerSession && (
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleBackToOwner}
+              title="Back to owner"
+              className="app-topbar-soft"
+              style={{ width: 40, height: 40, borderRadius: "50%", background: "#ccfbf1", color: "#0f766e", border: "1px solid #99f6e4", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
+            >
+              <RotateCcw size={17} />
+            </motion.button>
+          )}
+
           <motion.button whileTap={{ scale: 0.9 }} onClick={handleLogout}
             style={{ width: 40, height: 40, borderRadius: "50%", background: "#0b535d", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, border: "none", cursor: "pointer", flexShrink: 0, boxShadow: "0 4px 12px rgba(11,83,93,0.35)" }}
           >
@@ -701,6 +734,34 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
           </div>
 
           <div style={{ flex: 1 }} />
+
+          {hasOwnerSession && (
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={handleBackToOwner}
+              title="Back to owner"
+              style={{
+                height: 36,
+                borderRadius: 10,
+                border: "1px solid #99f6e4",
+                background: "#ccfbf1",
+                color: "#0f766e",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                padding: "0 12px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 800,
+                flexShrink: 0,
+              }}
+            >
+              <RotateCcw size={14} />
+              Back to owner
+            </motion.button>
+          )}
 
           <div ref={bellRefDesktop} style={{ position: "relative" }}>
             <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={toggleDropdown}
