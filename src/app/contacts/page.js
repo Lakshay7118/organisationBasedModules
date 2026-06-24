@@ -41,6 +41,26 @@ const isTopAdminRole = (role) =>
 
 const PAYROLL_CYCLE_OPTIONS = [1, 7, 15];
 const COUNTRY_OPTIONS = Country.getAllCountries();
+const HR_PERMISSION_OPTIONS = [
+  { key: "canViewBanks", label: "Show banks tab" },
+  { key: "canManageBanks", label: "Add/edit banks and deposits" },
+  { key: "canMakePayments", label: "Make salary and bank payments" },
+  { key: "canManageAdvances", label: "Show/manage advances" },
+  { key: "canAddStaff", label: "Add staff" },
+  { key: "canEditStaff", label: "Edit staff" },
+  { key: "canDeleteStaff", label: "Delete staff" },
+  { key: "canMarkAttendance", label: "Mark present/absent" },
+  { key: "canGenerateSalarySlip", label: "Generate salary slip" },
+];
+const DEFAULT_HR_PERMISSIONS = HR_PERMISSION_OPTIONS.reduce((acc, option) => {
+  acc[option.key] = true;
+  return acc;
+}, {});
+const normalizeHrPermissions = (permissions = {}) =>
+  HR_PERMISSION_OPTIONS.reduce((acc, option) => {
+    acc[option.key] = permissions?.[option.key] !== undefined ? Boolean(permissions[option.key]) : true;
+    return acc;
+  }, {});
 
 const localDate = (date = new Date()) => {
   const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -309,6 +329,7 @@ function AddContactModal({
     password: "",
     tagId: "",
     role: "user",
+    hrPermissions: DEFAULT_HR_PERMISSIONS,
     employeeCode: "",
     department: "",
     designation: "",
@@ -430,6 +451,16 @@ function AddContactModal({
     });
   };
   const handle = (key) => (e) => setFieldValue(key, e.target.value);
+  const canConfigureHrPermissions = isSuperAdmin && ["manager", "hr"].includes(form.role);
+  const toggleHrPermission = (key) => {
+    setForm((prev) => ({
+      ...prev,
+      hrPermissions: {
+        ...normalizeHrPermissions(prev.hrPermissions),
+        [key]: !normalizeHrPermissions(prev.hrPermissions)[key],
+      },
+    }));
+  };
   const contactColumns = hasHrAccess ? 2 : 1;
   const contactInputStyle = hasHrAccess ? compactInputStyle : inputStyle;
   const modalWidth = hasHrAccess && step === "staff" ? 920 : hasHrAccess ? 760 : 440;
@@ -521,6 +552,7 @@ function AddContactModal({
       password: form.password || undefined,
       tags: form.tagId ? [form.tagId] : [],
       role: form.role,
+      ...(canConfigureHrPermissions ? { hrPermissions: normalizeHrPermissions(form.hrPermissions) } : {}),
     };
 
     if (hasHrAccess && step === "contact") {
@@ -714,6 +746,28 @@ function AddContactModal({
                   ))}
                 </select>
               </FormField>
+            )}
+
+            {canConfigureHrPermissions && (
+              <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+                <label style={labelStyle}>HR Permissions</label>
+                <div style={permissionGridStyle}>
+                  {HR_PERMISSION_OPTIONS.map((permission) => {
+                    const checked = normalizeHrPermissions(form.hrPermissions)[permission.key];
+                    return (
+                      <label key={permission.key} style={{ ...checkboxRow, marginBottom: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleHrPermission(permission.key)}
+                          style={checkboxInput}
+                        />
+                        <span style={checkboxLabel}>{permission.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -927,11 +981,23 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
     email: contact.email || "",
     password: "",
     tagId: contact.tags && contact.tags.length > 0 ? contact.tags[0]._id : "",
+    role: contact.loginUser?.role || contact.role || "user",
+    hrPermissions: normalizeHrPermissions(contact.loginUser?.hrPermissions),
   });
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const handle = (key) => (e) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  const canConfigureHrPermissions = isSuperAdmin && ["manager", "hr"].includes(form.role);
+  const toggleHrPermission = (key) => {
+    setForm((prev) => ({
+      ...prev,
+      hrPermissions: {
+        ...normalizeHrPermissions(prev.hrPermissions),
+        [key]: !normalizeHrPermissions(prev.hrPermissions)[key],
+      },
+    }));
+  };
 
   const submit = () => {
     const cleanMobile = form.mobile.replace(/\s/g, "").trim();
@@ -949,6 +1015,8 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
       email: form.email.trim() || null,
       password: form.password || undefined,
       tags: form.tagId ? [form.tagId] : [],
+      ...(isSuperAdmin ? { role: form.role } : {}),
+      ...(canConfigureHrPermissions ? { hrPermissions: normalizeHrPermissions(form.hrPermissions) } : {}),
     });
     onClose();
   };
@@ -1074,6 +1142,40 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
               >
                 {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
+            </div>
+          </div>
+        )}
+
+        {isSuperAdmin && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Role</label>
+            <select value={form.role} onChange={handle("role")} style={inputStyle}>
+              <option value="user">User</option>
+              <option value="hr">HR</option>
+              <option value="manager">Manager</option>
+              <option value="super_admin">Super Admin</option>
+            </select>
+          </div>
+        )}
+
+        {canConfigureHrPermissions && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>HR Permissions</label>
+            <div style={permissionGridStyle}>
+              {HR_PERMISSION_OPTIONS.map((permission) => {
+                const checked = normalizeHrPermissions(form.hrPermissions)[permission.key];
+                return (
+                  <label key={permission.key} style={{ ...checkboxRow, marginBottom: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleHrPermission(permission.key)}
+                      style={checkboxInput}
+                    />
+                    <span style={checkboxLabel}>{permission.label}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2364,6 +2466,16 @@ const checkboxLabel = {
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const permissionGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 8,
+  padding: 12,
+  border: "1px solid #dbe3eb",
+  borderRadius: 12,
+  background: "#f8fafc",
 };
 
 const modalShell = (width = 440) => ({
