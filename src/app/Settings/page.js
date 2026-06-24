@@ -128,6 +128,139 @@ function Toggle({ checked, onChange }) {
   );
 }
 
+function SkeletonBlock({ className = "", style = {} }) {
+  return <span className={`settings-skeleton-block ${className}`} style={style} />;
+}
+
+function SettingsLoadingSkeleton({ active, colors }) {
+  const cardStyle = {
+    ...sectionStyle(colors),
+    display: "grid",
+    gap: 16,
+  };
+  const field = (width = "100%") => (
+    <div style={{ display: "grid", gap: 8 }}>
+      <SkeletonBlock style={{ width: 86, height: 10 }} />
+      <SkeletonBlock style={{ width, height: 42, borderRadius: 8 }} />
+    </div>
+  );
+
+  if (active === "security") {
+    return (
+      <section style={cardStyle} aria-label="Loading security settings">
+        <SkeletonBlock style={{ width: 172, height: 20 }} />
+        <SkeletonBlock style={{ width: "min(440px, 86%)", height: 12 }} />
+        <div className="settings-grid">
+          {field()}
+          {field()}
+          {field("72%")}
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <SkeletonBlock style={{ width: 146, height: 38, borderRadius: 8 }} />
+          <SkeletonBlock style={{ width: 130, height: 38, borderRadius: 8 }} />
+        </div>
+      </section>
+    );
+  }
+
+  if (active === "appearance") {
+    return (
+      <section style={cardStyle} aria-label="Loading appearance settings">
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+          <div style={{ display: "grid", gap: 9, flex: 1 }}>
+            <SkeletonBlock style={{ width: 84, height: 20 }} />
+            <SkeletonBlock style={{ width: "min(480px, 90%)", height: 12 }} />
+          </div>
+          <SkeletonBlock style={{ width: 46, height: 26, borderRadius: 999 }} />
+        </div>
+        <div className="settings-grid">
+          <SkeletonBlock style={{ height: 86, borderRadius: 8 }} />
+          <SkeletonBlock style={{ height: 86, borderRadius: 8 }} />
+        </div>
+      </section>
+    );
+  }
+
+  if (active === "support") {
+    return (
+      <section style={cardStyle} aria-label="Loading support settings">
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 9, flex: 1, minWidth: 220 }}>
+            <SkeletonBlock style={{ width: 190, height: 20 }} />
+            <SkeletonBlock style={{ width: "min(520px, 92%)", height: 12 }} />
+          </div>
+          <div style={{ display: "flex", gap: 9 }}>
+            <SkeletonBlock style={{ width: 112, height: 38, borderRadius: 8 }} />
+            <SkeletonBlock style={{ width: 148, height: 38, borderRadius: 8 }} />
+          </div>
+        </div>
+        <div className="support-layout">
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={rowCardStyle(colors, true)}>
+              <SkeletonBlock style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0 }} />
+              <div style={{ display: "grid", gap: 8, flex: 1 }}>
+                <SkeletonBlock style={{ width: 168, height: 14 }} />
+                <SkeletonBlock style={{ width: "92%", height: 11 }} />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 5 }}>
+                  {[84, 96, 128, 112].map((width) => (
+                    <SkeletonBlock key={width} style={{ width, height: 36, borderRadius: 8 }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <SkeletonBlock style={{ height: 112, borderRadius: 8 }} />
+          </div>
+          <SkeletonBlock style={{ minHeight: 220, borderRadius: 8 }} />
+        </div>
+      </section>
+    );
+  }
+
+  if (active === "approvals") {
+    return (
+      <section style={cardStyle} aria-label="Loading approvals">
+        <SkeletonBlock style={{ width: 160, height: 20 }} />
+        <SkeletonBlock style={{ width: "min(440px, 88%)", height: 12 }} />
+        <div style={{ display: "grid", gap: 10 }}>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} style={rowCardStyle(colors, true)}>
+              <div style={{ display: "grid", gap: 8, flex: 1 }}>
+                <SkeletonBlock style={{ width: index % 2 ? 156 : 190, height: 14 }} />
+                <SkeletonBlock style={{ width: 128, height: 11 }} />
+                <SkeletonBlock style={{ width: "86%", height: 11 }} />
+              </div>
+              <SkeletonBlock style={{ width: 86, height: 30, borderRadius: 8 }} />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section style={cardStyle} aria-label="Loading profile settings">
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <SkeletonBlock style={{ width: 58, height: 58, borderRadius: "50%" }} />
+        <div style={{ display: "grid", gap: 8, flex: 1 }}>
+          <SkeletonBlock style={{ width: 170, height: 18 }} />
+          <SkeletonBlock style={{ width: "min(280px, 76%)", height: 12 }} />
+          <SkeletonBlock style={{ width: 74, height: 22, borderRadius: 999 }} />
+        </div>
+      </div>
+      <div className="settings-grid">
+        {field()}
+        {field()}
+        {field()}
+        {field("64%")}
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <SkeletonBlock style={{ width: 132, height: 38, borderRadius: 8 }} />
+        <SkeletonBlock style={{ width: 96, height: 38, borderRadius: 8 }} />
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const chatEndRef = useRef(null);
@@ -1716,6 +1849,19 @@ export default function SettingsPage() {
         .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
         .support-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr); gap: 16px; margin-top: 18px; }
         .settings-page-shell { color: var(--app-text); }
+        .settings-skeleton-block {
+          display: block;
+          min-width: 20px;
+          min-height: 10px;
+          border-radius: 999px;
+          background: var(--skeleton-gradient);
+          background-size: 220% 100%;
+          animation: settingsSkeletonShimmer 1.25s ease-in-out infinite;
+        }
+        @keyframes settingsSkeletonShimmer {
+          0% { background-position: 120% 0; }
+          100% { background-position: -120% 0; }
+        }
         .settings-page-shell input,
         .settings-page-shell textarea,
         .settings-page-shell select {
@@ -1816,10 +1962,7 @@ export default function SettingsPage() {
           )}
 
           {loading ? (
-            <div style={emptyStateStyle(colors)}>
-              <Clock3 size={28} />
-              Loading settings...
-            </div>
+            <SettingsLoadingSkeleton active={active} colors={colors} />
           ) : (
             content()
           )}

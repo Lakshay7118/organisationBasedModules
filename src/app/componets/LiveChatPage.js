@@ -2042,6 +2042,7 @@ const deleteForEveryone = async () => {
       ...rawChat,
       name: rawChat.name || contact.name || rawChat.groupName || contact.mobile,
       phone: rawChat.phone || contact.mobile,
+      isGroup: false,
       status: rawChat.status || "active", // ✅ ensure status exists
     };
     
@@ -2156,6 +2157,7 @@ const deleteForEveryone = async () => {
       ...rawChat,
       name: rawChat.name || matchedContact?.name || receiverPhone,
       phone: rawChat.phone || receiverPhone,
+      isGroup: false,
       status: rawChat.status || "active",
     };
     

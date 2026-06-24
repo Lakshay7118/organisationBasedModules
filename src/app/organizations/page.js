@@ -315,6 +315,53 @@ export default function OrganizationsPage() {
           animation: orgModalIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
           animation-delay: 0.05s;
         }
+        .org-skeleton {
+          position: relative;
+          overflow: hidden;
+          background: var(--skeleton-gradient);
+          background-size: 220% 100%;
+          animation: orgSkeletonShimmer 1.25s ease-in-out infinite;
+        }
+        .org-skeleton-table {
+          overflow-x: auto;
+        }
+        .org-skeleton-table table {
+          width: 100%;
+          min-width: 860px;
+          border-collapse: collapse;
+        }
+        .org-skeleton-table th,
+        .org-skeleton-table td {
+          padding: 12px;
+          border-top: 1px solid var(--app-border);
+        }
+        .org-skeleton-table th {
+          background: var(--app-surface-2);
+        }
+        .org-skeleton-line {
+          height: 12px;
+          border-radius: 999px;
+        }
+        .org-skeleton-avatar {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          flex-shrink: 0;
+        }
+        .org-skeleton-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+        .org-skeleton-action {
+          width: 34px;
+          height: 34px;
+          border-radius: 8px;
+        }
+        @keyframes orgSkeletonShimmer {
+          0% { background-position: 120% 0; }
+          100% { background-position: -120% 0; }
+        }
         @keyframes orgBackdropIn {
           from {
             opacity: 0;
@@ -557,7 +604,53 @@ export default function OrganizationsPage() {
           </div>
 
           {loading ? (
-            <div style={{ padding: 18, color: "var(--app-text-muted)" }}>Loading...</div>
+            <div className="org-skeleton-table" aria-label="Loading organizations">
+              <table>
+                <thead>
+                  <tr>
+                    {["Organization", "Super Admin", "Email", "Modules", "Created", "Actions"].map((label, index) => (
+                      <th key={label} style={{ textAlign: index === 5 ? "right" : "left" }}>
+                        <div
+                          className="org-skeleton org-skeleton-line"
+                          style={{ width: index === 5 ? 72 : [118, 96, 136, 82, 68][index] }}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 6 }).map((_, rowIndex) => (
+                    <tr key={rowIndex}>
+                      <td style={{ minWidth: 210 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div className="org-skeleton org-skeleton-avatar" />
+                          <div style={{ display: "grid", gap: 7, width: "100%" }}>
+                            <div className="org-skeleton org-skeleton-line" style={{ width: rowIndex % 2 ? 148 : 176 }} />
+                            <div className="org-skeleton org-skeleton-line" style={{ width: 76, height: 10 }} />
+                          </div>
+                        </div>
+                      </td>
+                      <td><div className="org-skeleton org-skeleton-line" style={{ width: rowIndex % 2 ? 104 : 128 }} /></td>
+                      <td><div className="org-skeleton org-skeleton-line" style={{ width: rowIndex % 2 ? 156 : 188 }} /></td>
+                      <td style={{ minWidth: 260 }}>
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                          <div className="org-skeleton org-skeleton-line" style={{ width: 54, height: 22 }} />
+                          <div className="org-skeleton org-skeleton-line" style={{ width: 62, height: 22 }} />
+                          <div className="org-skeleton org-skeleton-line" style={{ width: 48, height: 22 }} />
+                        </div>
+                      </td>
+                      <td><div className="org-skeleton org-skeleton-line" style={{ width: 86 }} /></td>
+                      <td>
+                        <div className="org-skeleton-actions">
+                          <div className="org-skeleton org-skeleton-action" />
+                          <div className="org-skeleton org-skeleton-action" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : organizations.length === 0 ? (
             <div style={{ padding: 18, color: "var(--app-text-muted)" }}>No organizations created yet.</div>
           ) : (

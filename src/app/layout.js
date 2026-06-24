@@ -282,8 +282,114 @@ function ChatbotLauncher({ isMobile, isLoggedIn, hidden = false, onOpen }) {
   );
 }
 
+function AppBootSkeleton({ title = "Dashboard", theme = "light" }) {
+  const skeleton = {
+    background: "var(--skeleton-gradient)",
+    backgroundSize: "220% 100%",
+    animation: "appBootSkeleton 1.25s ease-in-out infinite",
+  };
+
+  return (
+    <html lang="en" data-theme={theme}>
+      <body
+        data-theme={theme}
+        style={{
+          margin: 0,
+          background: "var(--app-bg)",
+          color: "var(--app-text)",
+          fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          overflowY: "auto",
+        }}
+      >
+        <style>{`
+          @keyframes appBootSkeleton {
+            0% { background-position: 120% 0; }
+            100% { background-position: -120% 0; }
+          }
+          @media (min-width: 768px) {
+            .app-boot-main {
+              margin-left: 108px !important;
+            }
+          }
+        `}</style>
+        <div className="hidden md:block" style={{ position: "fixed", top: 12, left: 12, zIndex: 1000 }}>
+          <aside
+            style={{
+              width: 84,
+              height: "calc(100dvh - 32px)",
+              borderRadius: 22,
+              background: "linear-gradient(180deg, #083c43 0%, #0b535d 100%)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+              padding: "12px 8px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div style={{ width: 42, height: 42, borderRadius: 14, background: "rgba(255,255,255,0.14)" }} />
+            <div style={{ width: 34, height: 1, background: "rgba(255,255,255,0.16)" }} />
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} style={{ width: 64, height: 52, borderRadius: 14, background: index === 0 ? "rgba(255,255,255,0.13)" : "transparent", display: "grid", placeItems: "center" }}>
+                <div style={{ width: 28, height: 28, borderRadius: 10, background: "rgba(255,255,255,0.14)" }} />
+              </div>
+            ))}
+            <div style={{ flex: 1 }} />
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.82)" }} />
+          </aside>
+        </div>
+        <main
+          className="app-boot-main"
+          style={{
+            marginLeft: 0,
+            minHeight: "100vh",
+            padding: 10,
+            paddingTop: 14,
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ height: 70, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 850, color: "var(--app-text)" }}>{title}</div>
+              <div style={{ marginTop: 8, width: 180, height: 12, borderRadius: 999, ...skeleton }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 14, ...skeleton }} />
+              <div style={{ width: 42, height: 42, borderRadius: 14, ...skeleton }} />
+              <div style={{ width: 148, height: 44, borderRadius: 14, ...skeleton }} />
+            </div>
+          </div>
+          <div
+            style={{
+              minHeight: "calc(100vh - 110px)",
+              borderRadius: 20,
+              border: "1px solid var(--app-border)",
+              background: "var(--card-bg)",
+              boxShadow: "var(--card-shadow)",
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ width: "min(380px, 70%)", height: 22, borderRadius: 999, ...skeleton }} />
+              <div style={{ width: "min(620px, 88%)", height: 12, borderRadius: 999, ...skeleton }} />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, marginTop: 10 }}>
+                <div style={{ height: 140, borderRadius: 10, ...skeleton }} />
+                <div style={{ height: 140, borderRadius: 10, ...skeleton }} />
+                <div style={{ height: 210, borderRadius: 10, ...skeleton }} />
+                <div style={{ height: 210, borderRadius: 10, ...skeleton }} />
+              </div>
+            </div>
+          </div>
+        </main>
+      </body>
+    </html>
+  );
+}
+
 export default function RootLayout({ children }) {
   const [isLoggedIn, setIsLoggedIn]     = useState(false);
+  const [authChecked, setAuthChecked]   = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile]         = useState(false);
   const [chatOpen, setChatOpen]         = useState(false);
@@ -302,6 +408,7 @@ export default function RootLayout({ children }) {
     if (!user) {
       setIsLoggedIn(false);
       setCurrentUser(null);
+      setAuthChecked(true);
       if (pathname !== "/") router.push("/");
     } else {
       try {
@@ -318,6 +425,7 @@ export default function RootLayout({ children }) {
         setCurrentUser({ name: "User", initial: "?", color: "#6b7280" });
       }
       setIsLoggedIn(true);
+      setAuthChecked(true);
     }
   }, [pathname, router]);
 
@@ -472,6 +580,10 @@ useEffect(() => {
     Settings:       "Settings",
     settings:       "Settings",
   };
+
+  if (!authChecked) {
+    return <AppBootSkeleton title={titleMap[activeTab] || "Dashboard"} theme={theme} />;
+  }
 
   if (!isLoggedIn) {
     return (
