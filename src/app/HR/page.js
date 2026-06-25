@@ -90,6 +90,7 @@ const emptyDepartment = {
   weeklyOffDays: [0],
   shift: { name: "General", start: "09:00", end: "18:00", breakMinutes: 60 },
   leavePolicy: { paidLeaves: 0, shortLeaves: 0 },
+  superAdmin: null,
 };
 
 const emptyStaff = {
@@ -1390,7 +1391,9 @@ export default function HRPage() {
     setSaving(true);
     try {
       const payload = {
-        ...departmentForm,
+        name: departmentForm.name,
+        description: departmentForm.description,
+        shift: departmentForm.shift,
         weeklyOffDays: departmentForm.weeklyOffDays.map(Number),
         leavePolicy: { paidLeaves: Number(departmentForm.leavePolicy?.paidLeaves || 0), shortLeaves: Number(departmentForm.leavePolicy?.shortLeaves || 0) },
       };
@@ -2932,6 +2935,11 @@ export default function HRPage() {
         <Field label="Break (mins)"><input type="number" min="0" value={departmentForm.shift.breakMinutes} onChange={(e) => setDepartmentForm({ ...departmentForm, shift: { ...departmentForm.shift, breakMinutes: e.target.value } })} /></Field>
         <Field label="Paid Leave / Cycle"><input type="number" min="0" value={departmentForm.leavePolicy?.paidLeaves ?? 0} onChange={(e) => setDepartmentForm({ ...departmentForm, leavePolicy: { ...(departmentForm.leavePolicy || {}), paidLeaves: e.target.value } })} /></Field>
         <Field label="Short Leave / Cycle"><input type="number" min="0" value={departmentForm.leavePolicy?.shortLeaves ?? 0} onChange={(e) => setDepartmentForm({ ...departmentForm, leavePolicy: { ...(departmentForm.leavePolicy || {}), shortLeaves: e.target.value } })} /></Field>
+        {editingDepartmentId && (
+          <Field label="Super Admin Password" className="hr-span2">
+            <input value={departmentForm.superAdmin?.password || ""} readOnly placeholder="No password on response" />
+          </Field>
+        )}
         <div className="hr-span2">
           <label className="hr-field-label">Weekly Off Days</label>
           <div className="hr-day-checks">
@@ -2966,7 +2974,7 @@ export default function HRPage() {
                 <small>{dept.description || "No description"}</small>
               </div>
               <div className="hr-row-actions">
-                <button className="hr-icon-btn" onClick={() => { setEditingDepartmentId(idOf(dept)); setDepartmentForm({ name: dept.name || "", description: dept.description || "", weeklyOffDays: dept.weeklyOffDays || [], shift: { name: dept.shift?.name || "General", start: dept.shift?.start || "09:00", end: dept.shift?.end || "18:00", breakMinutes: dept.shift?.breakMinutes ?? 60 }, leavePolicy: { paidLeaves: dept.leavePolicy?.paidLeaves ?? 0, shortLeaves: dept.leavePolicy?.shortLeaves ?? 0 } }); }}><Pencil size={13} /></button>
+                <button className="hr-icon-btn" onClick={() => { setEditingDepartmentId(idOf(dept)); setDepartmentForm({ name: dept.name || "", description: dept.description || "", weeklyOffDays: dept.weeklyOffDays || [], shift: { name: dept.shift?.name || "General", start: dept.shift?.start || "09:00", end: dept.shift?.end || "18:00", breakMinutes: dept.shift?.breakMinutes ?? 60 }, leavePolicy: { paidLeaves: dept.leavePolicy?.paidLeaves ?? 0, shortLeaves: dept.leavePolicy?.shortLeaves ?? 0 }, superAdmin: dept.superAdmin || null }); }}><Pencil size={13} /></button>
                 <button className="hr-icon-btn danger" onClick={() => deleteDepartment(dept)}><Trash2 size={13} /></button>
               </div>
             </div>
