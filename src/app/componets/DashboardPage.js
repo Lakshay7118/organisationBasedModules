@@ -20,6 +20,7 @@ import {
   FiUser,
   FiZap,
 } from "react-icons/fi";
+import API from "../utils/api";
 
 /* ─── Skeleton helpers (unchanged) ─── */
 const skeletonStyle = {
@@ -279,38 +280,6 @@ function CreditsCardSkeleton() {
 /* ════════════════════════════════════════════
    REAL DATA (adapted to internal chat)
 ═══════════════════════════════════════════ */
-const statusCards = [
-  {
-    title: "Total Users",
-    value: "128",
-    type: "text",
-    textColor: "var(--wa-success)",
-    icon: <FiUser size={18} />,
-  },
-  {
-    title: "Open Tasks",
-    value: "14",
-    type: "text",
-    textColor: "var(--wa-warning)",
-    icon: <FiActivity size={18} />,
-  },
-  {
-    title: "Active Templates",
-    value: "6",
-    type: "text",
-    textColor: "var(--wa-info, #0d6efd)",
-    icon: <FiGrid size={18} />,
-  },
-];
-
-// Task status breakdown (replaces WhatsApp steps)
-const taskStatuses = [
-  { label: "Pending", count: 5, color: "var(--wa-warning)", bg: "var(--wa-warning-soft)", icon: <FiClock size={16} /> },
-  { label: "In Progress", count: 8, color: "var(--wa-info, #0d6efd)", bg: "#e7f1ff", icon: <FiZap size={16} /> },
-  { label: "Completed", count: 127, color: "var(--wa-success)", bg: "var(--wa-success-soft)", icon: <FiCheckCircle size={16} /> },
-  { label: "Overdue", count: 2, color: "var(--wa-danger, #dc3545)", bg: "#fce8e8", icon: <FiClock size={16} /> },
-];
-
 // Quick links / recent chats (replaces mobile app + features)
 const quickLinks = [
   { label: "Create User", icon: <FiUser size={15} />, color: "var(--wa-success)" },
@@ -318,6 +287,49 @@ const quickLinks = [
   { label: "Assign Task", icon: <FiCheckCircle size={15} />, color: "var(--wa-warning)" },
   { label: "Broadcast Message", icon: <FiMessageCircle size={15} />, color: "var(--wa-info, #0d6efd)" },
 ];
+
+const emptyDashboard = {
+  user: { name: "", email: "", phone: "", role: "", allowedModules: [] },
+  metrics: {},
+  taskStatus: {},
+  recentActivity: [],
+};
+
+const formatNumber = (value) => Number(value || 0).toLocaleString("en-IN");
+
+const formatMoney = (value) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+
+const roleLabel = (role) => {
+  if (role === "super_to_super_admin") return "Owner";
+  if (role === "super_admin") return "Super Admin";
+  return role ? role.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "User";
+};
+
+const timeAgo = (value) => {
+  if (!value) return "";
+  const diff = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(diff) || diff < 0) return "Just now";
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+};
+
+const activityIcon = (type) => {
+  if (type === "task") return <FiCheckCircle className="me-2" size={14} />;
+  if (type === "template") return <FiGrid className="me-2" size={14} />;
+  if (type === "campaign") return <FiMessageCircle className="me-2" size={14} />;
+  if (type === "contact") return <FiUser className="me-2" size={14} />;
+  return <FiActivity className="me-2" size={14} />;
+};
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -334,10 +346,29 @@ const fadeUp = {
 export default function DashboardPage() {
   const rootRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [dashboard, setDashboard] = useState(emptyDashboard);
+  const [loadError, setLoadError] = useState("");
+  const [loadedAt, setLoadedAt] = useState(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 2200);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    API.get("/dashboard/summary")
+      .then((res) => {
+        if (cancelled) return;
+        setDashboard(res.data?.data || emptyDashboard);
+        setLoadedAt(new Date());
+        setLoadError("");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadError(error.response?.data?.error || "Could not load dashboard data.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -351,6 +382,41 @@ export default function DashboardPage() {
     }, rootRef);
     return () => ctx.revert();
   }, [isLoading]);
+
+  const metrics = dashboard.metrics || {};
+  const taskStatus = dashboard.taskStatus || {};
+  const dashboardUser = dashboard.user || {};
+  const statusCards = [
+    {
+      title: dashboardUser.role === "super_to_super_admin" ? "Organizations" : "Total Users",
+      value: formatNumber(dashboardUser.role === "super_to_super_admin" ? metrics.organizations : metrics.users),
+      textColor: "var(--wa-success)",
+      icon: <FiUser size={18} />,
+    },
+    {
+      title: "Open Tasks",
+      value: formatNumber(metrics.openTasks),
+      textColor: "var(--wa-warning)",
+      icon: <FiActivity size={18} />,
+    },
+    {
+      title: "Active Templates",
+      value: formatNumber(metrics.templates),
+      textColor: "var(--wa-info, #0d6efd)",
+      icon: <FiGrid size={18} />,
+    },
+  ];
+  const taskStatuses = [
+    { label: "Pending", count: taskStatus.pending || 0, color: "var(--wa-warning)", bg: "var(--wa-warning-soft)", icon: <FiClock size={16} /> },
+    { label: "In Progress", count: taskStatus.inProgress || 0, color: "var(--wa-info, #0d6efd)", bg: "#e7f1ff", icon: <FiZap size={16} /> },
+    { label: "Completed", count: taskStatus.completed || 0, color: "var(--wa-success)", bg: "var(--wa-success-soft)", icon: <FiCheckCircle size={16} /> },
+    { label: "Overdue", count: taskStatus.overdue || 0, color: "var(--wa-danger, #dc3545)", bg: "#fce8e8", icon: <FiClock size={16} /> },
+  ];
+  const recentActivity = dashboard.recentActivity || [];
+  const messageTotal = Number(metrics.messages || 0);
+  const campaignTotal = Number(metrics.campaigns || 0);
+  const activeCampaigns = Number(metrics.activeCampaigns || 0);
+  const campaignProgress = campaignTotal ? Math.min(100, Math.round((activeCampaigns / campaignTotal) * 100)) : 0;
 
   return (
     <>
@@ -416,6 +482,13 @@ export default function DashboardPage() {
         ) : (
           /* ── REAL CONTENT (remodeled) ── */
           <div className="row g-4">
+            {loadError && (
+              <div className="col-12">
+                <div className="alert alert-warning rounded-4 border-0 mb-0">
+                  {loadError}
+                </div>
+              </div>
+            )}
             {/* LEFT COLUMN */}
             <div className="col-12 col-xl-8">
               {/* Hero banner */}
@@ -444,14 +517,16 @@ export default function DashboardPage() {
                         Internal Communication Hub
                       </div>
                       <h3 className="fw-bold mb-2" style={{ color: "var(--wa-text-white)" }}>
-                        Manage your team, tasks, and templates
+                        Welcome back{dashboardUser.name ? `, ${dashboardUser.name}` : ""}
                       </h3>
                       <p className="mb-0" style={{ color: "var(--wa-text-muted-white)" }}>
-                        Create users, assign work, chat instantly, and send template‑based messages all in one place.
+                        Live view of your users, tasks, HR, campaigns, chat activity, and templates from real system data.
                       </p>
                     </div>
                     <div className="col-12 col-lg-auto">
                       <button
+                        type="button"
+                        onClick={() => window.location.assign("/task")}
                         className="btn fw-semibold rounded-3 px-4 py-2"
                         style={{
                           backgroundColor: "var(--wa-btn-light)",
@@ -459,7 +534,7 @@ export default function DashboardPage() {
                           border: "none",
                         }}
                       >
-                        Quick Actions
+                        Open Tasks
                       </button>
                     </div>
                   </div>
@@ -543,22 +618,22 @@ export default function DashboardPage() {
                     </div>
                     <div className="col-12 col-lg">
                       <h5 className="fw-bold mb-1" style={{ color: "var(--wa-text-primary)" }}>
-                        Quick Invite User
+                        Team Snapshot
                       </h5>
                       <p className="mb-0" style={{ color: "var(--wa-text-secondary)" }}>
-                        Add a new team member by entering their email address.
+                        {formatNumber(metrics.contacts)} contacts, {formatNumber(metrics.activeStaff)} active staff, and {formatNumber(metrics.departments)} departments are currently tracked.
                       </p>
                     </div>
                     <div className="col-12 col-md-7 col-lg-4">
-                      <input
-                        type="email"
-                        className="form-control rounded-3 shadow-none"
-                        placeholder="email@company.com"
-                        style={{ minHeight: 50, borderColor: "var(--wa-border-light)" }}
-                      />
+                      <div className="rounded-3 px-3 py-2" style={{ minHeight: 50, border: "1px solid var(--wa-border-light)", color: "var(--wa-text-primary)" }}>
+                        <div className="small" style={{ color: "var(--wa-text-secondary)" }}>Salary Dues</div>
+                        <strong>{formatMoney(metrics.salaryDues)}</strong>
+                      </div>
                     </div>
                     <div className="col-12 col-md-5 col-lg-auto">
                       <button
+                        type="button"
+                        onClick={() => window.location.assign("/contacts")}
                         className="btn w-100 rounded-3 fw-semibold px-4"
                         style={{
                           minHeight: 50,
@@ -567,7 +642,7 @@ export default function DashboardPage() {
                           border: "none",
                         }}
                       >
-                        Send Invite
+                        View Contacts
                       </button>
                     </div>
                   </div>
@@ -663,7 +738,7 @@ export default function DashboardPage() {
                       </h5>
                     </div>
                     <span className="fw-medium" style={{ color: "var(--wa-text-secondary)" }}>
-                      Last updated 10 min ago
+                      Updated {loadedAt ? timeAgo(loadedAt) : "just now"}
                     </span>
                   </div>
                   <div
@@ -676,6 +751,8 @@ export default function DashboardPage() {
                     <div className="row g-3">
                       <div className="col-12 col-md-6">
                         <button
+                          type="button"
+                          onClick={() => window.location.assign("/Template")}
                           className="btn w-100 rounded-3 fw-semibold py-3"
                           style={{
                             backgroundColor: "var(--wa-bg-card)",
@@ -683,11 +760,13 @@ export default function DashboardPage() {
                             border: "1px solid var(--wa-border-light)",
                           }}
                         >
-                          <FiGrid className="me-2" /> Create New Template
+                          <FiGrid className="me-2" /> {formatNumber(metrics.templates)} Templates
                         </button>
                       </div>
                       <div className="col-12 col-md-6">
                         <button
+                          type="button"
+                          onClick={() => window.location.assign("/task")}
                           className="btn w-100 rounded-3 fw-semibold py-3"
                           style={{
                             backgroundColor: "var(--wa-bg-card)",
@@ -695,7 +774,7 @@ export default function DashboardPage() {
                             border: "1px solid var(--wa-border-light)",
                           }}
                         >
-                          <FiCheckCircle className="me-2" /> Assign Task
+                          <FiCheckCircle className="me-2" /> {formatNumber(metrics.tasks)} Tasks
                         </button>
                       </div>
                     </div>
@@ -752,18 +831,21 @@ export default function DashboardPage() {
                       <span className="fw-semibold small" style={{ color: "var(--wa-text-primary)" }}>
                         Recent Activity
                       </span>
-                      <span className="small" style={{ color: "var(--wa-text-secondary)" }}>Today</span>
+                      <span className="small" style={{ color: "var(--wa-text-secondary)" }}>{recentActivity.length} items</span>
                     </div>
                     <ul className="list-unstyled mb-0" style={{ fontSize: "0.85rem" }}>
-                      <li className="mb-2" style={{ color: "var(--wa-text-secondary)" }}>
-                        <FiUser className="me-2" size={14} /> John invited to Sales team
-                      </li>
-                      <li className="mb-2" style={{ color: "var(--wa-text-secondary)" }}>
-                        <FiCheckCircle className="me-2" size={14} /> Task “Follow‑up” marked done
-                      </li>
-                      <li className="mb-2" style={{ color: "var(--wa-text-secondary)" }}>
-                        <FiMessageCircle className="me-2" size={14} /> Template “Welcome” sent to 45 users
-                      </li>
+                      {recentActivity.length === 0 ? (
+                        <li style={{ color: "var(--wa-text-secondary)" }}>No recent activity yet.</li>
+                      ) : recentActivity.map((activity, index) => (
+                        <li className="mb-2" style={{ color: "var(--wa-text-secondary)" }} key={`${activity.type}-${activity.date}-${index}`}>
+                          {activityIcon(activity.type)}
+                          <span className="fw-semibold" style={{ color: "var(--wa-text-primary)" }}>{activity.title}</span>
+                          <div className="ms-4">
+                            {activity.description}
+                            {activity.date && <span> • {timeAgo(activity.date)}</span>}
+                          </div>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 </motion.div>
@@ -782,13 +864,15 @@ export default function DashboardPage() {
                     <div className="d-flex justify-content-between align-items-start mb-3">
                       <div>
                         <h6 className="fw-bold mb-1" style={{ color: "var(--wa-text-primary)" }}>
-                          Super Admin
+                          {roleLabel(dashboardUser.role)}
                         </h6>
                         <div className="small" style={{ color: "var(--wa-text-secondary)" }}>
-                          Internal System Account
+                          {dashboardUser.phone || "System Account"}
                         </div>
                       </div>
                       <button
+                        type="button"
+                        onClick={() => window.location.assign("/Settings")}
                         className="btn rounded-circle d-flex align-items-center justify-content-center"
                         style={{
                           width: 38,
@@ -802,10 +886,10 @@ export default function DashboardPage() {
                       </button>
                     </div>
                     <h4 className="fw-bold mb-2" style={{ color: "var(--wa-success)" }}>
-                      admin@company.com
+                      {dashboardUser.email || dashboardUser.name || dashboardUser.phone || "Account"}
                     </h4>
                     <p className="small mb-4" style={{ color: "var(--wa-text-secondary)" }}>
-                      Dashboard access • Full control
+                      Dashboard access • {formatNumber(metrics.users)} users visible
                     </p>
                     <button
                       className="btn btn-link fw-semibold p-0 text-decoration-none"
@@ -828,7 +912,7 @@ export default function DashboardPage() {
                 >
                   <div className="card-body p-4">
                     <div className="fw-semibold mb-2" style={{ color: "var(--wa-text-primary)" }}>
-                      Monthly Message Quota
+                      Messages & Campaigns
                     </div>
                     <div
                       className="progress mb-2"
@@ -841,19 +925,19 @@ export default function DashboardPage() {
                       <div
                         className="progress-bar"
                         role="progressbar"
-                        style={{ width: "43%", backgroundColor: "var(--wa-success)" }}
+                        style={{ width: `${campaignProgress}%`, backgroundColor: "var(--wa-success)" }}
                       />
                     </div>
                     <div className="d-flex justify-content-between small mb-4" style={{ color: "var(--wa-text-secondary)" }}>
-                      <span>0</span>
-                      <span>10,000</span>
+                      <span>{formatNumber(activeCampaigns)} active</span>
+                      <span>{formatNumber(campaignTotal)} total</span>
                     </div>
                     <div className="fw-semibold mb-3" style={{ color: "var(--wa-text-primary)" }}>
-                      Plan: Business Pro
+                      Sent Messages
                     </div>
                     <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
                       <h2 className="mb-0 fw-bold" style={{ color: "var(--wa-text-primary)" }}>
-                        4,300 / 10,000
+                        {formatNumber(messageTotal)}
                       </h2>
                       <button
                         className="btn rounded-3 fw-semibold px-4"
@@ -863,7 +947,7 @@ export default function DashboardPage() {
                           border: "none",
                         }}
                       >
-                        Upgrade Plan
+                        {formatNumber(metrics.chats)} Chats
                       </button>
                     </div>
                   </div>

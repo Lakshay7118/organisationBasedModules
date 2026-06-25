@@ -70,6 +70,25 @@ const PAYROLL_SCOPE_OPTIONS = [
   { id: "daily", label: "Daily" },
   ...PAYROLL_CYCLE_OPTIONS.map((day) => ({ id: `monthly:${day}`, label: `${day} to ${day}` })),
 ];
+const TRANSACTION_RANGE_OPTIONS = [
+  { id: "all", label: "All Transactions" },
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "this_week", label: "This Week" },
+  { id: "last_week", label: "Last Week" },
+  { id: "last_7_days", label: "Last 7 days" },
+  { id: "this_month", label: "This Month" },
+  { id: "previous_month", label: "Previous Month" },
+  { id: "date", label: "By Date" },
+  { id: "month", label: "By Month" },
+];
+const STAFF_TRANSACTION_TYPE_OPTIONS = [
+  { id: "all", label: "All Types" },
+  { id: "salary", label: "Salary" },
+  { id: "advance", label: "Advance" },
+  { id: "repayment", label: "Advance Return" },
+  { id: "manual", label: "Manual" },
+];
 const ATTENDANCE_STATUS_META = {
   present: { label: "Present", short: "P", tone: "green" },
   absent: { label: "Absent", short: "A", tone: "rose" },
@@ -539,6 +558,13 @@ function staffTransactionDirection(transaction) {
   return transactionDirection(transaction);
 }
 
+function staffTransactionTypeKey(transaction) {
+  if (["salary", "salary_prepayment"].includes(transaction?.type)) return "salary";
+  if (["loan_out", "advance_out"].includes(transaction?.type)) return "advance";
+  if (transaction?.type === "loan_repayment") return "repayment";
+  return "manual";
+}
+
 function repaymentKindLabel(item) {
   return "Advance";
 }
@@ -581,6 +607,54 @@ function datesInMonth(month) {
   return Array.from({ length: totalDays }, (_, index) =>
     `${year}-${String(monthIndex).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`
   );
+}
+
+function addDaysToLocalDate(value, days) {
+  const next = parseDateValue(value || localDate());
+  next.setDate(next.getDate() + days);
+  return localDate(next);
+}
+
+function rangeForTransactionFilter(filter = {}) {
+  const today = localDate();
+  const selectedDate = filter.date || today;
+  const selectedMonth = filter.month || today.slice(0, 7);
+  if (filter.mode === "all") return null;
+  if (filter.mode === "date") return { start: selectedDate, end: selectedDate };
+  if (filter.mode === "month") {
+    const monthDates = datesInMonth(selectedMonth);
+    return { start: monthDates[0], end: monthDates[monthDates.length - 1] };
+  }
+  if (filter.mode === "today") return { start: today, end: today };
+  if (filter.mode === "yesterday") {
+    const yesterday = addDaysToLocalDate(today, -1);
+    return { start: yesterday, end: yesterday };
+  }
+  if (filter.mode === "last_7_days") return { start: addDaysToLocalDate(today, -6), end: today };
+  if (filter.mode === "this_month") {
+    const monthDates = datesInMonth(today.slice(0, 7));
+    return { start: monthDates[0], end: monthDates[monthDates.length - 1] };
+  }
+  if (filter.mode === "previous_month") {
+    const previous = shiftMonth(today.slice(0, 7), -1);
+    const monthDates = datesInMonth(previous);
+    return { start: monthDates[0], end: monthDates[monthDates.length - 1] };
+  }
+  const startOfWeek = addDaysToLocalDate(today, -parseDateValue(today).getDay());
+  if (filter.mode === "this_week") return { start: startOfWeek, end: addDaysToLocalDate(startOfWeek, 6) };
+  if (filter.mode === "last_week") {
+    const start = addDaysToLocalDate(startOfWeek, -7);
+    return { start, end: addDaysToLocalDate(start, 6) };
+  }
+  return null;
+}
+
+function transactionMatchesDateRange(transaction, filter) {
+  const range = rangeForTransactionFilter(filter);
+  if (!range) return true;
+  if (!transaction?.paidAt) return false;
+  const txDate = localDate(new Date(transaction.paidAt));
+  return txDate >= range.start && txDate <= range.end;
 }
 
 function isWeeklyOffForStaff(staff, date) {
@@ -685,6 +759,7 @@ export default function HRPage() {
   const [payrollDueDate, setPayrollDueDate] = useState(localDate());
   const [attendanceDrafts, setAttendanceDrafts] = useState({});
   const [bankTxnFilter, setBankTxnFilter] = useState({ mode: "all", date: localDate(), month: localDate().slice(0, 7) });
+  const [staffTxnFilter, setStaffTxnFilter] = useState({ mode: "all", date: localDate(), month: localDate().slice(0, 7), type: "all" });
   const [selectedBank, setSelectedBank] = useState(null);
   const [addMoneyBank, setAddMoneyBank] = useState(null);
   const [bankTopUpForm, setBankTopUpForm] = useState(emptyBankTopUp);
@@ -896,6 +971,23 @@ export default function HRPage() {
     const selectedId = idOf(selectedDetailStaff);
     return bankTransactions.filter((t) => idOf(t.staff) === selectedId);
   }, [bankTransactions, selectedDetailStaff]);
+
+  const filteredSelectedStaffTransactions = useMemo(() => (
+    selectedStaffTransactions.filter((transaction) => {
+      if (!transactionMatchesDateRange(transaction, staffTxnFilter)) return false;
+      if (staffTxnFilter.type === "all") return true;
+      return staffTransactionTypeKey(transaction) === staffTxnFilter.type;
+    })
+  ), [selectedStaffTransactions, staffTxnFilter]);
+
+  const filteredStaffTransactionTotals = useMemo(() => (
+    filteredSelectedStaffTransactions.reduce((totals, transaction) => {
+      const amount = Number(transaction.amount || 0);
+      if (staffTransactionDirection(transaction) === "in") totals.in += amount;
+      else totals.out += amount;
+      return totals;
+    }, { in: 0, out: 0 })
+  ), [filteredSelectedStaffTransactions]);
 
   const activeLoans = useMemo(
     () => loans.filter((loan) => loan.category === "advance" && loan.status === "active" && Number(loan.outstanding || 0) > 0),
@@ -1319,8 +1411,27 @@ export default function HRPage() {
       : payroll?.status !== "paid" && isPayrollPayable(payroll) ? Number(payroll?.balanceDue ?? payroll?.netPay ?? 0) : 0;
     const salaryAccrued = accruedSummary ? Number(accruedSummary.amount || 0) : 0;
     const receivable = receivableByStaff.get(staffId) || { amount: 0, loan: 0, advance: 0, count: 0 };
-    if (salaryDue > 0) return { amount: salaryDue, type: "salary_due", receivable };
-    if (salaryAccrued > 0) return { amount: salaryAccrued, type: "salary_accrued", receivable };
+    const advanceCut = Number(receivable.amount || 0);
+    if (salaryDue > 0) {
+      const netPayable = salaryDue - advanceCut;
+      return {
+        amount: Math.abs(netPayable),
+        rawSalary: salaryDue,
+        advanceCut,
+        type: netPayable > 0 ? "salary_due" : netPayable < 0 ? "receivable" : "settled",
+        receivable,
+      };
+    }
+    if (salaryAccrued > 0) {
+      const netPayable = salaryAccrued - advanceCut;
+      return {
+        amount: Math.abs(netPayable),
+        rawSalary: salaryAccrued,
+        advanceCut,
+        type: netPayable > 0 ? "salary_accrued" : netPayable < 0 ? "receivable" : "settled",
+        receivable,
+      };
+    }
     return { amount: Number(receivable.amount || 0), type: "receivable", receivable };
   };
 
@@ -1507,9 +1618,6 @@ export default function HRPage() {
     if (!canHr("canMarkAttendance")) {
       return showNotice("error", "You do not have permission to mark attendance.");
     }
-    if (isWeeklyOffForStaff(person, attendanceDate) && status !== "weekly_off") {
-      return showNotice("error", "This date is a weekly off. Attendance cannot be marked.");
-    }
     const staffId = idOf(person);
     const shift = person.department?.shift || {};
     const expectedHours = Number(person.expectedHoursPerDay || 8);
@@ -1553,10 +1661,6 @@ export default function HRPage() {
       ...overrides,
     };
     const status = draft.status || "present";
-    if (isWeeklyOffForStaff(person, date) && (status === "present" || status === "absent")) {
-      showNotice("error", "This date is a weekly off. Present or absent cannot be marked.");
-      return;
-    }
     const shift = person.department?.shift || {};
     const isWorkStatus = status === "present" || status === "half_day" || status === "short_leave";
     const isHourly = normalizeSalaryBasisValue(person.salaryBasis) === "hourly";
@@ -2371,17 +2475,17 @@ export default function HRPage() {
                 const scopedPayroll = payrollByStaff.get(idOf(person));
                 const draft = attendanceDrafts[idOf(person)] || {};
                 const receivable = staffReceivableSummary(person);
+                const balance = staffBalanceSummary(person);
                 const salaryDue = dueSummary
                   ? Number(dueSummary.amount || 0)
                   : scopedPayroll?.status !== "paid" && isPayrollPayable(scopedPayroll) ? Number(scopedPayroll?.balanceDue ?? scopedPayroll?.netPay ?? 0) : 0;
                 const salaryAccrued = accruedSummary ? Number(accruedSummary.amount || 0) : 0;
-                const balanceAmount = salaryDue > 0 ? salaryDue : salaryAccrued > 0 ? salaryAccrued : receivable.amount;
-                const balanceIsSalaryDue = salaryDue > 0 || salaryAccrued > 0;
+                const balanceAmount = balance.amount;
+                const balanceIsSalaryDue = balance.type === "salary_due" || balance.type === "salary_accrued";
                 const staffBasis = normalizeSalaryBasisValue(person.salaryBasis);
                 const isHourly = staffBasis === "hourly";
                 const isTimeBased = staffBasis === "hourly" || staffBasis === "daily";
                 const selectedDate = attendanceDate || localDate();
-                const weeklyOffToday = isWeeklyOffForStaff(person, selectedDate);
                 const duePayrollForSelectedDate = dueSummary?.payrolls?.find((item) => item.periodEnd === selectedDate)
                   || (scopedPayroll?.periodEnd === selectedDate ? scopedPayroll : null);
                 const payroll = duePayrollForSelectedDate || dueSummary?.payroll || scopedPayroll;
@@ -2423,13 +2527,7 @@ export default function HRPage() {
                       </span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      {weeklyOffToday && draft.status === "weekly_off" ? (
-                        <span className="hr-att-status-pill wo">WO</span>
-                      ) : weeklyOffToday ? (
-                        <button className="hr-btn hr-btn-ghost compact" onClick={() => quickMarkAttendance(person, "weekly_off")} disabled={!canHr("canMarkAttendance")}>
-                          Mark WO
-                        </button>
-                      ) : isTimeBased ? (
+                      {isTimeBased ? (
                         <div className="hr-hourly-action">
                           <span className={`hr-pill ${isHourly ? "blue" : "amber"}`}>{isHourly ? "Hourly" : "Daily"}</span>
                           <button className="hr-btn hr-btn-ghost compact" onClick={() => openStaffDetail(person)}>
@@ -2582,7 +2680,6 @@ export default function HRPage() {
     const isSingleDayStaff = usesSingleDayAttendance(selectedDetailStaff);
     const attendanceDates = isSingleDayStaff ? [detailDate] : datesInMonth(detailMonth).reverse();
     const isHourlyStaff = normalizeSalaryBasisValue(selectedDetailStaff?.salaryBasis) === "hourly";
-    const expectedHours = Number(selectedDetailStaff?.expectedHoursPerDay || 8);
     return (
       <div>
         <div className="hr-detail-month-bar">
@@ -2607,15 +2704,12 @@ export default function HRPage() {
               <tr>
                 <th>DATE</th>
                 <th>ATTENDANCE</th>
-                <th>WORK HOURS</th>
                 <th>MENU</th>
-                <th>SAVE</th>
               </tr>
             </thead>
             <tbody>
               {attendanceDates.map((date) => {
                 const record = detailAttendanceByDate.get(date);
-                const weeklyOff = selectedDetailStaff && isWeeklyOffForStaff(selectedDetailStaff, date);
                 const rowShift = selectedDetailStaff?.department?.shift || {};
                 const draft = {
                   status: record?.status || "",
@@ -2629,24 +2723,9 @@ export default function HRPage() {
                 };
                 const status = draft.status || "";
                 const meta = ATTENDANCE_STATUS_META[status];
-                const isWorkStatus = status === "present" || status === "half_day" || status === "short_leave";
-                const canEditTime = !status || isWorkStatus;
-                const calculatedHours = isHourlyStaff
-                  ? (draft.checkIn && draft.checkOut ? calculateWorkHours(draft.checkIn, draft.checkOut) : Number(draft.workHours || 0))
-                  : status === "present"
-                    ? expectedHours
-                    : status === "half_day"
-                      ? expectedHours / 2
-                      : status === "short_leave"
-                        ? Math.max(0, expectedHours - 2)
-                        : 0;
                 const overtimeHours = Number(draft.overtimeHours || 0);
                 const fineHours = Number(draft.fineHours || 0);
                 const quickStatus = async (nextStatus) => {
-                  if (weeklyOff) {
-                    showNotice("error", "This date is a weekly off. Present or absent cannot be marked.");
-                    return;
-                  }
                   const overrides = { status: nextStatus };
                   if (nextStatus === "present") {
                     const shiftCheckIn = draft.checkIn || rowShift.start || "09:00";
@@ -2671,39 +2750,16 @@ export default function HRPage() {
                     <td>
                       <div className="hr-detail-att-row">
                         <div className="hr-detail-quick-mark">
-                          <button type="button" className={`hr-att-btn ${status === "present" ? "active" : ""}`} onClick={() => quickStatus("present")} disabled={weeklyOff || !canHr("canMarkAttendance")} title={weeklyOff ? "Weekly off" : "Present"}>P</button>
-                          <button type="button" className={`hr-att-btn ${status === "absent" ? "active-absent" : ""}`} onClick={() => quickStatus("absent")} disabled={weeklyOff || !canHr("canMarkAttendance")} title={weeklyOff ? "Weekly off" : "Absent"}>A</button>
+                          <button type="button" className={`hr-att-btn ${status === "present" ? "active" : ""}`} onClick={() => quickStatus("present")} disabled={!canHr("canMarkAttendance")} title="Present">P</button>
+                          <button type="button" className={`hr-att-btn ${status === "absent" ? "active-absent" : ""}`} onClick={() => quickStatus("absent")} disabled={!canHr("canMarkAttendance")} title="Absent">A</button>
                         </div>
                         {meta && status !== "present" && status !== "absent" && <span className="hr-att-status-pill" style={{ background: pillBg(meta.tone), color: pillFg(meta.tone) }}>{meta.short}</span>}
-                        {!status && <span className="hr-muted">Unmarked</span>}
                         {(overtimeHours > 0 || fineHours > 0) && (
                           <small className="hr-att-adjustment-note">
                             OT {overtimeHours}h / Fine {fineHours}h
                           </small>
                         )}
                       </div>
-                    </td>
-                    <td>
-                      <input
-                        className="hr-mini-input hr-hours-input"
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        value={Number(calculatedHours || 0).toFixed(2)}
-                        disabled={!isHourlyStaff || !canEditTime || weeklyOff || !canHr("canMarkAttendance")}
-                        onChange={(e) => {
-                          const nextHours = e.target.value;
-                          const baseCheckIn = draft.checkIn || rowShift.start || "09:00";
-                          const nextDraft = {
-                            ...draft,
-                            status: draft.status || "present",
-                            checkIn: baseCheckIn,
-                            workHours: nextHours,
-                            checkOut: addHoursToTime(baseCheckIn, nextHours),
-                          };
-                          setDetailAttendanceDrafts((prev) => ({ ...prev, [date]: nextDraft }));
-                        }}
-                      />
                     </td>
                     <td>
                       {canHr("canMarkAttendance") ? (
@@ -2713,11 +2769,6 @@ export default function HRPage() {
                           onAction={(action) => applyDetailAttendanceMenuAction(selectedDetailStaff, date, action)}
                         />
                       ) : <span className="hr-muted">--</span>}
-                    </td>
-                    <td>
-                      <button type="button" className="hr-btn hr-btn-ghost compact" onClick={() => saveDetailAttendanceDraft(selectedDetailStaff, date)} disabled={(weeklyOff && !status) || !canHr("canMarkAttendance")}>
-                        Save
-                      </button>
                     </td>
                   </tr>
                 );
@@ -2807,16 +2858,35 @@ export default function HRPage() {
       <div className="hr-mini-card">
         <div className="hr-sub-head-row">
           <h4>Transactions</h4>
-          {canHr("canMakePayments") && (
-            <button className="hr-btn hr-btn-primary compact" onClick={() => makeStaffPayment(selectedDetailStaff)} disabled={saving}>
-              <CreditCard size={14} /> Make Payment
-            </button>
-          )}
+        </div>
+        <div className="hr-bank-filter-bar staff-tx-filter-bar">
+          <div className="hr-bank-filter-controls">
+            <select value={staffTxnFilter.mode} onChange={(e) => setStaffTxnFilter((p) => ({ ...p, mode: e.target.value }))}>
+              {TRANSACTION_RANGE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+            {staffTxnFilter.mode === "date" && (
+              <input type="date" value={staffTxnFilter.date} onChange={(e) => setStaffTxnFilter((p) => ({ ...p, date: e.target.value }))} />
+            )}
+            {staffTxnFilter.mode === "month" && (
+              <input type="month" value={staffTxnFilter.month} onChange={(e) => setStaffTxnFilter((p) => ({ ...p, month: e.target.value }))} />
+            )}
+            <select value={staffTxnFilter.type} onChange={(e) => setStaffTxnFilter((p) => ({ ...p, type: e.target.value }))}>
+              {STAFF_TRANSACTION_TYPE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="hr-bank-filter-totals">
+            <span className="in">In {formatMoney(filteredStaffTransactionTotals.in)}</span>
+            <span className="out">Out {formatMoney(filteredStaffTransactionTotals.out)}</span>
+          </div>
         </div>
         <table className="hr-mini-table staff-tx-table">
           <thead><tr><th>Date</th><th>Bank</th><th>Type</th><th>Details</th><th>Amount</th></tr></thead>
           <tbody>
-            {selectedStaffTransactions.length === 0 ? <tr><td colSpan={5} className="hr-empty-cell">No transactions yet.</td></tr> : selectedStaffTransactions.map((t) => {
+            {filteredSelectedStaffTransactions.length === 0 ? <tr><td colSpan={5} className="hr-empty-cell">{selectedStaffTransactions.length === 0 ? "No transactions yet." : "No transactions for this filter."}</td></tr> : filteredSelectedStaffTransactions.map((t) => {
               const period = transactionPeriodLabel(t);
               const breakdown = transactionBreakdownText(t);
               const emi = transactionLoanDeduction(t);
@@ -2918,7 +2988,7 @@ export default function HRPage() {
         </Field>
       </div>
       <button className="hr-btn hr-btn-primary mt12" onClick={autoMarkUnmarkedAttendance} disabled={saving}>
-        <CheckCircle2 size={14} /> Mark Unmarked Staff
+        <CheckCircle2 size={14} /> Mark Staff
       </button>
     </div>
   );
@@ -5677,6 +5747,9 @@ const hrStyles = `
     gap: 12px;
     padding: 14px 20px 0;
     flex-wrap: wrap;
+  }
+  .staff-tx-filter-bar {
+    padding: 0 0 12px;
   }
   .hr-bank-filter-controls,
   .hr-bank-filter-totals {

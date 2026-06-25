@@ -621,11 +621,11 @@ export default function OrganizationsPage() {
               <table>
                 <thead>
                   <tr>
-                    {["Organization", "Super Admin", "Email", "Modules", "Created", "Actions"].map((label, index) => (
+                    {["Organization", "Super Admin", "Email", "Modules", "Number", "Actions"].map((label, index) => (
                       <th key={label} style={{ textAlign: index === 5 ? "right" : "left" }}>
                         <div
                           className="org-skeleton org-skeleton-line"
-                          style={{ width: index === 5 ? 72 : [118, 96, 136, 82, 68][index] }}
+                          style={{ width: index === 5 ? 72 : [118, 96, 136, 82, 92][index] }}
                         />
                       </th>
                     ))}
@@ -675,7 +675,7 @@ export default function OrganizationsPage() {
                     <th style={{ padding: 12, fontSize: 12 }}>Super Admin</th>
                     <th style={{ padding: 12, fontSize: 12 }}>Email</th>
                     <th style={{ padding: 12, fontSize: 12 }}>Modules</th>
-                    <th style={{ padding: 12, fontSize: 12 }}>Created</th>
+                    <th style={{ padding: 12, fontSize: 12 }}>Number</th>
                     <th style={{ padding: 12, fontSize: 12, textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
@@ -730,23 +730,13 @@ export default function OrganizationsPage() {
                         </td>
                         <td style={{ padding: 12 }}>
                           {isEditing ? (
-                            <div style={{ display: "grid", gap: 8, minWidth: 180 }}>
-                              <input
-                                value={editForm.superAdminName}
-                                onChange={(e) => updateEditField("superAdminName", e.target.value)}
-                                placeholder="Super admin name"
-                              />
-                              <input
-                                value={editForm.superAdminPhone}
-                                onChange={(e) => updateEditField("superAdminPhone", e.target.value)}
-                                placeholder="Phone number"
-                              />
-                            </div>
+                            <input
+                              value={editForm.superAdminName}
+                              onChange={(e) => updateEditField("superAdminName", e.target.value)}
+                              placeholder="Super admin name"
+                            />
                           ) : (
-                            <div style={{ display: "grid", gap: 3 }}>
-                              <span>{org.superAdmin?.name || "-"}</span>
-                              {org.superAdmin?.phone && <small style={{ color: "var(--app-text-muted)" }}>{org.superAdmin.phone}</small>}
-                            </div>
+                            org.superAdmin?.name || "-"
                           )}
                         </td>
                         <td style={{ padding: 12 }}>{org.superAdmin?.email || "-"}</td>
@@ -786,7 +776,17 @@ export default function OrganizationsPage() {
                             ))
                           )}
                         </td>
-                        <td style={{ padding: 12 }}>{org.createdAt ? new Date(org.createdAt).toLocaleDateString() : "-"}</td>
+                        <td style={{ padding: 12 }}>
+                          {isEditing ? (
+                            <input
+                              value={editForm.superAdminPhone}
+                              onChange={(e) => updateEditField("superAdminPhone", e.target.value)}
+                              placeholder="Phone number"
+                            />
+                          ) : (
+                            org.superAdmin?.phone || "-"
+                          )}
+                        </td>
                         <td style={{ padding: 12 }}>
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                             {isEditing ? (
