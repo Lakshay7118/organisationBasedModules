@@ -30,7 +30,7 @@ export default function OrganizationsPage() {
   const [updatingId, setUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [editingOrgId, setEditingOrgId] = useState("");
-  const [editForm, setEditForm] = useState({ organizationName: "", allowedModules: [] });
+  const [editForm, setEditForm] = useState({ organizationName: "", superAdminName: "", superAdminPhone: "", allowedModules: [] });
   const [expandedOrgId, setExpandedOrgId] = useState("");
   const [credentialForms, setCredentialForms] = useState({});
   const [credentialSavingId, setCredentialSavingId] = useState("");
@@ -85,6 +85,8 @@ export default function OrganizationsPage() {
     setEditingOrgId(org._id);
     setEditForm({
       organizationName: org.name || "",
+      superAdminName: org.superAdmin?.name || "",
+      superAdminPhone: org.superAdmin?.phone || "",
       allowedModules: org.allowedModules?.length ? org.allowedModules : ["hr"],
     });
   };
@@ -97,7 +99,6 @@ export default function OrganizationsPage() {
       ...prev,
       [org._id]: {
         email: prev[org._id]?.email ?? org.superAdmin?.email ?? "",
-        currentPassword: prev[org._id]?.currentPassword ?? org.superAdmin?.password ?? "",
         password: prev[org._id]?.password ?? "",
       },
     }));
@@ -108,7 +109,6 @@ export default function OrganizationsPage() {
       ...prev,
       [orgId]: {
         email: prev[orgId]?.email || "",
-        currentPassword: prev[orgId]?.currentPassword || "",
         password: prev[orgId]?.password || "",
         [field]: value,
       },
@@ -117,7 +117,7 @@ export default function OrganizationsPage() {
 
   const cancelEdit = () => {
     setEditingOrgId("");
-    setEditForm({ organizationName: "", allowedModules: [] });
+    setEditForm({ organizationName: "", superAdminName: "", superAdminPhone: "", allowedModules: [] });
   };
 
   const updateEditField = (field, value) => {
@@ -222,7 +222,6 @@ export default function OrganizationsPage() {
           ...prev,
           [org._id]: {
             email: res.data.data.superAdmin?.email || prev[org._id]?.email || "",
-            currentPassword: res.data.data.superAdmin?.password || "",
             password: "",
           },
         }));
@@ -687,7 +686,6 @@ export default function OrganizationsPage() {
                     const editModules = new Set(editForm.allowedModules);
                     const credentialForm = credentialForms[org._id] || {
                       email: org.superAdmin?.email || "",
-                      currentPassword: org.superAdmin?.password || "",
                       password: "",
                     };
                     return (
@@ -730,7 +728,27 @@ export default function OrganizationsPage() {
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: 12 }}>{org.superAdmin?.name || "-"}</td>
+                        <td style={{ padding: 12 }}>
+                          {isEditing ? (
+                            <div style={{ display: "grid", gap: 8, minWidth: 180 }}>
+                              <input
+                                value={editForm.superAdminName}
+                                onChange={(e) => updateEditField("superAdminName", e.target.value)}
+                                placeholder="Super admin name"
+                              />
+                              <input
+                                value={editForm.superAdminPhone}
+                                onChange={(e) => updateEditField("superAdminPhone", e.target.value)}
+                                placeholder="Phone number"
+                              />
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: 3 }}>
+                              <span>{org.superAdmin?.name || "-"}</span>
+                              {org.superAdmin?.phone && <small style={{ color: "var(--app-text-muted)" }}>{org.superAdmin.phone}</small>}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: 12 }}>{org.superAdmin?.email || "-"}</td>
                         <td style={{ padding: 12, minWidth: 260 }}>
                           {isEditing ? (
@@ -857,15 +875,6 @@ export default function OrganizationsPage() {
                                     <Mail size={16} />
                                   </button>
                                 </div>
-                              </label>
-
-                              <label style={{ display: "grid", gap: 6 }}>
-                                <span style={{ fontSize: 12, fontWeight: 800, color: "var(--app-text)" }}>Stored Password</span>
-                                <input
-                                  value={credentialForm.currentPassword}
-                                  readOnly
-                                  placeholder="No password on response"
-                                />
                               </label>
 
                               <label style={{ display: "grid", gap: 6 }}>
