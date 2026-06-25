@@ -97,6 +97,7 @@ export default function OrganizationsPage() {
       ...prev,
       [org._id]: {
         email: prev[org._id]?.email ?? org.superAdmin?.email ?? "",
+        currentPassword: prev[org._id]?.currentPassword ?? org.superAdmin?.password ?? "",
         password: prev[org._id]?.password ?? "",
       },
     }));
@@ -107,6 +108,7 @@ export default function OrganizationsPage() {
       ...prev,
       [orgId]: {
         email: prev[orgId]?.email || "",
+        currentPassword: prev[orgId]?.currentPassword || "",
         password: prev[orgId]?.password || "",
         [field]: value,
       },
@@ -213,8 +215,20 @@ export default function OrganizationsPage() {
     setCredentialSavingId(`${org._id}:password`);
 
     try {
-      await API.patch(`/organizations/${org._id}/super-admin/password`, { password });
-      updateCredentialField(org._id, "password", "");
+      const res = await API.patch(`/organizations/${org._id}/super-admin/password`, { password });
+      if (res.data?.data) {
+        setOrganizations((prev) => prev.map((item) => (item._id === org._id ? res.data.data : item)));
+        setCredentialForms((prev) => ({
+          ...prev,
+          [org._id]: {
+            email: res.data.data.superAdmin?.email || prev[org._id]?.email || "",
+            currentPassword: res.data.data.superAdmin?.password || "",
+            password: "",
+          },
+        }));
+      } else {
+        updateCredentialField(org._id, "password", "");
+      }
       setMessage("Super admin password updated.");
     } catch (err) {
       setError(err.response?.data?.error || "Could not update password");
@@ -673,6 +687,7 @@ export default function OrganizationsPage() {
                     const editModules = new Set(editForm.allowedModules);
                     const credentialForm = credentialForms[org._id] || {
                       email: org.superAdmin?.email || "",
+                      currentPassword: org.superAdmin?.password || "",
                       password: "",
                     };
                     return (
@@ -842,6 +857,15 @@ export default function OrganizationsPage() {
                                     <Mail size={16} />
                                   </button>
                                 </div>
+                              </label>
+
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: "var(--app-text)" }}>Stored Password</span>
+                                <input
+                                  value={credentialForm.currentPassword}
+                                  readOnly
+                                  placeholder="No password on response"
+                                />
                               </label>
 
                               <label style={{ display: "grid", gap: 6 }}>
