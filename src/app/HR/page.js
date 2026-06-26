@@ -45,6 +45,7 @@ const DAY_OPTIONS = [
 const HR_MAIN_TABS = [
   { id: "overview", label: "Overview", icon: ListChecks },
   { id: "staff-payroll", label: "Staff & Payroll", icon: Users },
+  { id: "departments", label: "Departments", icon: Building2 },
   { id: "banks-loans", label: "Banks & Advances", icon: Landmark },
 ];
 const HR_PERMISSION_KEYS = [
@@ -101,13 +102,22 @@ const ATTENDANCE_MARK_OPTIONS = [
   ["present", "P"],
   ["absent", "A"],
 ];
+const BREAK_OPTIONS = [
+  { value: 30, label: "0.5 hr" },
+  { value: 45, label: "45 min" },
+  { value: 60, label: "1 hr" },
+  { value: 90, label: "1.5 hr" },
+  { value: 120, label: "2 hr" },
+];
 const COUNTRY_OPTIONS = Country.getAllCountries();
+const defaultShift = { name: "General", start: "09:00", end: "18:00", breakMinutes: 60 };
 
 const emptyDepartment = {
   name: "",
   description: "",
   weeklyOffDays: [0],
-  shift: { name: "General", start: "09:00", end: "18:00", breakMinutes: 60 },
+  shift: defaultShift,
+  shifts: [defaultShift],
   leavePolicy: { paidLeaves: 0, shortLeaves: 0 },
   superAdmin: null,
 };
@@ -128,6 +138,7 @@ const emptyStaff = {
   branch: "",
   upiId: "",
   department: "",
+  shiftId: "",
   designation: "",
   monthlySalary: "",
   salaryBasis: "monthly",
@@ -195,6 +206,33 @@ function calculateWorkHours(checkIn, checkOut) {
   return Math.round(((adjustedEnd - start) / 60) * 100) / 100;
 }
 
+function normalizeShiftValue(shift = {}, fallback = defaultShift) {
+  return {
+    _id: shift._id,
+    name: shift.name || fallback.name || "General",
+    start: shift.start || fallback.start || "09:00",
+    end: shift.end || fallback.end || "18:00",
+    breakMinutes: shift.breakMinutes ?? fallback.breakMinutes ?? 60,
+  };
+}
+
+function shiftsForDepartment(department = {}) {
+  const shifts = Array.isArray(department.shifts) && department.shifts.length
+    ? department.shifts
+    : [department.shift || defaultShift];
+  return shifts.map((shift, index) => normalizeShiftValue(shift, index === 0 ? defaultShift : {}));
+}
+
+function shiftWorkHours(shift = {}) {
+  const total = calculateWorkHours(shift.start, shift.end);
+  const breakHours = Math.max(0, Number(shift.breakMinutes || 0)) / 60;
+  return Math.round(Math.max(0, total - breakHours) * 100) / 100;
+}
+
+function shiftIdValue(shift, index = 0) {
+  return idOf(shift) || `shift-${index}`;
+}
+
 function addHoursToTime(startTime, hours) {
   const start = timeToMinutes(startTime);
   const numericHours = Number(hours);
@@ -208,7 +246,10 @@ function addHoursToTime(startTime, hours) {
 
 function shiftLabel(shift) {
   if (!shift?.start && !shift?.end) return "No shift set";
-  return `${shift?.start || "--"} - ${shift?.end || "--"}`;
+  const breakLabel = BREAK_OPTIONS.find((option) => Number(option.value) === Number(shift.breakMinutes))?.label;
+  const breakText = breakLabel ? `, Break ${breakLabel}` : "";
+  const name = shift.name && shift.name !== "General" ? `${shift.name}: ` : "";
+  return `${name}${shift?.start || "--"} - ${shift?.end || "--"}${breakText}`;
 }
 
 function payrollDueDateFromValue(day, value = localDate()) {
@@ -1151,6 +1192,14 @@ export default function HRPage() {
     () => departments.find((department) => idOf(department) === staffForm.department) || null,
     [departments, staffForm.department]
   );
+  const selectedStaffFormShifts = useMemo(
+    () => shiftsForDepartment(selectedStaffFormDepartment || {}),
+    [selectedStaffFormDepartment]
+  );
+  const selectedStaffFormShift = useMemo(
+    () => selectedStaffFormShifts.find((shift, index) => shiftIdValue(shift, index) === staffForm.shiftId) || selectedStaffFormShifts[0] || null,
+    [selectedStaffFormShifts, staffForm.shiftId]
+  );
   const staffAddressStates = useMemo(
     () => State.getStatesOfCountry(staffForm.addressCountry || ""),
     [staffForm.addressCountry]
@@ -1176,7 +1225,7 @@ export default function HRPage() {
 
   const staffSalaryPreview = useMemo(() => {
     const amount = Number(staffForm.monthlySalary || 0);
-    const dailyHours = Math.max(0, Number(staffForm.expectedHoursPerDay || 0)) || 8;
+    const dailyHours = shiftWorkHours(selectedStaffFormShift || {}) || Math.max(0, Number(staffForm.expectedHoursPerDay || 0)) || 8;
     const basis = normalizeSalaryBasisValue(staffForm.salaryBasis);
     const cycleDay = normalizePayrollCycleDay(staffForm.payrollCycleDay || cycleStartDay, cycleStartDay);
     const monthlyDueDate = monthlyDueDateForWorkDate(attendanceDate || localDate(), cycleDay);
@@ -1206,7 +1255,7 @@ export default function HRPage() {
       { label: "Daily salary", value: daily },
       { label: "Hourly salary", value: daily / dailyHours },
     ];
-  }, [attendanceDate, cycleStartDay, selectedStaffFormDepartment, staffForm.expectedHoursPerDay, staffForm.monthlySalary, staffForm.payrollCycleDay, staffForm.salaryBasis]);
+  }, [attendanceDate, cycleStartDay, selectedStaffFormDepartment, selectedStaffFormShift, staffForm.expectedHoursPerDay, staffForm.monthlySalary, staffForm.payrollCycleDay, staffForm.salaryBasis]);
 
   const showNotice = useCallback((type, text) => setNotice({ type, text }), []);
 
@@ -1504,7 +1553,13 @@ export default function HRPage() {
       const payload = {
         name: departmentForm.name,
         description: departmentForm.description,
-        shift: departmentForm.shift,
+        shift: (departmentForm.shifts || [departmentForm.shift])[0],
+        shifts: (departmentForm.shifts || [departmentForm.shift]).map((shift) => ({
+          name: shift.name || "General",
+          start: shift.start || "09:00",
+          end: shift.end || "18:00",
+          breakMinutes: Number(shift.breakMinutes || 0),
+        })),
         weeklyOffDays: departmentForm.weeklyOffDays.map(Number),
         leavePolicy: { paidLeaves: Number(departmentForm.leavePolicy?.paidLeaves || 0), shortLeaves: Number(departmentForm.leavePolicy?.shortLeaves || 0) },
       };
@@ -1536,9 +1591,10 @@ export default function HRPage() {
       const payload = {
         ...staffForm,
         department: staffForm.department || null,
+        shiftId: staffForm.shiftId || null,
         monthlySalary: Number(staffForm.monthlySalary || 0),
         salaryBasis: normalizeSalaryBasisValue(staffForm.salaryBasis),
-        expectedHoursPerDay: Number(staffForm.expectedHoursPerDay || 8),
+        expectedHoursPerDay: shiftWorkHours(selectedStaffFormShift || {}) || Number(staffForm.expectedHoursPerDay || 8),
         payrollCycleDay: normalizePayrollCycleDay(staffForm.payrollCycleDay),
         address: {
           countryCode: staffForm.addressCountry || "",
@@ -1619,7 +1675,7 @@ export default function HRPage() {
       return showNotice("error", "You do not have permission to mark attendance.");
     }
     const staffId = idOf(person);
-    const shift = person.department?.shift || {};
+    const shift = person.shift?.start || person.shift?.end ? person.shift : person.department?.shift || {};
     const expectedHours = Number(person.expectedHoursPerDay || 8);
     const isHourly = normalizeSalaryBasisValue(person.salaryBasis) === "hourly";
     const isWorkStatus = status === "present" || status === "half_day" || status === "short_leave";
@@ -1661,7 +1717,7 @@ export default function HRPage() {
       ...overrides,
     };
     const status = draft.status || "present";
-    const shift = person.department?.shift || {};
+    const shift = person.shift?.start || person.shift?.end ? person.shift : person.department?.shift || {};
     const isWorkStatus = status === "present" || status === "half_day" || status === "short_leave";
     const isHourly = normalizeSalaryBasisValue(person.salaryBasis) === "hourly";
     const expectedHours = Number(person.expectedHoursPerDay || 8);
@@ -2381,7 +2437,7 @@ export default function HRPage() {
         const expectedHours = Number(person.expectedHoursPerDay || 8);
         const isHourly = normalizeSalaryBasisValue(person.salaryBasis) === "hourly";
         const isWorkStatus = status === "present" || status === "half_day" || status === "short_leave";
-        const shift = person.department?.shift || {};
+        const shift = person.shift?.start || person.shift?.end ? person.shift : person.department?.shift || {};
         const checkIn = isWorkStatus ? (isHourly ? shift.start || attendanceSettings.checkIn : attendanceSettings.checkIn) : "";
         const checkOut = isWorkStatus ? (isHourly ? shift.end || attendanceSettings.checkOut : attendanceSettings.checkOut) : "";
         const res = await API.post("/hr/attendance", {
@@ -2429,9 +2485,6 @@ export default function HRPage() {
         <div className="hr-topbar-actions">
           <button className="hr-btn hr-btn-ghost" onClick={() => { setToolsOpen("attendance-settings"); }}>
             <Settings size={15} /> Attendance Settings
-          </button>
-          <button className="hr-btn hr-btn-ghost" onClick={() => { setEditingDepartmentId(""); setDepartmentForm(emptyDepartment); setToolsOpen("department"); }}>
-            <Building2 size={15} /> Add Department
           </button>
           {/* Add Staff is now handled from the Contacts page. */}
           {/* <button className="hr-btn hr-btn-primary" onClick={() => router.push("/HR/onboard")}>
@@ -2710,7 +2763,7 @@ export default function HRPage() {
             <tbody>
               {attendanceDates.map((date) => {
                 const record = detailAttendanceByDate.get(date);
-                const rowShift = selectedDetailStaff?.department?.shift || {};
+                const rowShift = selectedDetailStaff?.shift?.start || selectedDetailStaff?.shift?.end ? selectedDetailStaff.shift : selectedDetailStaff?.department?.shift || {};
                 const draft = {
                   status: record?.status || "",
                   checkIn: record?.checkIn || "",
@@ -3000,9 +3053,47 @@ export default function HRPage() {
       <form className="hr-form-grid-2" onSubmit={saveDepartment}>
         <Field label="Name"><input value={departmentForm.name} onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })} placeholder="Sales" /></Field>
         <Field label="Description"><input value={departmentForm.description} onChange={(e) => setDepartmentForm({ ...departmentForm, description: e.target.value })} placeholder="Optional" /></Field>
-        <Field label="Shift Start"><input type="time" value={departmentForm.shift.start} onChange={(e) => setDepartmentForm({ ...departmentForm, shift: { ...departmentForm.shift, start: e.target.value } })} /></Field>
-        <Field label="Shift End"><input type="time" value={departmentForm.shift.end} onChange={(e) => setDepartmentForm({ ...departmentForm, shift: { ...departmentForm.shift, end: e.target.value } })} /></Field>
-        <Field label="Break (mins)"><input type="number" min="0" value={departmentForm.shift.breakMinutes} onChange={(e) => setDepartmentForm({ ...departmentForm, shift: { ...departmentForm.shift, breakMinutes: e.target.value } })} /></Field>
+        <div className="hr-span2 hr-shift-editor">
+          <label className="hr-field-label">Shifts</label>
+          {(departmentForm.shifts || [departmentForm.shift || defaultShift]).map((shift, index) => (
+            <div className="hr-shift-editor-row" key={shift._id || index}>
+              <input value={shift.name || ""} onChange={(e) => {
+                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
+                shifts[index] = { ...shifts[index], name: e.target.value };
+                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
+              }} placeholder="Shift name" />
+              <input type="time" value={shift.start || ""} onChange={(e) => {
+                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
+                shifts[index] = { ...shifts[index], start: e.target.value };
+                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
+              }} />
+              <input type="time" value={shift.end || ""} onChange={(e) => {
+                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
+                shifts[index] = { ...shifts[index], end: e.target.value };
+                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
+              }} />
+              <select value={shift.breakMinutes ?? 60} onChange={(e) => {
+                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
+                shifts[index] = { ...shifts[index], breakMinutes: Number(e.target.value) };
+                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
+              }}>
+                {BREAK_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <span>{shiftWorkHours(shift)}h</span>
+              <button type="button" className="hr-icon-btn" onClick={() => {
+                const current = departmentForm.shifts || [departmentForm.shift || defaultShift];
+                const shifts = current.filter((_, shiftIndex) => shiftIndex !== index);
+                const next = shifts.length ? shifts : [defaultShift];
+                setDepartmentForm({ ...departmentForm, shifts: next, shift: next[0] });
+              }} disabled={(departmentForm.shifts || []).length <= 1}><Trash2 size={13} /></button>
+            </div>
+          ))}
+          <button type="button" className="hr-btn hr-btn-ghost compact" onClick={() => {
+            const current = departmentForm.shifts || [departmentForm.shift || defaultShift];
+            const next = [...current, { ...defaultShift, name: `Shift ${current.length + 1}` }];
+            setDepartmentForm({ ...departmentForm, shifts: next, shift: next[0] });
+          }}><Plus size={14} /> Add Shift</button>
+        </div>
         <Field label="Paid Leave / Cycle"><input type="number" min="0" value={departmentForm.leavePolicy?.paidLeaves ?? 0} onChange={(e) => setDepartmentForm({ ...departmentForm, leavePolicy: { ...(departmentForm.leavePolicy || {}), paidLeaves: e.target.value } })} /></Field>
         <Field label="Short Leave / Cycle"><input type="number" min="0" value={departmentForm.leavePolicy?.shortLeaves ?? 0} onChange={(e) => setDepartmentForm({ ...departmentForm, leavePolicy: { ...(departmentForm.leavePolicy || {}), shortLeaves: e.target.value } })} /></Field>
         {editingDepartmentId && (
@@ -3033,10 +3124,48 @@ export default function HRPage() {
           <button type="submit" className="hr-btn hr-btn-primary" disabled={saving}><Save size={14} /> {editingDepartmentId ? "Update" : "Add Department"}</button>
         </div>
       </form>
+    </div>
+  );
 
-      {/* Departments list below form */}
-      <div className="hr-dept-list">
-        {departments.length === 0 ? <p className="hr-muted">No departments yet.</p> : departments.map((dept) => (
+  const openDepartmentModal = (dept = null) => {
+    if (!dept) {
+      setEditingDepartmentId("");
+      setDepartmentForm(emptyDepartment);
+      setToolsOpen("department");
+      return;
+    }
+    const shifts = shiftsForDepartment(dept);
+    setEditingDepartmentId(idOf(dept));
+    setDepartmentForm({
+      name: dept.name || "",
+      description: dept.description || "",
+      weeklyOffDays: dept.weeklyOffDays || [],
+      shift: shifts[0] || defaultShift,
+      shifts,
+      leavePolicy: { paidLeaves: dept.leavePolicy?.paidLeaves ?? 0, shortLeaves: dept.leavePolicy?.shortLeaves ?? 0 },
+      superAdmin: dept.superAdmin || null,
+    });
+    setToolsOpen("department");
+  };
+
+  const renderDepartmentsTab = () => (
+    <section className="hr-main-section">
+      <div className="hr-section-topbar">
+        <div>
+          <h1>Departments</h1>
+          <p className="hr-muted">Manage departments, weekly offs, leave policy, and shift timings.</p>
+        </div>
+        <div className="hr-topbar-actions">
+          <button className="hr-btn hr-btn-primary" onClick={() => openDepartmentModal()}>
+            <Plus size={15} /> Add Department
+          </button>
+        </div>
+      </div>
+
+      <div className="hr-departments-grid">
+        {departments.length === 0 ? (
+          <div className="hr-empty-block">No departments yet.</div>
+        ) : departments.map((dept) => (
           <div key={idOf(dept)} className="hr-dept-card">
             <div className="hr-dept-card-head">
               <div>
@@ -3044,19 +3173,24 @@ export default function HRPage() {
                 <small>{dept.description || "No description"}</small>
               </div>
               <div className="hr-row-actions">
-                <button className="hr-icon-btn" onClick={() => { setEditingDepartmentId(idOf(dept)); setDepartmentForm({ name: dept.name || "", description: dept.description || "", weeklyOffDays: dept.weeklyOffDays || [], shift: { name: dept.shift?.name || "General", start: dept.shift?.start || "09:00", end: dept.shift?.end || "18:00", breakMinutes: dept.shift?.breakMinutes ?? 60 }, leavePolicy: { paidLeaves: dept.leavePolicy?.paidLeaves ?? 0, shortLeaves: dept.leavePolicy?.shortLeaves ?? 0 }, superAdmin: dept.superAdmin || null }); }}><Pencil size={13} /></button>
+                <button className="hr-icon-btn" onClick={() => openDepartmentModal(dept)}><Pencil size={13} /></button>
                 <button className="hr-icon-btn danger" onClick={() => deleteDepartment(dept)}><Trash2 size={13} /></button>
               </div>
             </div>
             <div className="hr-dept-meta">
               <span>Off: {dayLabels(dept.weeklyOffDays)}</span>
-              <span>Shift: {shiftLabel(dept.shift)}</span>
+              <span>Paid leave: {dept.leavePolicy?.paidLeaves ?? 0}/cycle</span>
               <span>Short leave: {dept.leavePolicy?.shortLeaves ?? 0}/cycle</span>
+            </div>
+            <div className="hr-dept-shifts">
+              {shiftsForDepartment(dept).map((shift, index) => (
+                <span key={shiftIdValue(shift, index)}>{shiftLabel(shift)} | {shiftWorkHours(shift)}h</span>
+              ))}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 
   // Add staff form
@@ -3105,16 +3239,33 @@ export default function HRPage() {
           </>
         )}
         <Field label="Department">
-          <select value={staffForm.department} onChange={(e) => setStaffForm({ ...staffForm, department: e.target.value })}>
+          <select value={staffForm.department} onChange={(e) => {
+            const department = departments.find((d) => idOf(d) === e.target.value);
+            const firstShift = shiftsForDepartment(department || {})[0];
+            setStaffForm({ ...staffForm, department: e.target.value, shiftId: firstShift ? shiftIdValue(firstShift, 0) : "" });
+          }}>
             <option value="">Select department</option>
-            {departments.map((d) => <option key={idOf(d)} value={idOf(d)}>{d.name} ({shiftLabel(d.shift)})</option>)}
+            {departments.map((d) => <option key={idOf(d)} value={idOf(d)}>{d.name}</option>)}
           </select>
         </Field>
+        {selectedStaffFormDepartment && (
+          <Field label="Shift">
+            <select value={staffForm.shiftId || (selectedStaffFormShift ? shiftIdValue(selectedStaffFormShift, 0) : "")} onChange={(e) => {
+              const nextShift = selectedStaffFormShifts.find((shift, index) => shiftIdValue(shift, index) === e.target.value);
+              setStaffForm({ ...staffForm, shiftId: e.target.value, expectedHoursPerDay: shiftWorkHours(nextShift || {}) || staffForm.expectedHoursPerDay });
+            }}>
+              {selectedStaffFormShifts.map((shift, index) => (
+                <option key={shiftIdValue(shift, index)} value={shiftIdValue(shift, index)}>{shiftLabel(shift)}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Designation"><input value={staffForm.designation} onChange={(e) => setStaffForm({ ...staffForm, designation: e.target.value })} placeholder="Support Executive" /></Field>
         {selectedStaffFormDepartment && (
           <div className="hr-shift-preview">
             <span>Shift</span>
-            <strong>{shiftLabel(selectedStaffFormDepartment.shift)}</strong>
+            <strong>{shiftLabel(selectedStaffFormShift)}</strong>
+            <small>Working hours: {shiftWorkHours(selectedStaffFormShift || {})}h after break</small>
             <small>Weekly off: {dayLabels(selectedStaffFormDepartment.weeklyOffDays)} | Short leave: {selectedStaffFormDepartment.leavePolicy?.shortLeaves ?? 0}/cycle</small>
           </div>
         )}
@@ -3140,7 +3291,7 @@ export default function HRPage() {
         <Field label={normalizeSalaryBasisValue(staffForm.salaryBasis) === "hourly" ? "Hourly Rate" : normalizeSalaryBasisValue(staffForm.salaryBasis) === "daily" ? "Daily Salary" : "Monthly Salary"}>
           <input type="number" min="0" value={staffForm.monthlySalary} onChange={(e) => setStaffForm({ ...staffForm, monthlySalary: e.target.value })} placeholder="30000" />
         </Field>
-        <Field label="Daily Work Hours"><input type="number" min="0" step="0.5" value={staffForm.expectedHoursPerDay} onChange={(e) => setStaffForm({ ...staffForm, expectedHoursPerDay: e.target.value })} /></Field>
+        <Field label="Daily Work Hours"><input type="number" min="0" step="0.5" value={shiftWorkHours(selectedStaffFormShift || {}) || staffForm.expectedHoursPerDay} onChange={(e) => setStaffForm({ ...staffForm, expectedHoursPerDay: e.target.value })} /></Field>
         <div className="hr-salary-preview hr-span2">
           <span>Salary preview</span>
           <div>
@@ -4042,6 +4193,7 @@ export default function HRPage() {
 
           {active === "overview" && renderOverview()}
           {active === "banks-loans" && renderBanksLoans()}
+          {active === "departments" && renderDepartmentsTab()}
           {active === "staff-payroll" && (detailStaffId ? renderStaffDetail() : renderAttendanceWorkspace())}
         </>
       )}
@@ -5223,6 +5375,25 @@ const hrStyles = `
     font-size: 13px;
     font-weight: 600;
   }
+  .hr-shift-editor { display: flex; flex-direction: column; gap: 8px; }
+  .hr-shift-editor-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 1fr) 104px 104px 112px 52px 38px;
+    gap: 8px;
+    align-items: end;
+  }
+  .hr-shift-editor-row span {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--hr-line);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--app-text);
+    background: var(--hr-bg);
+  }
   .hr-field { display: grid; gap: 4px; }
   .hr-field span { font-size: 11px; font-weight: 600; color: var(--hr-muted); }
   .hr-field input, .hr-field select, .hr-field textarea {
@@ -5443,11 +5614,14 @@ const hrStyles = `
 
   /* ── Department list ── */
   .hr-dept-list { margin-top: 14px; display: grid; gap: 8px; }
+  .hr-departments-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; padding: 18px 22px 24px; }
   .hr-dept-card { border: 1px solid var(--hr-line); border-radius: 7px; padding: 10px; }
   .hr-dept-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
   .hr-dept-card strong { display: block; font-weight: 600; font-size: 14px; }
   .hr-dept-card small { display: block; font-size: 12px; color: var(--hr-muted); margin-top: 2px; }
-  .hr-dept-meta { display: flex; gap: 16px; font-size: 12px; color: var(--hr-muted); }
+  .hr-dept-meta { display: flex; gap: 16px; font-size: 12px; color: var(--hr-muted); flex-wrap: wrap; }
+  .hr-dept-shifts { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .hr-dept-shifts span { display: inline-flex; width: fit-content; max-width: 100%; padding: 5px 8px; border-radius: 999px; background: rgba(13,148,136,.1); color: #0f766e; font-size: 12px; font-weight: 700; }
   .hr-row-actions { display: flex; align-items: center; gap: 6px; }
 
   /* ── Finance ── */

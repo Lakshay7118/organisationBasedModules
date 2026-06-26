@@ -8,6 +8,13 @@ import API from "../../utils/api";
 
 const PAYROLL_CYCLE_OPTIONS = [1, 7, 15];
 const COUNTRY_OPTIONS = Country.getAllCountries();
+const BREAK_OPTIONS = [
+  { value: 30, label: "0.5 hr" },
+  { value: 45, label: "45 min" },
+  { value: 60, label: "1 hr" },
+  { value: 90, label: "1.5 hr" },
+  { value: 120, label: "2 hr" },
+];
 
 const localDate = (date = new Date()) => {
   const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -15,6 +22,31 @@ const localDate = (date = new Date()) => {
 };
 
 const idOf = (item) => (item?._id || item?.id || "").toString();
+const timeToMinutes = (time) => {
+  if (!time || typeof time !== "string") return null;
+  const [hours, minutes] = time.split(":").map(Number);
+  if (![hours, minutes].every(Number.isFinite)) return null;
+  return hours * 60 + minutes;
+};
+const calculateWorkHours = (startTime, endTime) => {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  if (start === null || end === null) return 0;
+  const adjustedEnd = end < start ? end + 24 * 60 : end;
+  return Math.round(((adjustedEnd - start) / 60) * 100) / 100;
+};
+const shiftsForDepartment = (department = {}) => {
+  const source = Array.isArray(department.shifts) && department.shifts.length
+    ? department.shifts
+    : [department.shift || { name: "General", start: "09:00", end: "18:00", breakMinutes: 60 }];
+  return source.map((shift) => ({ _id: shift._id, name: shift.name || "General", start: shift.start || "09:00", end: shift.end || "18:00", breakMinutes: shift.breakMinutes ?? 60 }));
+};
+const shiftIdValue = (shift, index = 0) => idOf(shift) || `shift-${index}`;
+const shiftWorkHours = (shift = {}) => Math.round(Math.max(0, calculateWorkHours(shift.start, shift.end) - (Number(shift.breakMinutes || 0) / 60)) * 100) / 100;
+const shiftLabel = (shift = {}) => {
+  const breakLabel = BREAK_OPTIONS.find((option) => Number(option.value) === Number(shift.breakMinutes))?.label;
+  return `${shift.name || "General"}: ${shift.start || "--"} - ${shift.end || "--"}${breakLabel ? `, Break ${breakLabel}` : ""}`;
+};
 
 const initialForm = {
   name: "",
@@ -24,6 +56,7 @@ const initialForm = {
   role: "user",
   employeeCode: "",
   department: "",
+  shiftId: "",
   designation: "",
   salaryBasis: "monthly",
   monthlySalary: "",
@@ -68,6 +101,15 @@ export default function HrOnboardPage() {
   const selectedCity = useMemo(
     () => cities.find((city) => city.name === form.addressCity),
     [cities, form.addressCity]
+  );
+  const selectedDepartment = useMemo(
+    () => departments.find((department) => idOf(department) === form.department) || null,
+    [departments, form.department]
+  );
+  const selectedShifts = useMemo(() => shiftsForDepartment(selectedDepartment || {}), [selectedDepartment]);
+  const selectedShift = useMemo(
+    () => selectedShifts.find((shift, index) => shiftIdValue(shift, index) === form.shiftId) || selectedShifts[0] || null,
+    [selectedShifts, form.shiftId]
   );
 
   const salaryLabel = form.salaryBasis === "hourly"
@@ -139,10 +181,11 @@ export default function HrOnboardPage() {
         phone: form.mobile.replace(/\s/g, ""),
         email: form.email.trim() || "",
         department: form.department || null,
+        shiftId: form.shiftId || null,
         designation: form.designation,
         salaryBasis: form.salaryBasis,
         monthlySalary: Number(form.monthlySalary || 0),
-        expectedHoursPerDay: Number(form.expectedHoursPerDay || 8),
+        expectedHoursPerDay: shiftWorkHours(selectedShift || {}) || Number(form.expectedHoursPerDay || 8),
         payrollCycleDay: Number(form.payrollCycleDay || 1),
         joinDate: form.joinDate || localDate(),
         status: form.status,
@@ -230,11 +273,27 @@ export default function HrOnboardPage() {
             <h2>Job, Address & Salary</h2>
             <div className="field-grid">
               <Field label="Department">
-                <select value={form.department} onChange={(e) => update({ department: e.target.value })}>
+                <select value={form.department} onChange={(e) => {
+                  const department = departments.find((item) => idOf(item) === e.target.value);
+                  const firstShift = shiftsForDepartment(department || {})[0];
+                  update({ department: e.target.value, shiftId: firstShift ? shiftIdValue(firstShift, 0) : "", expectedHoursPerDay: shiftWorkHours(firstShift || {}) || form.expectedHoursPerDay });
+                }}>
                   <option value="">Select department</option>
                   {departments.map((department) => <option key={idOf(department)} value={idOf(department)}>{department.name}</option>)}
                 </select>
               </Field>
+              {selectedDepartment && (
+                <Field label="Shift">
+                  <select value={form.shiftId || (selectedShift ? shiftIdValue(selectedShift, 0) : "")} onChange={(e) => {
+                    const nextShift = selectedShifts.find((shift, index) => shiftIdValue(shift, index) === e.target.value);
+                    update({ shiftId: e.target.value, expectedHoursPerDay: shiftWorkHours(nextShift || {}) || form.expectedHoursPerDay });
+                  }}>
+                    {selectedShifts.map((shift, index) => (
+                      <option key={shiftIdValue(shift, index)} value={shiftIdValue(shift, index)}>{shiftLabel(shift)}</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Designation"><input value={form.designation} onChange={(e) => update({ designation: e.target.value })} placeholder="Executive" /></Field>
               <Field label="Salary Basis">
                 <select value={form.salaryBasis} onChange={(e) => update({ salaryBasis: e.target.value })}>
@@ -244,7 +303,7 @@ export default function HrOnboardPage() {
                 </select>
               </Field>
               <Field label={salaryLabel}><input type="number" min="0" value={form.monthlySalary} onChange={(e) => update({ monthlySalary: e.target.value })} placeholder="30000" /></Field>
-              <Field label="Daily Work Hours"><input type="number" min="0" step="0.5" value={form.expectedHoursPerDay} onChange={(e) => update({ expectedHoursPerDay: e.target.value })} /></Field>
+              <Field label="Daily Work Hours"><input type="number" min="0" step="0.5" value={shiftWorkHours(selectedShift || {}) || form.expectedHoursPerDay} onChange={(e) => update({ expectedHoursPerDay: e.target.value })} /></Field>
               {form.salaryBasis === "monthly" && (
                 <Field label="Payroll Cycle">
                   <select value={form.payrollCycleDay} onChange={(e) => update({ payrollCycleDay: e.target.value })}>
