@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Country, State, City } from "country-state-city";
 import API from "../utils/api";
+import DepartmentFormModal, { emptyDepartmentForm } from "../componets/DepartmentFormModal";
 
 const ROLE_FILTERS = [
   { value: "", label: "All roles" },
@@ -354,6 +355,7 @@ function AddContactModal({
   onClose,
   onAdd,
   onAddStaff,
+  onDepartmentsChange,
   availableTags,
   departments,
   defaultPayrollCycleDay,
@@ -396,6 +398,9 @@ function AddContactModal({
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState("contact");
   const [saving, setSaving] = useState(false);
+  const [showDepartmentModal, setShowDepartmentModal] = useState(false);
+  const [departmentForm, setDepartmentForm] = useState(emptyDepartmentForm);
+  const [departmentSaving, setDepartmentSaving] = useState(false);
 
   const states = useMemo(
     () => State.getStatesOfCountry(form.addressCountry || ""),
@@ -502,6 +507,64 @@ function AddContactModal({
     });
   };
   const handle = (key) => (e) => setFieldValue(key, e.target.value);
+  const saveDepartment = async (event) => {
+    event.preventDefault();
+    const name = departmentForm.name.trim();
+    if (!name) {
+      setError("Department name is required.");
+      return;
+    }
+
+    setDepartmentSaving(true);
+    setError("");
+    try {
+      const shift = {
+        name: (departmentForm.shifts || [departmentForm.shift])[0]?.name || "General",
+        start: (departmentForm.shifts || [departmentForm.shift])[0]?.start || "09:00",
+        end: (departmentForm.shifts || [departmentForm.shift])[0]?.end || "18:00",
+        breakMinutes: Number((departmentForm.shifts || [departmentForm.shift])[0]?.breakMinutes || 0),
+      };
+      const payload = {
+        name,
+        description: departmentForm.description.trim(),
+        shift,
+        shifts: (departmentForm.shifts || [departmentForm.shift]).map((item) => ({
+          name: item.name || "General",
+          start: item.start || "09:00",
+          end: item.end || "18:00",
+          breakMinutes: Number(item.breakMinutes || 0),
+        })),
+        weeklyOffDays: departmentForm.weeklyOffDays.map(Number),
+        leavePolicy: {
+          paidLeaves: Number(departmentForm.leavePolicy.paidLeaves || 0),
+          shortLeaves: Number(departmentForm.leavePolicy.shortLeaves || 0),
+        },
+      };
+      const res = await API.post("/hr/departments", payload);
+      const savedDepartment = res.data?.data;
+      if (!savedDepartment) throw new Error("Department saved, but response was empty.");
+      const firstShift = shiftsForDepartment(savedDepartment)[0];
+
+      onDepartmentsChange?.((prev) => [savedDepartment, ...prev]);
+      setForm((prev) => ({
+        ...prev,
+        department: idOf(savedDepartment),
+        shiftId: firstShift ? shiftIdValue(firstShift, 0) : "",
+        expectedHoursPerDay: shiftWorkHours(firstShift || {}) || prev.expectedHoursPerDay,
+      }));
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.department;
+        return next;
+      });
+      setDepartmentForm(emptyDepartmentForm);
+      setShowDepartmentModal(false);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || "Could not add department.");
+    } finally {
+      setDepartmentSaving(false);
+    }
+  };
   const canConfigureHrPermissions = isSuperAdmin && ["manager", "hr"].includes(form.role);
   const toggleHrPermission = (key) => {
     setForm((prev) => ({
@@ -829,7 +892,21 @@ function AddContactModal({
             <FormField label="Employee Code" error={fieldErrors.employeeCode}>
               <input value={form.employeeCode} onChange={handle("employeeCode")} placeholder="EMP-001" style={compactInputStyle} />
             </FormField>
-            <FormField label="Department" error={fieldErrors.department}>
+            <div style={{ marginBottom: 10 }}>
+              <div style={fieldLabelActionRow}>
+                <span>Department</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDepartmentForm(emptyDepartmentForm);
+                    setShowDepartmentModal(true);
+                  }}
+                  style={inlineAddDepartmentBtn}
+                >
+                  <Plus size={13} />
+                  Add Department
+                </button>
+              </div>
               <select value={form.department} onChange={(e) => {
                 const department = departments.find((item) => idOf(item) === e.target.value);
                 const firstShift = shiftsForDepartment(department || {})[0];
@@ -848,7 +925,8 @@ function AddContactModal({
                   </option>
                 ))}
               </select>
-            </FormField>
+              {fieldErrors.department && <div style={fieldErrorStyle}>{fieldErrors.department}</div>}
+            </div>
             {selectedDepartment && (
               <FormField label="Shift">
                 <select value={form.shiftId || (selectedShift ? shiftIdValue(selectedShift, 0) : "")} onChange={(e) => {
@@ -1014,6 +1092,19 @@ function AddContactModal({
           </div>
         )}
         </div>
+
+        <DepartmentFormModal
+          open={showDepartmentModal}
+          title="Add Department"
+          onClose={() => {
+            if (!departmentSaving) setShowDepartmentModal(false);
+          }}
+          departmentForm={departmentForm}
+          setDepartmentForm={setDepartmentForm}
+          saving={departmentSaving}
+          onSubmit={saveDepartment}
+          onCancelEdit={() => setDepartmentForm(emptyDepartmentForm)}
+        />
 
         <div style={modalFooter}>
           <button onClick={step === "staff" ? () => setStep("contact") : onClose} style={secondaryBtn} disabled={saving}>
@@ -2427,6 +2518,7 @@ export default function ContactsPage() {
           onClose={() => setShowAddModal(false)}
           onAdd={addContact}
           onAddStaff={addContactStaff}
+          onDepartmentsChange={setDepartments}
           availableTags={tags}
           departments={departments}
           defaultPayrollCycleDay={defaultPayrollCycleDay}
@@ -2508,6 +2600,23 @@ const fieldErrorStyle = {
   fontWeight: 700,
   lineHeight: 1.25,
   marginTop: 4,
+};
+
+const inlineAddDepartmentBtn = {
+  border: "1px solid #99f6e4",
+  background: "#ecfdf5",
+  color: "#0f766e",
+  borderRadius: 999,
+  minHeight: 24,
+  padding: "0 9px",
+  fontSize: 11,
+  fontWeight: 800,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 4,
+  whiteSpace: "nowrap",
 };
 
 const stepPill = (active) => ({
@@ -2650,6 +2759,14 @@ const labelStyle = {
   fontWeight: 600,
   color: "#374151",
   marginBottom: 4,
+};
+
+const fieldLabelActionRow = {
+  ...labelStyle,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
 };
 
 const primaryBtn = {

@@ -5,7 +5,7 @@ import { gsap } from "gsap";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
-  Menu, Search, LogOut, Bell, X, CheckCheck,
+  Search, LogOut, Bell, X, CheckCheck,
   ChevronRight, Clock, Shield, Users, Megaphone,
   FileText, ListTodo, RotateCcw,
 } from "lucide-react";
@@ -473,7 +473,7 @@ function AllNotificationsModal({ notifications, onRead, onReadAll, onClose, onNa
 /* ─────────────────────────────────────────
    MAIN TOPBAR  (unchanged logic)
 ───────────────────────────────────────── */
-export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hidden = false }) {
+export default function Topbar({ onLogout, title = "Dashboard", hidden = false }) {
   const router = useRouter();
 
   const topbarRef      = useRef(null);
@@ -516,6 +516,16 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
       } catch {}
     };
     load();
+    API.get("/users/me")
+      .then((res) => {
+        const me = res.data?.data;
+        if (!me) return;
+        const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+        localStorage.setItem("user", JSON.stringify({ ...storedUser, ...me, id: me._id || me.id || storedUser.id }));
+        load();
+        window.dispatchEvent(new Event("loginStatusChanged"));
+      })
+      .catch(() => {});
     window.addEventListener("loginStatusChanged", load);
     return () => window.removeEventListener("loginStatusChanged", load);
   }, []);
@@ -672,13 +682,6 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
       >
         {/* ══════════ MOBILE ══════════ */}
         <div className="flex md:hidden items-center gap-2" style={{ width: "100%" }}>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={onMenuClick}
-            className="app-topbar-soft"
-            style={{ width: 40, height: 40, borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-          >
-            <Menu size={18} color="#374151" />
-          </motion.button>
-
           <div className="app-topbar-search" style={{ flex: 1, display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "0 12px", height: 40, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", gap: 8 }}>
             <Search size={15} color="#9ca3af" />
             <input value={searchValue} onChange={e => setSearchValue(e.target.value)} placeholder="Search..."
@@ -720,14 +723,7 @@ export default function Topbar({ onMenuClick, onLogout, title = "Dashboard", hid
         <div className="hidden md:flex items-center gap-3 app-topbar-frame"
           style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 18, padding: "10px 16px", boxShadow: "0 2px 12px rgba(15,23,42,0.06)", width: "100%", boxSizing: "border-box" }}
         >
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }} onClick={onMenuClick}
-            className="app-topbar-soft"
-            style={{ width: 36, height: 36, borderRadius: 10, background: "#f1f5f9", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-          >
-            <Menu size={17} color="#374151" />
-          </motion.button>
-
-          <span className="app-topbar-title" style={{ fontSize: 15, fontWeight: 700, color: "#111827", flexShrink: 0 }}>{title}</span>
+          <span className="app-topbar-title" style={{ fontSize: 15, fontWeight: 800, color: "#111827", flexShrink: 0 }}>{title}</span>
           <div className="app-topbar-divider" style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
           <div className="app-topbar-search" style={{ display: "flex", alignItems: "center", background: "#f8fafc", border: "1px solid #e9eef3", borderRadius: 12, padding: "0 14px", height: 36, gap: 8, width: 280, flexShrink: 0 }}>

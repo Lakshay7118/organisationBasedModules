@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { Country, State, City } from "country-state-city";
 import API from "../utils/api";
+import DepartmentFormModal, { DepartmentForm } from "../componets/DepartmentFormModal";
 
 const DAY_OPTIONS = [
   { id: 0, label: "Sun" },
@@ -3048,83 +3049,17 @@ export default function HRPage() {
 
   // Department form + list
   const renderDepartmentPanel = () => (
-    <div className="hr-tools-panel">
-      <h3>{editingDepartmentId ? "Edit Department" : "Add Department"}</h3>
-      <form className="hr-form-grid-2" onSubmit={saveDepartment}>
-        <Field label="Name"><input value={departmentForm.name} onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })} placeholder="Sales" /></Field>
-        <Field label="Description"><input value={departmentForm.description} onChange={(e) => setDepartmentForm({ ...departmentForm, description: e.target.value })} placeholder="Optional" /></Field>
-        <div className="hr-span2 hr-shift-editor">
-          <label className="hr-field-label">Shifts</label>
-          {(departmentForm.shifts || [departmentForm.shift || defaultShift]).map((shift, index) => (
-            <div className="hr-shift-editor-row" key={shift._id || index}>
-              <input value={shift.name || ""} onChange={(e) => {
-                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
-                shifts[index] = { ...shifts[index], name: e.target.value };
-                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
-              }} placeholder="Shift name" />
-              <input type="time" value={shift.start || ""} onChange={(e) => {
-                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
-                shifts[index] = { ...shifts[index], start: e.target.value };
-                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
-              }} />
-              <input type="time" value={shift.end || ""} onChange={(e) => {
-                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
-                shifts[index] = { ...shifts[index], end: e.target.value };
-                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
-              }} />
-              <select value={shift.breakMinutes ?? 60} onChange={(e) => {
-                const shifts = [...(departmentForm.shifts || [departmentForm.shift || defaultShift])];
-                shifts[index] = { ...shifts[index], breakMinutes: Number(e.target.value) };
-                setDepartmentForm({ ...departmentForm, shifts, shift: shifts[0] });
-              }}>
-                {BREAK_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <span>{shiftWorkHours(shift)}h</span>
-              <button type="button" className="hr-icon-btn" onClick={() => {
-                const current = departmentForm.shifts || [departmentForm.shift || defaultShift];
-                const shifts = current.filter((_, shiftIndex) => shiftIndex !== index);
-                const next = shifts.length ? shifts : [defaultShift];
-                setDepartmentForm({ ...departmentForm, shifts: next, shift: next[0] });
-              }} disabled={(departmentForm.shifts || []).length <= 1}><Trash2 size={13} /></button>
-            </div>
-          ))}
-          <button type="button" className="hr-btn hr-btn-ghost compact" onClick={() => {
-            const current = departmentForm.shifts || [departmentForm.shift || defaultShift];
-            const next = [...current, { ...defaultShift, name: `Shift ${current.length + 1}` }];
-            setDepartmentForm({ ...departmentForm, shifts: next, shift: next[0] });
-          }}><Plus size={14} /> Add Shift</button>
-        </div>
-        <Field label="Paid Leave / Cycle"><input type="number" min="0" value={departmentForm.leavePolicy?.paidLeaves ?? 0} onChange={(e) => setDepartmentForm({ ...departmentForm, leavePolicy: { ...(departmentForm.leavePolicy || {}), paidLeaves: e.target.value } })} /></Field>
-        <Field label="Short Leave / Cycle"><input type="number" min="0" value={departmentForm.leavePolicy?.shortLeaves ?? 0} onChange={(e) => setDepartmentForm({ ...departmentForm, leavePolicy: { ...(departmentForm.leavePolicy || {}), shortLeaves: e.target.value } })} /></Field>
-        {editingDepartmentId && (
-          <Field label="Super Admin Password" className="hr-span2">
-            <input value={departmentForm.superAdmin?.password || ""} readOnly placeholder="No password on response" />
-          </Field>
-        )}
-        <div className="hr-span2">
-          <label className="hr-field-label">Weekly Off Days</label>
-          <div className="hr-day-checks">
-            {DAY_OPTIONS.map((day) => {
-              const checked = departmentForm.weeklyOffDays.map(Number).includes(day.id);
-              return (
-                <label key={day.id} className={`hr-day-check ${checked ? "active" : ""}`}>
-                  <input type="checkbox" checked={checked} onChange={() => {
-                    const current = departmentForm.weeklyOffDays.map(Number);
-                    const next = checked ? current.filter((x) => x !== day.id) : [...current, day.id];
-                    setDepartmentForm({ ...departmentForm, weeklyOffDays: next });
-                  }} />
-                  {day.label}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-        <div className="hr-span2 hr-form-actions-row">
-          {editingDepartmentId && <button type="button" className="hr-btn hr-btn-ghost" onClick={() => { setEditingDepartmentId(""); setDepartmentForm(emptyDepartment); }}>Cancel</button>}
-          <button type="submit" className="hr-btn hr-btn-primary" disabled={saving}><Save size={14} /> {editingDepartmentId ? "Update" : "Add Department"}</button>
-        </div>
-      </form>
-    </div>
+    <DepartmentForm
+      departmentForm={departmentForm}
+      setDepartmentForm={setDepartmentForm}
+      editingDepartmentId={editingDepartmentId}
+      saving={saving}
+      onSubmit={saveDepartment}
+      onCancelEdit={() => {
+        setEditingDepartmentId("");
+        setDepartmentForm(emptyDepartment);
+      }}
+    />
   );
 
   const openDepartmentModal = (dept = null) => {
@@ -3539,11 +3474,29 @@ export default function HRPage() {
     if (toolsOpen === "bank" && !canHr("canManageBanks")) return null;
     if (["loan", "view-loans"].includes(toolsOpen) && !canHr("canManageAdvances")) return null;
     if (toolsOpen === "staff" && !canHr(editingStaffId ? "canEditStaff" : "canAddStaff")) return null;
+    if (toolsOpen === "department") {
+      return (
+        <DepartmentFormModal
+          open
+          title={editingDepartmentId ? "Edit Department" : "Add Department"}
+          onClose={() => setToolsOpen("")}
+          departmentForm={departmentForm}
+          setDepartmentForm={setDepartmentForm}
+          editingDepartmentId={editingDepartmentId}
+          saving={saving}
+          onSubmit={saveDepartment}
+          onCancelEdit={() => {
+            setEditingDepartmentId("");
+            setDepartmentForm(emptyDepartment);
+          }}
+        />
+      );
+    }
     const titles = { staff: editingStaffId ? "Edit Staff" : "Add Staff", "attendance-settings": "Attendance Settings", department: editingDepartmentId ? "Edit Department" : "Add Department", bank: "Add Bank", loan: "Add Advance", "view-loans": "Advances" };
     const content = {
       staff: renderStaffForm(),
       "attendance-settings": renderAttendanceSettings(),
-      department: renderDepartmentPanel(),
+      department: null,
       bank: (
         <div className="hr-tools-panel">
           <h3>Add Bank</h3>
@@ -3607,7 +3560,7 @@ export default function HRPage() {
 
     return (
       <div className="hr-modal-backdrop" onClick={() => setToolsOpen("")}>
-        <div className="hr-modal" onClick={(e) => e.stopPropagation()}>
+        <div className={`hr-modal ${toolsOpen === "department" ? "department-modal" : ""}`} onClick={(e) => e.stopPropagation()}>
           <div className="hr-modal-header">
             <h3>{titles[toolsOpen] || "HR"}</h3>
             <button className="hr-icon-btn" onClick={() => setToolsOpen("")}><X size={16} /></button>
@@ -4565,6 +4518,8 @@ const hrStyles = `
   body[data-theme="dark"] .hr-field input,
   body[data-theme="dark"] .hr-field select,
   body[data-theme="dark"] .hr-field textarea,
+  body[data-theme="dark"] .hr-shift-editor-row input,
+  body[data-theme="dark"] .hr-shift-editor-row select,
   body[data-theme="dark"] .hr-date-stepper input,
   body[data-theme="dark"] .hr-month-nav input,
   body[data-theme="dark"] .hr-mini-input,
@@ -4694,6 +4649,34 @@ const hrStyles = `
   }
 
   /* ── Nav tabs ── */
+  body[data-theme="dark"] .department-modal .hr-modal-header,
+  body[data-theme="dark"] .hr-department-form,
+  body[data-theme="dark"] .hr-department-actions {
+    background: var(--hr-bg);
+    border-color: var(--hr-line);
+  }
+  body[data-theme="dark"] .department-modal .hr-modal-header h3 {
+    color: var(--hr-text);
+  }
+  body[data-theme="dark"] .hr-department-form .hr-shift-editor,
+  body[data-theme="dark"] .hr-department-form .hr-shift-editor-row,
+  body[data-theme="dark"] .hr-weekly-off-field,
+  body[data-theme="dark"] .hr-weekly-off-field .hr-day-check,
+  body[data-theme="dark"] .hr-add-shift-btn {
+    background: var(--hr-surface-soft);
+    border-color: #334651;
+  }
+  body[data-theme="dark"] .hr-department-form .hr-shift-hours strong {
+    background: var(--hr-input);
+    border-color: #334651;
+    color: var(--hr-text);
+  }
+  body[data-theme="dark"] .hr-weekly-off-field .hr-day-check.active {
+    background: rgba(0,168,132,0.18);
+    border-color: rgba(94,234,212,0.42);
+    color: #5eead4;
+  }
+
   .hr-skeleton {
     display: block;
     max-width: 100%;
@@ -5376,14 +5359,58 @@ const hrStyles = `
     font-weight: 600;
   }
   .hr-shift-editor { display: flex; flex-direction: column; gap: 8px; }
+  .hr-shift-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .hr-shift-editor-head .hr-field-label {
+    margin-bottom: 0;
+  }
   .hr-shift-editor-row {
     display: grid;
-    grid-template-columns: minmax(110px, 1fr) 104px 104px 112px 52px 38px;
-    gap: 8px;
+    grid-template-columns: minmax(130px, 1fr) 112px 112px 120px 68px 48px;
+    gap: 10px;
     align-items: end;
   }
-  .hr-shift-editor-row span {
-    min-height: 32px;
+  .hr-shift-cell,
+  .hr-shift-hours,
+  .hr-shift-action {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+  .hr-shift-cell span,
+  .hr-shift-hours span,
+  .hr-shift-action span {
+    color: var(--hr-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .hr-shift-editor-row input,
+  .hr-shift-editor-row select {
+    width: 100%;
+    min-height: 40px;
+    border: 1.5px solid var(--hr-line);
+    border-radius: 7px;
+    background: var(--hr-bg);
+    color: var(--app-text);
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .hr-shift-editor-row input:focus,
+  .hr-shift-editor-row select:focus,
+  .hr-field input:focus,
+  .hr-field select:focus,
+  .hr-field textarea:focus {
+    border-color: var(--hr-primary);
+    box-shadow: 0 0 0 3px var(--hr-primary-soft);
+  }
+  .hr-shift-hours strong {
+    min-height: 40px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -5393,6 +5420,10 @@ const hrStyles = `
     font-weight: 800;
     color: var(--app-text);
     background: var(--hr-bg);
+  }
+  .hr-shift-editor-row .hr-icon-btn {
+    width: 40px;
+    height: 40px;
   }
   .hr-field { display: grid; gap: 4px; }
   .hr-field span { font-size: 11px; font-weight: 600; color: var(--hr-muted); }
@@ -5418,7 +5449,7 @@ const hrStyles = `
   .hr-check-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .hr-day-checks { display: flex; gap: 6px; flex-wrap: wrap; }
   .hr-day-check { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1.5px solid var(--hr-line); border-radius: 6px; background: var(--hr-bg); font-size: 12px; cursor: pointer; }
-  .hr-day-check.active { border-color: var(--hr-primary); background: rgba(79,70,229,0.08); color: var(--hr-primary); font-weight: 600; }
+  .hr-day-check.active { border-color: var(--hr-primary); background: var(--hr-primary-soft); color: var(--hr-primary); font-weight: 600; }
   .hr-day-check input { display: none; }
   .hr-required { color: #e11d48; }
   .hr-salary-preview {
@@ -5611,6 +5642,82 @@ const hrStyles = `
   .hr-tools-panel { padding: 0; }
   .hr-tools-panel h3 { margin: 0 0 3px; font-size: 15px; font-weight: 600; }
   .hr-tools-panel p { margin: 0 0 10px; font-size: 12px; color: var(--hr-muted); }
+  .hr-department-panel {
+    margin: 0 -12px -12px;
+  }
+  .hr-department-form {
+    gap: 12px;
+    padding: 14px;
+    background: #fff;
+    border-top: 1px solid var(--hr-line);
+  }
+  .hr-department-form .hr-field span,
+  .hr-department-form .hr-field-label {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+  }
+  .hr-department-form .hr-field input,
+  .hr-department-form .hr-field select,
+  .hr-department-form .hr-field textarea {
+    min-height: 40px;
+    border-radius: 7px;
+    background: #fff;
+    padding: 7px 11px;
+  }
+  .hr-department-form .hr-shift-editor {
+    padding: 10px;
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .hr-department-form .hr-shift-editor-row {
+    grid-template-columns: minmax(132px, 1fr) 104px 104px 104px 56px 40px;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .hr-department-form .hr-shift-hours strong,
+  .hr-department-form .hr-shift-editor-row input,
+  .hr-department-form .hr-shift-editor-row select {
+    background: #fff;
+  }
+  .hr-add-shift-btn {
+    width: 100%;
+    justify-content: center;
+    border-style: dashed;
+    background: #fff;
+    color: var(--hr-primary);
+  }
+  .hr-weekly-off-field {
+    padding: 10px 12px;
+    border: 1px solid var(--hr-line);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .hr-weekly-off-field .hr-field-label {
+    margin-bottom: 8px;
+  }
+  .hr-weekly-off-field .hr-day-check {
+    min-width: 46px;
+    min-height: 34px;
+    justify-content: center;
+    border-radius: 8px;
+    background: #f8fafc;
+    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+  }
+  .hr-weekly-off-field .hr-day-check.active {
+    background: #ccfbf1;
+    border-color: #14b8a6;
+    color: #0f766e;
+  }
+  .hr-department-actions {
+    margin-top: 2px;
+    padding-top: 2px;
+    background: #fff;
+  }
 
   /* ── Department list ── */
   .hr-dept-list { margin-top: 14px; display: grid; gap: 8px; }
@@ -6040,6 +6147,28 @@ const hrStyles = `
     padding: 14px;
     animation: appModalCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+  .department-modal {
+    width: min(760px, 94vw);
+    padding: 12px;
+    padding-bottom: 12px;
+    overflow: hidden auto;
+  }
+  .department-modal .hr-modal-header {
+    margin: -12px -12px 0;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--hr-line);
+    background: #fff;
+  }
+  .department-modal .hr-modal-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1f2937;
+  }
+  .department-modal .hr-modal-header .hr-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
   .hr-modal-header {
     display: flex;
     align-items: center;
@@ -6228,6 +6357,12 @@ const hrStyles = `
     .hr-self-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .hr-self-salary-card { grid-column: 1 / -1; }
     .hr-self-grid { grid-template-columns: 1fr; }
+    .department-modal {
+      width: min(760px, 96vw);
+    }
+    .department-modal .hr-shift-editor-row {
+      grid-template-columns: minmax(132px, 1fr) 104px 104px 104px 56px 40px;
+    }
   }
   @media (max-width: 640px) {
     .hr-metrics-row, .hr-summary-strip, .hr-finance-strip { grid-template-columns: 1fr; }
@@ -6254,6 +6389,50 @@ const hrStyles = `
     .hr-self-period { grid-template-columns: 38px minmax(0, 1fr) 38px; }
     .hr-self-period span { grid-column: 1 / -1; }
     .hr-att-table-wrap, .hr-detail-att-table-wrap { overflow-x: auto; overflow-y: visible; }
+    .department-modal .hr-modal-header {
+      margin: -16px -16px 0;
+      padding: 16px;
+    }
+    .department-modal .hr-modal-header h3 {
+      font-size: 17px;
+    }
+    .hr-department-panel {
+      margin-inline: -16px;
+    }
+    .hr-department-form {
+      grid-template-columns: 1fr;
+      padding: 14px;
+      gap: 12px;
+    }
+    .hr-department-form .hr-shift-editor {
+      padding: 12px;
+    }
+    .department-modal .hr-shift-editor-row {
+      grid-template-columns: 1fr 1fr;
+      align-items: stretch;
+    }
+    .department-modal .hr-shift-cell:first-child,
+    .department-modal .hr-shift-break-cell {
+      grid-column: 1 / -1;
+    }
+    .department-modal .hr-shift-hours strong {
+      justify-content: flex-start;
+      padding-inline: 12px;
+    }
+    .department-modal .hr-shift-editor-row .hr-icon-btn {
+      width: 100%;
+    }
+    .hr-weekly-off-field .hr-day-check {
+      flex: 1 1 64px;
+    }
+    .hr-department-actions {
+      margin: 0 -14px -14px;
+      padding: 12px 14px 0;
+    }
+    .hr-department-actions .hr-btn {
+      flex: 1 1 100%;
+      justify-content: center;
+    }
   }
 
   @media (max-width: 1280px) {

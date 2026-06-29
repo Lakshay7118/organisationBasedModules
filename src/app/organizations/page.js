@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, CheckSquare, MessageCircleMore, Briefcase, Plus, ShieldCheck, Edit, Save, Trash2, X, Mail, KeyRound, LogIn, ChevronDown, Power } from "lucide-react";
+import { Building2, CheckSquare, MessageCircleMore, Briefcase, Plus, ShieldCheck, Edit, Save, Trash2, X, Mail, KeyRound, LogIn, ChevronDown, Power, Upload, Image as ImageIcon } from "lucide-react";
 import API from "../utils/api";
 
 const moduleOptions = [
@@ -18,7 +18,81 @@ const initialForm = {
   superAdminEmail: "",
   superAdminPassword: "",
   allowedModules: ["hr"],
+  logoUrl: "",
 };
+
+function OrganizationLogoUpload({ logoUrl, label = "Organization Logo", uploading = false, disabled = false, onUpload, onRemove }) {
+  return (
+    <div style={{ display: "grid", gap: 7 }}>
+      <span style={{ display: "block", fontSize: 12, fontWeight: 700 }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            border: "1px solid var(--app-border)",
+            background: logoUrl ? `center / cover no-repeat url("${logoUrl}")` : "var(--app-surface-2)",
+            color: "#0b535d",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {!logoUrl && <ImageIcon size={18} />}
+        </div>
+        <label
+          style={{
+            minHeight: 40,
+            border: "1px solid var(--app-border)",
+            borderRadius: 8,
+            padding: "0 12px",
+            background: "var(--app-surface-2)",
+            color: "var(--app-text)",
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: disabled || uploading ? "not-allowed" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            opacity: disabled || uploading ? 0.68 : 1,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Upload size={15} />
+          {uploading ? "Uploading..." : logoUrl ? "Change Logo" : "Upload Logo"}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={disabled || uploading}
+            onChange={onUpload}
+            style={{ display: "none" }}
+          />
+        </label>
+        {logoUrl && (
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={disabled || uploading}
+            style={{
+              height: 40,
+              border: "1px solid #fee2e2",
+              borderRadius: 8,
+              padding: "0 10px",
+              background: "#fff1f2",
+              color: "#dc2626",
+              fontWeight: 800,
+              cursor: disabled || uploading ? "not-allowed" : "pointer",
+            }}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -30,12 +104,13 @@ export default function OrganizationsPage() {
   const [updatingId, setUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [editingOrgId, setEditingOrgId] = useState("");
-  const [editForm, setEditForm] = useState({ organizationName: "", superAdminName: "", superAdminPhone: "", allowedModules: [] });
+  const [editForm, setEditForm] = useState({ organizationName: "", superAdminName: "", superAdminPhone: "", allowedModules: [], logoUrl: "" });
   const [expandedOrgId, setExpandedOrgId] = useState("");
   const [credentialForms, setCredentialForms] = useState({});
   const [credentialSavingId, setCredentialSavingId] = useState("");
   const [loginAsId, setLoginAsId] = useState("");
   const [statusSavingId, setStatusSavingId] = useState("");
+  const [logoUploading, setLogoUploading] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -88,6 +163,7 @@ export default function OrganizationsPage() {
       superAdminName: org.superAdmin?.name || "",
       superAdminPhone: org.superAdmin?.phone || "",
       allowedModules: org.allowedModules?.length ? org.allowedModules : ["hr"],
+      logoUrl: org.logoUrl || "",
     });
   };
 
@@ -117,7 +193,7 @@ export default function OrganizationsPage() {
 
   const cancelEdit = () => {
     setEditingOrgId("");
-    setEditForm({ organizationName: "", superAdminName: "", superAdminPhone: "", allowedModules: [] });
+    setEditForm({ organizationName: "", superAdminName: "", superAdminPhone: "", allowedModules: [], logoUrl: "" });
   };
 
   const updateEditField = (field, value) => {
@@ -136,8 +212,45 @@ export default function OrganizationsPage() {
     });
   };
 
+  const uploadOrganizationLogo = async (event, target = "create") => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setError("");
+    setMessage("");
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file for the organization logo.");
+      return;
+    }
+
+    setLogoUploading(target);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await API.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const logoUrl = res.data?.fileUrl || "";
+      if (!logoUrl) throw new Error("Upload did not return a file URL");
+
+      if (target === "create") {
+        setForm((prev) => ({ ...prev, logoUrl }));
+      } else {
+        setEditForm((prev) => ({ ...prev, logoUrl }));
+      }
+      setMessage("Logo uploaded.");
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not upload logo");
+    } finally {
+      setLogoUploading("");
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (logoUploading) return;
     setError("");
     setMessage("");
     setSaving(true);
@@ -156,6 +269,7 @@ export default function OrganizationsPage() {
   };
 
   const handleUpdate = async (orgId) => {
+    if (logoUploading === orgId) return;
     setError("");
     setMessage("");
     setUpdatingId(orgId);
@@ -279,6 +393,7 @@ export default function OrganizationsPage() {
         organizationName: org.name,
         allowedModules: org.allowedModules || [],
         isActive: nextActive,
+        logoUrl: org.logoUrl || "",
       });
       setOrganizations((prev) => prev.map((item) => (item._id === org._id ? res.data.data : item)));
       setMessage(`Organization ${action}d.`);
@@ -453,7 +568,7 @@ export default function OrganizationsPage() {
         )}
 
         {showCreateModal && (
-          <div className="org-modal-backdrop" onClick={() => !saving && setShowCreateModal(false)}>
+          <div className="org-modal-backdrop" onClick={() => !saving && !logoUploading && setShowCreateModal(false)}>
             <form
               className="org-modal-card"
               onSubmit={handleSubmit}
@@ -480,9 +595,9 @@ export default function OrganizationsPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => !saving && setShowCreateModal(false)}
+                  onClick={() => !saving && !logoUploading && setShowCreateModal(false)}
                   title="Close"
-                  style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid var(--app-border)", background: "var(--app-surface-2)", color: "var(--app-text)", cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid var(--app-border)", background: "var(--app-surface-2)", color: "var(--app-text)", cursor: saving || logoUploading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   <X size={16} />
                 </button>
@@ -499,6 +614,13 @@ export default function OrganizationsPage() {
                       <span style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Organization Name</span>
                     <input value={form.organizationName} onChange={(e) => updateField("organizationName", e.target.value)} placeholder="Acme Pvt Ltd" />
                     </label>
+                    <OrganizationLogoUpload
+                      logoUrl={form.logoUrl}
+                      uploading={logoUploading === "create"}
+                      disabled={saving}
+                      onUpload={(event) => uploadOrganizationLogo(event, "create")}
+                      onRemove={() => updateField("logoUrl", "")}
+                    />
                   </div>
                 </section>
 
@@ -570,8 +692,8 @@ export default function OrganizationsPage() {
               <div style={{ padding: "12px 18px 16px", borderTop: "1px solid var(--app-border)", display: "flex", justifyContent: "flex-end", gap: 10, background: "var(--app-surface)" }}>
                 <button
                   type="button"
-                  onClick={() => !saving && setShowCreateModal(false)}
-                  disabled={saving}
+                  onClick={() => !saving && !logoUploading && setShowCreateModal(false)}
+                  disabled={saving || Boolean(logoUploading)}
                   style={{
                     height: 42,
                     border: "1px solid var(--app-border)",
@@ -580,30 +702,30 @@ export default function OrganizationsPage() {
                     background: "var(--app-surface-2)",
                     color: "var(--app-text)",
                     fontWeight: 800,
-                    cursor: saving ? "not-allowed" : "pointer",
+                    cursor: saving || logoUploading ? "not-allowed" : "pointer",
                   }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || Boolean(logoUploading)}
                   style={{
                     height: 42,
                     border: "none",
                     borderRadius: 8,
                     padding: "0 16px",
-                    background: saving ? "#9ca3af" : "#0b535d",
+                    background: saving || logoUploading ? "#9ca3af" : "#0b535d",
                     color: "#fff",
                     fontWeight: 800,
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
-                    cursor: saving ? "not-allowed" : "pointer",
+                    cursor: saving || logoUploading ? "not-allowed" : "pointer",
                   }}
                 >
                   <Plus size={17} />
-                  {saving ? "Creating..." : "Create Organization"}
+                  {logoUploading ? "Uploading Logo..." : saving ? "Creating..." : "Create Organization"}
                 </button>
               </div>
             </form>
@@ -700,17 +822,47 @@ export default function OrganizationsPage() {
                       >
                         <td style={{ padding: 12, fontWeight: 700, minWidth: 210 }}>
                           {isEditing ? (
-                            <input
-                              value={editForm.organizationName}
-                              onChange={(e) => updateEditField("organizationName", e.target.value)}
-                              placeholder="Organization name"
-                            />
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <input
+                                value={editForm.organizationName}
+                                onChange={(e) => updateEditField("organizationName", e.target.value)}
+                                placeholder="Organization name"
+                              />
+                              <OrganizationLogoUpload
+                                logoUrl={editForm.logoUrl}
+                                label="Logo"
+                                uploading={logoUploading === org._id}
+                                disabled={updatingId === org._id}
+                                onUpload={(event) => uploadOrganizationLogo(event, org._id)}
+                                onRemove={() => updateEditField("logoUrl", "")}
+                              />
+                            </div>
                           ) : (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                               <ChevronDown
                                 size={15}
                                 style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.18s ease" }}
                               />
+                              <span
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  borderRadius: 8,
+                                  background: org.logoUrl
+                                    ? `center / cover no-repeat url("${org.logoUrl}")`
+                                    : "#e6fffb",
+                                  color: "#0b535d",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: 12,
+                                  fontWeight: 900,
+                                  border: "1px solid rgba(11,83,93,0.12)",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {!org.logoUrl && (org.name || "O").charAt(0).toUpperCase()}
+                              </span>
                               {org.name}
                               <span
                                 style={{
@@ -797,9 +949,9 @@ export default function OrganizationsPage() {
                                     event.stopPropagation();
                                     handleUpdate(org._id);
                                   }}
-                                  disabled={updatingId === org._id}
+                                  disabled={updatingId === org._id || logoUploading === org._id}
                                   title="Save"
-                                  style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#047857", cursor: updatingId === org._id ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                  style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#047857", cursor: updatingId === org._id || logoUploading === org._id ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                                 >
                                   <Save size={14} />
                                 </button>

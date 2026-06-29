@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ExternalLink,
   Clock3,
+  Image as ImageIcon,
   LifeBuoy,
   Lock,
   LogOut,
@@ -24,6 +25,7 @@ import {
   Sun,
   Ticket,
   Trash2,
+  Upload,
   User,
   X,
 } from "lucide-react";
@@ -52,6 +54,8 @@ const emptyProfile = {
   email: "",
   phone: "",
   role: "user",
+  organizationName: "",
+  organizationLogoUrl: "",
 };
 
 const roleLabel = (role) =>
@@ -125,6 +129,79 @@ function Toggle({ checked, onChange }) {
         boxShadow: "0 1px 4px rgba(15,23,42,0.22)",
       }} />
     </button>
+  );
+}
+
+function SettingsLogoUpload({ colors, logoUrl, uploading, disabled, onUpload, onRemove }) {
+  return (
+    <div style={{ ...labelStyle(colors), display: "grid", gap: 8 }}>
+      Organization Logo
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 10,
+            border: `1px solid ${colors.border}`,
+            background: logoUrl ? `center / cover no-repeat url("${logoUrl}")` : colors.panel2,
+            color: colors.accent,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {!logoUrl && <ImageIcon size={18} />}
+        </div>
+        <label
+          style={{
+            minHeight: 40,
+            borderRadius: 8,
+            border: `1px solid ${colors.border}`,
+            background: colors.panel2,
+            color: colors.text,
+            padding: "0 12px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 13,
+            fontWeight: 800,
+            cursor: disabled || uploading ? "not-allowed" : "pointer",
+            opacity: disabled || uploading ? 0.65 : 1,
+          }}
+        >
+          <Upload size={15} />
+          {uploading ? "Uploading..." : logoUrl ? "Change Logo" : "Upload Logo"}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={disabled || uploading}
+            onChange={onUpload}
+            style={{ display: "none" }}
+          />
+        </label>
+        {logoUrl && (
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={disabled || uploading}
+            style={{
+              minHeight: 40,
+              borderRadius: 8,
+              border: "1px solid #fecaca",
+              background: "#fef2f2",
+              color: "#dc2626",
+              padding: "0 12px",
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: disabled || uploading ? "not-allowed" : "pointer",
+            }}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -275,6 +352,7 @@ export default function SettingsPage() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [notice, setNotice] = useState(null);
   const [chat, setChat] = useState([]);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -294,14 +372,19 @@ export default function SettingsPage() {
   const isDark = theme === "dark";
   const admin = canSaveDirectly(profile.role);
   const supportStaff = ["super_to_super_admin", "super_admin", "manager"].includes(profile.role);
+  const canEditOrganizationProfile = ["super_admin", "manager"].includes(profile.role);
   const hasChanges = JSON.stringify({
     name: draft.name,
     email: draft.email,
     phone: draft.phone,
+    organizationName: canEditOrganizationProfile ? draft.organizationName : profile.organizationName,
+    organizationLogoUrl: canEditOrganizationProfile ? draft.organizationLogoUrl : profile.organizationLogoUrl,
   }) !== JSON.stringify({
     name: profile.name,
     email: profile.email,
     phone: profile.phone,
+    organizationName: profile.organizationName,
+    organizationLogoUrl: profile.organizationLogoUrl,
   });
 
   const colors = {
@@ -553,7 +636,7 @@ export default function SettingsPage() {
   };
 
   const saveProfile = async () => {
-    if (!hasChanges || saving) return;
+    if (!hasChanges || saving || logoUploading) return;
     setSaving(true);
     setNotice(null);
 
@@ -562,6 +645,12 @@ export default function SettingsPage() {
         name: draft.name,
         email: draft.email,
         phone: draft.phone,
+        ...(canEditOrganizationProfile
+          ? {
+              organizationName: draft.organizationName,
+              organizationLogoUrl: draft.organizationLogoUrl,
+            }
+          : {}),
       });
 
       if (res.data?.status === "pending") {
@@ -582,6 +671,35 @@ export default function SettingsPage() {
       setNotice({ type: "error", text: error.response?.data?.error || "Could not save profile." });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadOrganizationLogo = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setNotice(null);
+    if (!file.type.startsWith("image/")) {
+      setNotice({ type: "error", text: "Please upload an image file for the organization logo." });
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await API.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const logoUrl = res.data?.fileUrl || "";
+      if (!logoUrl) throw new Error("Upload did not return a file URL");
+      setDraft((prev) => ({ ...prev, organizationLogoUrl: logoUrl }));
+      setNotice({ type: "success", text: "Logo uploaded." });
+    } catch (error) {
+      setNotice({ type: "error", text: error.response?.data?.error || "Could not upload logo." });
+    } finally {
+      setLogoUploading(false);
     }
   };
 
@@ -856,15 +974,45 @@ export default function SettingsPage() {
         <label style={labelStyle(colors)}>Role<input style={{ ...fieldStyle, opacity: 0.75 }} value={roleLabel(profile.role)} disabled /></label>
       </div>
 
+      {canEditOrganizationProfile && (
+        <>
+          <div style={{ marginTop: 22, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, color: colors.text, fontSize: 15, fontWeight: 850 }}>Organization branding</h3>
+            <p style={{ margin: "4px 0 0", color: colors.muted, fontSize: 12 }}>
+              {admin ? "Update the company name and logo shown across the app." : "Changes will be sent to super admin for approval."}
+            </p>
+          </div>
+          <div className="settings-grid">
+            <label style={labelStyle(colors)}>
+              Organization Name
+              <input
+                style={fieldStyle}
+                value={draft.organizationName || ""}
+                onChange={(e) => setDraft((p) => ({ ...p, organizationName: e.target.value }))}
+                placeholder="Company name"
+              />
+            </label>
+            <SettingsLogoUpload
+              colors={colors}
+              logoUrl={draft.organizationLogoUrl || ""}
+              uploading={logoUploading}
+              disabled={saving}
+              onUpload={uploadOrganizationLogo}
+              onRemove={() => setDraft((p) => ({ ...p, organizationLogoUrl: "" }))}
+            />
+          </div>
+        </>
+      )}
+
       <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
-        <button type="button" disabled={!hasChanges || saving} onClick={saveProfile} style={{
+        <button type="button" disabled={!hasChanges || saving || logoUploading} onClick={saveProfile} style={{
           ...buttonBase,
-          background: hasChanges ? colors.accent : colors.panel2,
-          color: hasChanges ? "#fff" : colors.muted,
+          background: hasChanges && !logoUploading ? colors.accent : colors.panel2,
+          color: hasChanges && !logoUploading ? "#fff" : colors.muted,
         }}>
-          <Save size={16} /> {admin ? "Save Details" : "Request Approval"}
+          <Save size={16} /> {logoUploading ? "Uploading Logo..." : admin ? "Save Details" : "Request Approval"}
         </button>
-        <button type="button" disabled={!hasChanges || saving} onClick={() => setDraft(profile)} style={{
+        <button type="button" disabled={!hasChanges || saving || logoUploading} onClick={() => setDraft(profile)} style={{
           ...buttonBase,
           background: colors.panel2,
           color: colors.text,

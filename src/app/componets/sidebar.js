@@ -57,7 +57,7 @@ const allNavItems = [
 ];
 
 const readStoredUser = () => {
-  if (typeof window === "undefined") return { name: "", role: "", allowedModules: [] };
+  if (typeof window === "undefined") return { name: "", role: "", allowedModules: [], organizationName: "", organizationLogoUrl: "" };
 
   try {
     const role = localStorage.getItem("role");
@@ -67,9 +67,11 @@ const readStoredUser = () => {
       name: user.name || user.phone || "",
       role: role || user.role || "",
       allowedModules: Array.isArray(user.allowedModules) ? user.allowedModules : [],
+      organizationName: user.organizationName || user.organization?.name || "",
+      organizationLogoUrl: user.organizationLogoUrl || user.organization?.logoUrl || "",
     };
   } catch {
-    return { name: "", role: "", allowedModules: [] };
+    return { name: "", role: "", allowedModules: [], organizationName: "", organizationLogoUrl: "" };
   }
 };
 
@@ -88,6 +90,8 @@ export default function Sidebar({ isOpen, setIsOpen }) {
   const [userRole, setUserRole] = useState(() => readStoredUser().role);
   const [userName, setUserName] = useState(() => readStoredUser().name);
   const [allowedModules, setAllowedModules] = useState(() => readStoredUser().allowedModules);
+  const [organizationName, setOrganizationName] = useState(() => readStoredUser().organizationName);
+  const [organizationLogoUrl, setOrganizationLogoUrl] = useState(() => readStoredUser().organizationLogoUrl);
 
   const sidebarRef = useRef(null);
   const logoRef = useRef(null);
@@ -99,6 +103,8 @@ export default function Sidebar({ isOpen, setIsOpen }) {
     setUserName(stored.name);
     setUserRole(stored.role);
     setAllowedModules(stored.allowedModules);
+    setOrganizationName(stored.organizationName);
+    setOrganizationLogoUrl(stored.organizationLogoUrl);
   }, []);
 
   useEffect(() => {
@@ -154,7 +160,9 @@ export default function Sidebar({ isOpen, setIsOpen }) {
             width: "42px",
             height: "42px",
             borderRadius: "14px",
-            background: "rgba(255,255,255,0.12)",
+            background: organizationLogoUrl
+              ? `center / cover no-repeat url("${organizationLogoUrl}")`
+              : "rgba(255,255,255,0.12)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -165,8 +173,9 @@ export default function Sidebar({ isOpen, setIsOpen }) {
             boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
             flexShrink: 0,
           }}
+          title={organizationName || "Workspace"}
         >
-          W
+          {!organizationLogoUrl && (organizationName || "W").charAt(0).toUpperCase()}
         </motion.div>
 
         <div style={{ width: "34px", height: "1px", background: "rgba(255,255,255,0.14)", marginBottom: "8px", flexShrink: 0 }} />
