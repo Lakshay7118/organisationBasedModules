@@ -565,7 +565,7 @@ function AddContactModal({
       setDepartmentSaving(false);
     }
   };
-  const canConfigureHrPermissions = isSuperAdmin && ["manager", "hr"].includes(form.role);
+  const canConfigureHrPermissions = hasHrAccess && isSuperAdmin && ["manager", "hr"].includes(form.role);
   const toggleHrPermission = (key) => {
     setForm((prev) => ({
       ...prev,
@@ -582,7 +582,7 @@ function AddContactModal({
     if (userRole === "manager") {
       return [
         { value: "user", label: "User" },
-        { value: "hr", label: "HR" },
+        ...(hasHrAccess ? [{ value: "hr", label: "HR" }] : []),
       ];
     }
     if (userRole === "hr") {
@@ -1139,7 +1139,7 @@ function FormField({ label, children, hint = "", error = "", wide = false }) {
 }
 
 /* ---------- EditContactModal ---------- */
-function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAdmin }) {
+function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAdmin, hasHrAccess }) {
   const [form, setForm] = useState({
     name: contact.name || "",
     mobile: contact.mobile || "",
@@ -1153,7 +1153,7 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
   const [showPassword, setShowPassword] = useState(false);
   const handle = (key) => (e) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
-  const canConfigureHrPermissions = isSuperAdmin && ["manager", "hr"].includes(form.role);
+  const canConfigureHrPermissions = hasHrAccess && isSuperAdmin && ["manager", "hr"].includes(form.role);
   const toggleHrPermission = (key) => {
     setForm((prev) => ({
       ...prev,
@@ -1316,7 +1316,7 @@ function EditContactModal({ contact, onClose, onUpdate, availableTags, isSuperAd
             <label style={labelStyle}>Role</label>
             <select value={form.role} onChange={handle("role")} style={inputStyle}>
               <option value="user">User</option>
-              <option value="hr">HR</option>
+              {hasHrAccess && <option value="hr">HR</option>}
               <option value="manager">Manager</option>
               <option value="super_admin">Super Admin</option>
             </select>
@@ -2534,6 +2534,7 @@ export default function ContactsPage() {
           onUpdate={updateContact}
           availableTags={tags}
           isSuperAdmin={isSuperAdmin}
+          hasHrAccess={hasHrAccess}
         />
       )}
     </div>

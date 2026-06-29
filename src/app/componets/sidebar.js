@@ -35,7 +35,6 @@ const allNavItems = [
     icon: Briefcase,
     allowedRoles: ["super_to_super_admin", "super_admin", "manager", "hr", "user"],
     module: "hr",
-    selfAccessRoles: ["user"],
   },
   {
     id: "campaigns",

@@ -398,7 +398,7 @@ export default function DashboardPage() {
   const canViewCampaignTools =
     ["super_to_super_admin", "super_admin", "manager"].includes(userRole) &&
     canViewChat;
-  const canViewHr = canUseModule("hr", userRole, allowedModules, ["user"]);
+  const canViewHr = canUseModule("hr", userRole, allowedModules);
   const canViewContacts = userRole !== "user";
   const canViewActivityType = (type) => {
     if (type === "task") return canViewTask;

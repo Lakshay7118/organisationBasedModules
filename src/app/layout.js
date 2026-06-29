@@ -15,7 +15,7 @@ const ROUTE_MODULES = [
   { prefix: "/campaigns", module: "chat" },
   { prefix: "/template", module: "chat" },
   { prefix: "/task", module: "task" },
-  { prefix: "/hr", module: "hr", selfAccessRoles: ["user"] },
+  { prefix: "/hr", module: "hr" },
 ];
 
 const getRouteModule = (pathname = "") => {
@@ -27,7 +27,6 @@ const canAccessRoute = (user, pathname = "") => {
   const routeModule = getRouteModule(pathname);
   if (!routeModule) return true;
   if (user?.role === "super_to_super_admin") return true;
-  if (routeModule.selfAccessRoles?.includes(user?.role)) return true;
   return Array.isArray(user?.allowedModules) && user.allowedModules.includes(routeModule.module);
 };
 

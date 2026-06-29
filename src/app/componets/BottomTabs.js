@@ -8,7 +8,7 @@ const tabs = [
   { id: "live-chat", label: "Live Chat", icon: MessageSquare, path: "/live-chat", module: "chat" },
   { id: "contacts",  label: "Contacts",  icon: Users,         path: "/contacts"  },
   { id: "task",      label: "Task",      icon: CheckSquare,   path: "/task", module: "task" },
-  { id: "hr",        label: "HR",        icon: Briefcase,     path: "/HR", module: "hr", selfAccessRoles: ["user"] },
+  { id: "hr",        label: "HR",        icon: Briefcase,     path: "/HR", module: "hr" },
   { id: "settings",  label: "Settings",  icon: Settings,      path: "/Settings"  },
 ];
 
@@ -64,7 +64,7 @@ export default function BottomTabs({ hidden = false }) {
       }}
     >
       {tabs
-        .filter((tab) => !tab.module || userRole === "super_to_super_admin" || tab.selfAccessRoles?.includes(userRole) || allowedModules.includes(tab.module))
+        .filter((tab) => !tab.module || userRole === "super_to_super_admin" || allowedModules.includes(tab.module))
         .map((tab) => {
         const Icon     = tab.icon;
         const isActive = pathname === tab.path;
