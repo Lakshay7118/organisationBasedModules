@@ -1275,7 +1275,7 @@ function ChatDrawer({ task, currentUser, onClose, onStatusChange, onDelete, onDe
 
   const openUserDetailPage = (userId) => {
     if (!userId) return;
-    router.push(`/task/user/${encodeURIComponent(userId)}?taskId=${encodeURIComponent(taskId)}`);
+    router.push(`/task/user?userId=${encodeURIComponent(userId)}&taskId=${encodeURIComponent(taskId)}`);
   };
   const handleDeleteResponse = async (responseId) => {
     if (!responseId || deletingResponseId) return;

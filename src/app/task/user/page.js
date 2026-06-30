@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FiArrowLeft, FiCalendar, FiCheckCircle, FiClock, FiSlash, FiUser } from "react-icons/fi";
-import API from "../../../utils/api";
+import API from "../../utils/api";
 
 const PALETTE = ["#6366f1", "#f43f5e", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4"];
 const STATUS = {
@@ -240,9 +240,9 @@ function TaskTabs({ tasks, effectiveStatus }) {
   );
 }
 export default function TaskUserDetailPage() {
-  const { userId } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const userId = searchParams.get("userId");
   const highlightedTaskId = searchParams.get("taskId");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
