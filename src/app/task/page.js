@@ -22,6 +22,28 @@ const enrichUser = (u) => {
   const id = u._id?.toString?.() || u.id || "";
   return { ...u, id, initial: userInitial(u.name), color: userColor(id) };
 };
+const entityId = (value) => (value?._id || value?.id || value)?.toString?.() || "";
+const responseUserId = (response) => entityId(response?.userId || response?.user);
+const unseenResponseCountsByUser = (responses = [], seenAt, viewerId) => {
+  const seenTime = seenAt ? new Date(seenAt).getTime() : 0;
+  return Array.isArray(responses)
+    ? responses.reduce((acc, response) => {
+        const id = responseUserId(response);
+        if (!id || id === viewerId) return acc;
+        const createdTime = response?.createdAt ? new Date(response.createdAt).getTime() : 0;
+        if (createdTime > seenTime) acc[id] = (acc[id] || 0) + 1;
+        return acc;
+      }, {})
+    : {};
+};
+const latestResponseTime = (responses = []) => (
+  Array.isArray(responses)
+    ? responses.reduce((latest, response) => {
+        const createdTime = response?.createdAt ? new Date(response.createdAt).getTime() : 0;
+        return createdTime > latest ? createdTime : latest;
+      }, 0)
+    : 0
+);
 const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const formatFileSize = (bytes) => {
   const size = Number(bytes) || 0;
@@ -170,6 +192,70 @@ function Avatar({ user, size = 32, onClick }) {
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
     >
       {u.initial}
+    </div>
+  );
+}
+
+function AssigneeAvatarGroup({ assignees = [], max = 4, avatarSize = 26, unseenCount = 0, overlap = -7 }) {
+  const visibleAssignees = assignees.slice(0, max);
+  const hiddenCount = Math.max(0, assignees.length - max);
+  const count = Number(unseenCount) || 0;
+  const displayCount = count > 99 ? "99+" : `+${count}`;
+
+  if (assignees.length === 0) {
+    return <span style={{ fontSize: "0.74rem", color: "#d1d5db" }}>—</span>;
+  }
+
+  return (
+    <div
+      title={count ? `${count} unseen task response${count === 1 ? "" : "s"}` : "Assigned users"}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        paddingTop: count ? 6 : 0,
+        paddingRight: count ? 10 : 0,
+        flexShrink: 0,
+      }}
+    >
+      {visibleAssignees.map((user, index) => (
+        <div key={user.id} style={{ marginLeft: index > 0 ? overlap : 0, zIndex: max - index }}>
+          <Avatar user={user} size={avatarSize} />
+        </div>
+      ))}
+      {hiddenCount > 0 && (
+        <div style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", background: "#e5e7eb", color: "#6b7280", fontSize: "0.58rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", marginLeft: overlap, border: "2px solid #fff" }}>
+          +{hiddenCount}
+        </div>
+      )}
+      {count > 0 && (
+        <span
+          aria-label={`${count} unseen task response${count === 1 ? "" : "s"}`}
+          style={{
+            position: "absolute",
+            top: -2,
+            right: 0,
+            minWidth: 20,
+            height: 20,
+            padding: "0 5px",
+            borderRadius: 999,
+            background: "#ef4444",
+            color: "#fff",
+            border: "2px solid #fff",
+            boxShadow: "0 2px 7px rgba(239,68,68,0.35)",
+            fontSize: 10,
+            lineHeight: "16px",
+            fontWeight: 800,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxSizing: "border-box",
+            pointerEvents: "none",
+          }}
+        >
+          {displayCount}
+        </span>
+      )}
     </div>
   );
 }
@@ -1616,6 +1702,7 @@ const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState("dueDate");
   const [sortDir, setSortDir] = useState("asc");
   const [userTaskStatuses, setUserTaskStatuses] = useState([]);
+  const [taskResponseSeens, setTaskResponseSeens] = useState({});
   const notifRef = useRef(null);
 
   // -- auth --
@@ -1633,10 +1720,19 @@ const [statusFilter, setStatusFilter] = useState("all");
     if (!currentUser) return;
     (async () => {
       try {
-        const [tRes, nRes, utsRes] = await Promise.all([API.get("/tasks"), API.get("/tasks/notifications"), API.get("/tasks/user-statuses")]);
+        const [tRes, nRes, utsRes, seenRes] = await Promise.all([API.get("/tasks"), API.get("/tasks/notifications"), API.get("/tasks/user-statuses"), API.get("/tasks/response-seens")]);
         if (tRes.data.success) setTasks(tRes.data.data);
         if (nRes.data.success) setNotifications(nRes.data.data);
         if (utsRes.data.success) setUserTaskStatuses(utsRes.data.data);
+        if (seenRes.data.success) {
+          setTaskResponseSeens(
+            (seenRes.data.data || []).reduce((acc, item) => {
+              const taskId = (item.taskId?._id || item.taskId || "").toString();
+              if (taskId) acc[taskId] = item;
+              return acc;
+            }, {})
+          );
+        }
       } catch { setError("Failed to load tasks."); }
       setIsLoading(false);
     })();
@@ -1786,6 +1882,31 @@ const [statusFilter, setStatusFilter] = useState("all");
   }, [selectedTask]);
 
   const selectedTaskLive = useMemo(() => tasks.find(t => (t._id || t.id) === (selectedTask?._id || selectedTask?.id)) || selectedTask, [tasks, selectedTask]);
+  const selectedTaskLatestResponseTime = latestResponseTime(selectedTaskLive?.responses);
+
+  useEffect(() => {
+    const taskId = selectedTaskLive?._id || selectedTaskLive?.id;
+    if (!taskId || !currentUser?.id || !selectedTaskLatestResponseTime) return;
+
+    const latestDate = new Date(selectedTaskLatestResponseTime).toISOString();
+    const currentSeenAt = taskResponseSeens[taskId]?.seenAt;
+    if (currentSeenAt && new Date(currentSeenAt).getTime() >= selectedTaskLatestResponseTime) return;
+
+    setTaskResponseSeens(prev => ({
+      ...prev,
+      [taskId]: {
+        ...(prev[taskId] || {}),
+        userId: currentUser.id,
+        taskId,
+        seenAt: latestDate,
+      },
+    }));
+
+    API.patch(`/tasks/${taskId}/responses/seen`).then(res => {
+      if (!res.data?.success || !res.data?.data) return;
+      setTaskResponseSeens(prev => ({ ...prev, [taskId]: res.data.data }));
+    }).catch(() => {});
+  }, [currentUser?.id, selectedTaskLive, selectedTaskLatestResponseTime, taskResponseSeens]);
 
   const handleResponse = useCallback(async (attachments = []) => {
     const taskId = selectedTaskLive?._id || selectedTaskLive?.id;
@@ -2624,6 +2745,9 @@ color: tab === id ? "#fff" : "#9ca3af",
                           const overdue = isOverdue(task.dueDate, task.status);
                           const selected = (selectedTaskLive?._id || selectedTaskLive?.id) === (task._id || task.id);
                           const assignees = (task.assignedTo || []).map(enrichUser).filter(Boolean);
+                          const taskId = task._id || task.id;
+                          const responseCounts = unseenResponseCountsByUser(task.responses, taskResponseSeens[taskId]?.seenAt, currentUser?.id);
+                          const unseenResponseCount = Object.values(responseCounts).reduce((sum, count) => sum + count, 0);
                           const isPending = task.approvalStatus === "pending";
                           const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser.id && uts.taskId.toString() === (task._id || task.id).toString());
                           const effectiveStatus = _isAdmin ? task.status : (myStatusRec ? myStatusRec.status : task.status);
@@ -2655,9 +2779,7 @@ color: tab === id ? "#fff" : "#9ca3af",
                               </td>
                               <td style={{ padding: "12px 16px" }}>
                                 <div style={{ display: "flex", alignItems: "center" }}>
-                                  {assignees.slice(0, 4).map((u, i) => <div key={u.id} style={{ marginLeft: i > 0 ? -7 : 0, zIndex: 4 - i }}><Avatar user={u} size={26} /></div>)}
-                                  {assignees.length > 4 && <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#e5e7eb", color: "#6b7280", fontSize: "0.58rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", marginLeft: -7, border: "2px solid #fff" }}>+{assignees.length - 4}</div>}
-                                  {assignees.length === 0 && <span style={{ fontSize: "0.74rem", color: "#d1d5db" }}>—</span>}
+                                  <AssigneeAvatarGroup assignees={assignees} max={4} avatarSize={26} unseenCount={unseenResponseCount} />
                                 </div>
                               </td>
                               <td style={{ padding: "12px 16px" }}>
@@ -2703,6 +2825,9 @@ color: tab === id ? "#fff" : "#9ca3af",
                     const pCfg = PRIORITY[task.priority] || PRIORITY.medium;
                     const overdue = isOverdue(task.dueDate, task.status);
                     const assignees = (task.assignedTo || []).map(enrichUser).filter(Boolean);
+                    const taskId = task._id || task.id;
+                    const responseCounts = unseenResponseCountsByUser(task.responses, taskResponseSeens[taskId]?.seenAt, currentUser?.id);
+                    const unseenResponseCount = Object.values(responseCounts).reduce((sum, count) => sum + count, 0);
                     const isPending = task.approvalStatus === "pending";
                     const myStatusRec = userTaskStatuses.find(uts => uts.userId.toString() === currentUser.id && uts.taskId.toString() === (task._id || task.id).toString());
                     const effectiveStatus = _isAdmin ? task.status : (myStatusRec ? myStatusRec.status : task.status);
@@ -2722,10 +2847,7 @@ color: tab === id ? "#fff" : "#9ca3af",
                           <span style={{ fontSize: "0.71rem", color: overdue ? "#ef4444" : "#6b7280" }}>📅 {fmtDate(task.dueDate)}</span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "space-between" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                            {assignees.slice(0, 3).map(u => <Avatar key={u.id} user={u} size={22} />)}
-                            {assignees.length > 3 && <span style={{ fontSize: "0.63rem", color: "#6b7280" }}>+{assignees.length - 3}</span>}
-                          </div>
+                          <AssigneeAvatarGroup assignees={assignees} max={3} avatarSize={22} unseenCount={unseenResponseCount} overlap={-3} />
                           <div style={{ fontSize: "0.77rem", fontWeight: 600, color: task.responses?.length > 0 ? "#0d9488" : "#d1d5db" }}>💬 {task.responses?.length || 0}</div>
                         </div>
                         {(_isAdmin || _isManager) && (canEditTask || _isAdmin) && (
